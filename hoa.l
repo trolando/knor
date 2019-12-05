@@ -1,5 +1,4 @@
 %{
-
 /**************************************************************************
  * Copyright (c) 2019- Guillermo A. Perez
  * 
@@ -37,34 +36,35 @@
 <C_COMMENT>\*\/          { BEGIN(INITIAL); }
 <C_COMMENT>.|\n          { }
 
-\"(\.|[^\"])*\"          printf("STRING ");
-HOA:                     printf("hoa-header ");
-Start:                   printf("start ");
-controllable-AP:         printf("controllable-AP ");
-AP:                      printf("AP ");
-Alias:                   printf("alias ");
-Acceptance:              printf("acceptance ");
-acc-name:                printf("acc-name ");
-tool:                    printf("tool ");
-name:                    printf("name ");
-properties:              printf("properties ");
-State:                   printf("state-header ");
-[a-zA-Z_][0-9a-zA-Z_-]*: printf("HEADERNAME ");
-0|[1-9][0-9]*            printf("INT ");
-[tf]                     printf("BOOLEAN ");
-[a-zA-Z_][0-9a-zA-Z_-]*  printf("IDENTIFIER ");
-@[0-9a-zA-Z_-]+          printf("ANAME ");
---BODY--                 printf("BEGINBODY ");
---END--                  printf("ENDBODY ");
-\(                       printf("LPAR ");
-\)                       printf("RPAR ");
-\{                       printf("LBRACE ");
-\}                       printf("RBRACE ");
-\[                       printf("LSQBRACE ");
-\]                       printf("RSQBRACE ");
-&                        printf("BOOLAND ");
-\|                       printf("BOOLOR ");
-!                        printf("BOOLNOT ");
+\"(\.|[^\"])*\"          return STRING;
+HOA:                     return HOAHDR;
+Start:                   return START;
+controllable-AP:         return CNTAP;
+AP:                      return AP;
+Alias:                   return ALIAS;
+Acceptance:              return ACCEPTANCE;
+acc-name:                return ACCNAME;
+tool:                    return TOOL;
+name:                    return NAME;
+properties:              return PROPERTIES;
+State:                   return STATEHDR;
+[a-zA-Z_][0-9a-zA-Z_-]*: return HEADERNAME;
+0|[1-9][0-9]*            return INT;
+[tf]                     return BOOL;
+Fin                      return FIN;
+Inf                      return INF;
+--BODY--                 return BEGINBODY;
+--END--                  return ENDBODY;
+[a-zA-Z_][0-9a-zA-Z_-]*  return IDENTIFIER;
+@[0-9a-zA-Z_-]+          return ANAME;
 [ \t\n\r]+               /* ignore whitespace */;
-<<EOF>>                  { printf("(eof %u)\n", yylineno); return 0; }
+\(                       return LPAR;
+\)                       return RPAR;
+\{                       return LBRACE;
+\}                       return RBRACE;
+\[                       return LSQBRACE;
+\]                       return RSQBRACE;
+&                        return BOOLAND;
+\|                       return BOOLOR;
+!                        return BOOLNOT;
 %%

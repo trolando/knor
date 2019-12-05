@@ -1,5 +1,4 @@
 %{
-
 /**************************************************************************
  * Copyright (c) 2019- Guillermo A. Perez
  * 
@@ -23,46 +22,127 @@
  * guillermoalberto.perez@uantwerpen.be
  *************************************************************************/
 
+/* C declarations */
+
 #include <stdio.h>
 #include <string.h>
- 
+
+#include "hoalexer.h"
+
 void yyerror(const char *str) {
-    fprintf(stderr, "error: %s\n", str);
+    fprintf(stderr, "Parsing error: %s [line %d]\n", str, yylineno);
 }
  
 int yywrap() {
     return 1;
 } 
+%}
+
+/* Yacc declarations: Tokens/terminal used in the grammar */
+
+%locations
+%error-verbose
+
+%token LPAR "("
+%token RPAR ")"
+%token LBRACE "{"
+%token RBRACE "}"
+%token LSQBRACE "["
+%token RSQBRACE "]"
+%token BOOLAND "&"
+%token BOOLOR "|"
+%token BOOLNOT "!"
+%token STRING INT BOOL IDENTIFIER ANAME HEADERNAME HOAHDR
+%token STATES AP ALIAS ACCEPTANCE ACCNAME TOOL NAME PROPERTIES
+%token STATEHDR INF FIN BEGINBODY ENDBODY CNTAP START
+
+%%
+/* Grammar rules and actions follow */
+
+automaton: header BEGINBODY body ENDBODY;
+
+header: format_version header_list;
+
+format_version: HOAHDR IDENTIFIER;
+
+header_list: /* empty */
+           | header_list header_item;
+
+header_item: STATES INT
+           | START state_conj
+           | AP INT string_list
+           | CNTAP int_list
+           | ALIAS ANAME label_expr
+           | ACCEPTANCE INT acceptance_cond
+           | ACCNAME IDENTIFIER boolintid_list
+           | TOOL STRING maybe_string
+           | NAME STRING
+           | PROPERTIES id_list
+           | HEADERNAME boolintstrid_list;
+
+state_conj: INT
+          | state_conj "&" INT;
+
+label_expr: BOOL
+          | INT
+          | ANAME
+          | "!" label_expr
+          | "(" label_expr ")"
+          | label_expr "&" label_expr
+          | label_expr "|" label_expr;
+
+acceptance_cond: accid "(" INT ")"
+               | accid "(" "!" INT ")"
+               | "(" acceptance_cond ")"
+               | acceptance_cond "&" acceptance_cond
+               | acceptance_cond "|" acceptance_cond
+               | BOOL;
+
+accid: FIN
+     | INF;
+
+boolintid_list: /* empty */
+              | boolintid_list BOOL
+              | boolintid_list INT
+              | boolintid_list IDENTIFIER;
+
+boolintstrid_list: /* empty */
+                 | boolintstrid_list BOOL
+                 | boolintstrid_list INT
+                 | boolintstrid_list STRING
+                 | boolintstrid_list IDENTIFIER;
+
+string_list: /* empty */
+           | string_list STRING;
+
+id_list: /* empty */
+       | id_list IDENTIFIER;
+
+body: statespec_list;
+
+statespec_list: /* empty */
+              | statespec_list state_name trans_list;
+
+state_name: STATEHDR maybe_label INT maybe_string maybe_accsig;
+
+maybe_label: /* empty */
+           | "[" label_expr "]";
+
+maybe_string: /* empty */
+            | STRING;
+
+maybe_accsig: /* empty */
+            | "{" int_list "}";
+
+int_list: /* empty */
+        | int_list INT;
+
+trans_list: /* empty */
+          | trans_list maybe_label state_conj maybe_accsig;
+
+%%
+/* Additional C code */
   
 int main() {
     yyparse();
 }
-%}
-
-%token NUMBER TOKHEAT STATE TOKTARGET TOKTEMPERATURE
-
-%% /* Grammar rules and actions follow */
-	
-commands: /* empty */
-        | commands command
-        ;
-
-command:
-        heat_switch
-        |
-        target_set
-        ;
-
-heat_switch:
-        TOKHEAT STATE
-        {
-                printf("\tHeat turned on or off\n");
-        }
-        ;
-
-target_set:
-        TOKTARGET TOKTEMPERATURE NUMBER
-        {
-                printf("\tTemperature set\n");
-        }
-        ;
