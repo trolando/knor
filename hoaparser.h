@@ -39,14 +39,25 @@
    /* Put the tokens into the symbol table, so that GDB and other debuggers
       know about them.  */
    enum yytokentype {
+     HOAHDR = 1,
+     ACCEPTANCE = 2,
+     STATES = 3,
+     AP = 4,
+     CNTAP = 5,
+     ACCNAME = 6,
+     TOOL = 7,
+     NAME = 8,
+     START = 9,
+     ALIAS = 10,
+     PROPERTIES = 11,
      LPAR = 258,
      RPAR = 259,
      LBRACE = 260,
      RBRACE = 261,
      LSQBRACE = 262,
      RSQBRACE = 263,
-     BOOLAND = 264,
-     BOOLOR = 265,
+     BOOLOR = 264,
+     BOOLAND = 265,
      BOOLNOT = 266,
      STRING = 267,
      INT = 268,
@@ -54,33 +65,33 @@
      IDENTIFIER = 270,
      ANAME = 271,
      HEADERNAME = 272,
-     HOAHDR = 273,
-     STATES = 274,
-     AP = 275,
-     ALIAS = 276,
-     ACCEPTANCE = 277,
-     ACCNAME = 278,
-     TOOL = 279,
-     NAME = 280,
-     PROPERTIES = 281,
-     STATEHDR = 282,
-     INF = 283,
-     FIN = 284,
-     BEGINBODY = 285,
-     ENDBODY = 286,
-     CNTAP = 287,
-     START = 288
+     STATEHDR = 273,
+     INF = 274,
+     FIN = 275,
+     BEGINBODY = 276,
+     ENDBODY = 277
    };
 #endif
 /* Tokens.  */
+#define HOAHDR 1
+#define ACCEPTANCE 2
+#define STATES 3
+#define AP 4
+#define CNTAP 5
+#define ACCNAME 6
+#define TOOL 7
+#define NAME 8
+#define START 9
+#define ALIAS 10
+#define PROPERTIES 11
 #define LPAR 258
 #define RPAR 259
 #define LBRACE 260
 #define RBRACE 261
 #define LSQBRACE 262
 #define RSQBRACE 263
-#define BOOLAND 264
-#define BOOLOR 265
+#define BOOLOR 264
+#define BOOLAND 265
 #define BOOLNOT 266
 #define STRING 267
 #define INT 268
@@ -88,22 +99,11 @@
 #define IDENTIFIER 270
 #define ANAME 271
 #define HEADERNAME 272
-#define HOAHDR 273
-#define STATES 274
-#define AP 275
-#define ALIAS 276
-#define ACCEPTANCE 277
-#define ACCNAME 278
-#define TOOL 279
-#define NAME 280
-#define PROPERTIES 281
-#define STATEHDR 282
-#define INF 283
-#define FIN 284
-#define BEGINBODY 285
-#define ENDBODY 286
-#define CNTAP 287
-#define START 288
+#define STATEHDR 273
+#define INF 274
+#define FIN 275
+#define BEGINBODY 276
+#define ENDBODY 277
 
 
 

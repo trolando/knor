@@ -26,16 +26,28 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "hoalexer.h"
 
-void yyerror(const char *str) {
+void yyerror(const char* str) {
     fprintf(stderr, "Parsing error: %s [line %d]\n", str, yylineno);
 }
  
 int yywrap() {
     return 1;
-} 
+}
+
+bool seenHeader[12] = {false};
+const char* headerStrs[] = {"HOA", "Acceptance", "States", "AP",
+                            "controllable-AP", "acc-name", "tool",
+                            "name", "Start", "Alias", "properties"};
+
+void hdrItemError(const char* str) {
+    fprintf(stderr,
+            "Automaton error: more than one %s header item [line %d]\n",
+            str, yylineno);
+}
 %}
 
 /* Yacc declarations: Tokens/terminal used in the grammar */
@@ -43,60 +55,97 @@ int yywrap() {
 %locations
 %error-verbose
 
+/* HEADER TOKENS */
+/* compulsory */
+%token HOAHDR 1 ACCEPTANCE 2 /* indexed from 1 since 0 means EOF for bison */
+/* at most once */
+%token STATES 3 AP 4 CNTAP 5 ACCNAME 6 TOOL 7 NAME 8
+/* multiple */
+%token START 9 ALIAS 10 PROPERTIES 11
+
+/* OTHERS */
 %token LPAR "("
 %token RPAR ")"
 %token LBRACE "{"
 %token RBRACE "}"
 %token LSQBRACE "["
 %token RSQBRACE "]"
-%token BOOLAND "&"
 %token BOOLOR "|"
+%token BOOLAND "&"
 %token BOOLNOT "!"
-%token STRING INT BOOL IDENTIFIER ANAME HEADERNAME HOAHDR
-%token STATES AP ALIAS ACCEPTANCE ACCNAME TOOL NAME PROPERTIES
-%token STATEHDR INF FIN BEGINBODY ENDBODY CNTAP START
+%token STRING INT BOOL IDENTIFIER ANAME HEADERNAME
+%token STATEHDR INF FIN BEGINBODY ENDBODY
 
 %%
 /* Grammar rules and actions follow */
 
-automaton: header BEGINBODY body ENDBODY;
+automaton: header BEGINBODY body ENDBODY
+         {
+            if (!seenHeader[HOAHDR])
+                yyerror("No HOA: header item");
+            if (!seenHeader[ACCEPTANCE])
+                yyerror("No Acceptance: header item");
+         };
 
 header: format_version header_list;
 
-format_version: HOAHDR IDENTIFIER;
+format_version: HOAHDR IDENTIFIER
+              {
+                  if (seenHeader[HOAHDR])
+                      hdrItemError("HOA:");
+                  else
+                      seenHeader[HOAHDR] = true;
+              };
 
 header_list: /* empty */
-           | header_list header_item;
+           | header_list header_item
+           {
+               if ($2 <= 7) {
+                   if (seenHeader[$2])
+                       hdrItemError(headerStrs[$2]);
+                   else
+                       seenHeader[$2] = true;
+               }
+           };
 
-header_item: STATES INT
-           | START state_conj
-           | AP INT string_list
-           | CNTAP int_list
-           | ALIAS ANAME label_expr
-           | ACCEPTANCE INT acceptance_cond
-           | ACCNAME IDENTIFIER boolintid_list
-           | TOOL STRING maybe_string
-           | NAME STRING
-           | PROPERTIES id_list
-           | HEADERNAME boolintstrid_list;
+header_item: STATES INT                        { $$ = STATES; }
+           | START state_conj                  { $$ = START; }
+           | AP INT string_list                { $$ = AP; }
+           | CNTAP int_list                    { $$ = CNTAP; }
+           | ALIAS ANAME label_expr            { $$ = ALIAS; }
+           | ACCEPTANCE INT acceptance_cond    { $$ = ACCEPTANCE; }
+           | ACCNAME IDENTIFIER boolintid_list { $$ = ACCNAME; }
+           | TOOL STRING maybe_string          { $$ = TOOL; }
+           | NAME STRING                       { $$ = NAME; }
+           | PROPERTIES id_list                { $$ = PROPERTIES; }
+           | HEADERNAME boolintstrid_list      { $$ = HEADERNAME; }
+           ;
 
 state_conj: INT
           | state_conj "&" INT;
 
-label_expr: BOOL
-          | INT
-          | ANAME
-          | "!" label_expr
-          | "(" label_expr ")"
-          | label_expr "&" label_expr
-          | label_expr "|" label_expr;
+label_expr: lab_exp_conj
+          | lab_exp_conj "|" label_expr;
+          
+lab_exp_conj: lab_exp_atom
+            | lab_exp_atom "&" lab_exp_conj;
 
-acceptance_cond: accid "(" INT ")"
-               | accid "(" "!" INT ")"
-               | "(" acceptance_cond ")"
-               | acceptance_cond "&" acceptance_cond
-               | acceptance_cond "|" acceptance_cond
-               | BOOL;
+lab_exp_atom: BOOL
+            | INT
+            | ANAME
+            | "!" lab_exp_atom
+            | "(" label_expr ")";
+
+acceptance_cond: acc_cond_conj
+               | acc_cond_conj "|" acceptance_cond;
+               
+acc_cond_conj: acc_cond_atom
+             | acc_cond_atom "&" acc_cond_conj;
+             
+acc_cond_atom: accid "(" INT ")"
+             | accid "(" "!" INT ")"
+             | "(" acceptance_cond ")"
+             | BOOL;
 
 accid: FIN
      | INF;
