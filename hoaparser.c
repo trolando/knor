@@ -177,8 +177,9 @@ int yywrap() {
     return 1;
 }
 
+bool autoError = false;
 bool seenHeader[12] = {false};
-const char* headerStrs[] = {"HOA", "Acceptance", "States", "AP",
+const char* headerStrs[] = {"", "HOA", "Acceptance", "States", "AP",
                             "controllable-AP", "acc-name", "tool",
                             "name", "Start", "Alias", "properties"};
 
@@ -186,6 +187,7 @@ void hdrItemError(const char* str) {
     fprintf(stderr,
             "Automaton error: more than one %s header item [line %d]\n",
             str, yylineno);
+    autoError = true;
 }
 
 
@@ -232,7 +234,7 @@ typedef struct YYLTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 236 "hoaparser.c"
+#line 238 "hoaparser.c"
 
 #ifdef short
 # undef short
@@ -541,13 +543,13 @@ static const yytype_int8 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    82,    82,    90,    92,   100,   101,   111,   112,   113,
-     114,   115,   116,   117,   118,   119,   120,   121,   124,   125,
-     127,   128,   130,   131,   133,   134,   135,   136,   137,   139,
-     140,   142,   143,   145,   146,   147,   148,   150,   151,   153,
-     154,   155,   156,   158,   159,   160,   161,   162,   164,   165,
-     167,   168,   170,   172,   173,   175,   177,   178,   180,   181,
-     183,   184,   186,   187,   189,   190
+       0,    84,    84,    92,    94,   102,   103,   113,   114,   115,
+     116,   117,   118,   119,   120,   121,   122,   123,   126,   127,
+     129,   130,   132,   133,   135,   136,   137,   138,   139,   141,
+     142,   144,   145,   147,   148,   149,   150,   152,   153,   155,
+     156,   157,   158,   160,   161,   162,   163,   164,   166,   167,
+     169,   170,   172,   174,   175,   177,   179,   180,   182,   183,
+     185,   186,   188,   189,   191,   192
 };
 #endif
 
@@ -1540,9 +1542,9 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 83 "hoa.y"
+#line 85 "hoa.y"
     {
-            if (!seenHeader[HOAHDR])
+            if (!seenHeader[HOAHDR]) /* redundant because of the grammar */
                 yyerror("No HOA: header item");
             if (!seenHeader[ACCEPTANCE])
                 yyerror("No Acceptance: header item");
@@ -1550,7 +1552,7 @@ yyreduce:
     break;
 
   case 4:
-#line 93 "hoa.y"
+#line 95 "hoa.y"
     {
                   if (seenHeader[HOAHDR])
                       hdrItemError("HOA:");
@@ -1560,7 +1562,7 @@ yyreduce:
     break;
 
   case 6:
-#line 102 "hoa.y"
+#line 104 "hoa.y"
     {
                if ((yyvsp[(2) - (2)]) <= 7) {
                    if (seenHeader[(yyvsp[(2) - (2)])])
@@ -1572,63 +1574,63 @@ yyreduce:
     break;
 
   case 7:
-#line 111 "hoa.y"
+#line 113 "hoa.y"
     { (yyval) = STATES; ;}
     break;
 
   case 8:
-#line 112 "hoa.y"
+#line 114 "hoa.y"
     { (yyval) = START; ;}
     break;
 
   case 9:
-#line 113 "hoa.y"
+#line 115 "hoa.y"
     { (yyval) = AP; ;}
     break;
 
   case 10:
-#line 114 "hoa.y"
+#line 116 "hoa.y"
     { (yyval) = CNTAP; ;}
     break;
 
   case 11:
-#line 115 "hoa.y"
+#line 117 "hoa.y"
     { (yyval) = ALIAS; ;}
     break;
 
   case 12:
-#line 116 "hoa.y"
+#line 118 "hoa.y"
     { (yyval) = ACCEPTANCE; ;}
     break;
 
   case 13:
-#line 117 "hoa.y"
+#line 119 "hoa.y"
     { (yyval) = ACCNAME; ;}
     break;
 
   case 14:
-#line 118 "hoa.y"
+#line 120 "hoa.y"
     { (yyval) = TOOL; ;}
     break;
 
   case 15:
-#line 119 "hoa.y"
+#line 121 "hoa.y"
     { (yyval) = NAME; ;}
     break;
 
   case 16:
-#line 120 "hoa.y"
+#line 122 "hoa.y"
     { (yyval) = PROPERTIES; ;}
     break;
 
   case 17:
-#line 121 "hoa.y"
+#line 123 "hoa.y"
     { (yyval) = HEADERNAME; ;}
     break;
 
 
 /* Line 1267 of yacc.c.  */
-#line 1632 "hoaparser.c"
+#line 1634 "hoaparser.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -1848,11 +1850,13 @@ yyreturn:
 }
 
 
-#line 192 "hoa.y"
+#line 194 "hoa.y"
 
 /* Additional C code */
   
-int main() {
-    yyparse();
+int parseHoa(FILE* input) {
+    yyin = input;
+    int ret = yyparse();
+    return ret | autoError;
 }
 

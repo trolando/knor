@@ -38,8 +38,9 @@ int yywrap() {
     return 1;
 }
 
+bool autoError = false;
 bool seenHeader[12] = {false};
-const char* headerStrs[] = {"HOA", "Acceptance", "States", "AP",
+const char* headerStrs[] = {"", "HOA", "Acceptance", "States", "AP",
                             "controllable-AP", "acc-name", "tool",
                             "name", "Start", "Alias", "properties"};
 
@@ -47,6 +48,7 @@ void hdrItemError(const char* str) {
     fprintf(stderr,
             "Automaton error: more than one %s header item [line %d]\n",
             str, yylineno);
+    autoError = true;
 }
 %}
 
@@ -81,7 +83,7 @@ void hdrItemError(const char* str) {
 
 automaton: header BEGINBODY body ENDBODY
          {
-            if (!seenHeader[HOAHDR])
+            if (!seenHeader[HOAHDR]) /* redundant because of the grammar */
                 yyerror("No HOA: header item");
             if (!seenHeader[ACCEPTANCE])
                 yyerror("No Acceptance: header item");
@@ -192,6 +194,8 @@ trans_list: /* empty */
 %%
 /* Additional C code */
   
-int main() {
-    yyparse();
+int parseHoa(FILE* input) {
+    yyin = input;
+    int ret = yyparse();
+    return ret | autoError;
 }

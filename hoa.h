@@ -21,12 +21,11 @@
  * guillermoalberto.perez@uantwerpen.be
  *************************************************************************/
 
-#include <stdlib.h>
+#ifndef _SIMPLEHOA_H
+#define _SIMPLEHOA_H
+
 #include <stdio.h>
 
-#include "hoa.h"
+int parseHoa(FILE*);
 
-int main(int argc, char* argv[]) {
-  int ret = parseHoa(stdin);
-  return EXIT_SUCCESS;
-}
+#endif
