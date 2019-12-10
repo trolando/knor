@@ -167,6 +167,7 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include "hoa.h"
 #include "hoalexer.h"
 
 void yyerror(const char* str) {
@@ -234,7 +235,7 @@ typedef struct YYLTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 238 "hoaparser.c"
+#line 239 "hoaparser.c"
 
 #ifdef short
 # undef short
@@ -543,13 +544,13 @@ static const yytype_int8 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    84,    84,    92,    94,   102,   103,   113,   114,   115,
-     116,   117,   118,   119,   120,   121,   122,   123,   126,   127,
-     129,   130,   132,   133,   135,   136,   137,   138,   139,   141,
-     142,   144,   145,   147,   148,   149,   150,   152,   153,   155,
-     156,   157,   158,   160,   161,   162,   163,   164,   166,   167,
-     169,   170,   172,   174,   175,   177,   179,   180,   182,   183,
-     185,   186,   188,   189,   191,   192
+       0,    85,    85,    93,    95,   103,   104,   114,   115,   116,
+     117,   118,   119,   120,   121,   122,   123,   124,   127,   128,
+     130,   131,   133,   134,   136,   137,   138,   139,   140,   142,
+     143,   145,   146,   148,   149,   150,   151,   153,   154,   156,
+     157,   158,   159,   161,   162,   163,   164,   165,   167,   168,
+     170,   171,   173,   175,   176,   178,   180,   181,   183,   184,
+     186,   187,   189,   190,   192,   193
 };
 #endif
 
@@ -1542,7 +1543,7 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 85 "hoa.y"
+#line 86 "hoa.y"
     {
             if (!seenHeader[HOAHDR]) /* redundant because of the grammar */
                 yyerror("No HOA: header item");
@@ -1552,7 +1553,7 @@ yyreduce:
     break;
 
   case 4:
-#line 95 "hoa.y"
+#line 96 "hoa.y"
     {
                   if (seenHeader[HOAHDR])
                       hdrItemError("HOA:");
@@ -1562,7 +1563,7 @@ yyreduce:
     break;
 
   case 6:
-#line 104 "hoa.y"
+#line 105 "hoa.y"
     {
                if ((yyvsp[(2) - (2)]) <= 7) {
                    if (seenHeader[(yyvsp[(2) - (2)])])
@@ -1574,63 +1575,63 @@ yyreduce:
     break;
 
   case 7:
-#line 113 "hoa.y"
+#line 114 "hoa.y"
     { (yyval) = STATES; ;}
     break;
 
   case 8:
-#line 114 "hoa.y"
+#line 115 "hoa.y"
     { (yyval) = START; ;}
     break;
 
   case 9:
-#line 115 "hoa.y"
+#line 116 "hoa.y"
     { (yyval) = AP; ;}
     break;
 
   case 10:
-#line 116 "hoa.y"
+#line 117 "hoa.y"
     { (yyval) = CNTAP; ;}
     break;
 
   case 11:
-#line 117 "hoa.y"
+#line 118 "hoa.y"
     { (yyval) = ALIAS; ;}
     break;
 
   case 12:
-#line 118 "hoa.y"
+#line 119 "hoa.y"
     { (yyval) = ACCEPTANCE; ;}
     break;
 
   case 13:
-#line 119 "hoa.y"
+#line 120 "hoa.y"
     { (yyval) = ACCNAME; ;}
     break;
 
   case 14:
-#line 120 "hoa.y"
+#line 121 "hoa.y"
     { (yyval) = TOOL; ;}
     break;
 
   case 15:
-#line 121 "hoa.y"
+#line 122 "hoa.y"
     { (yyval) = NAME; ;}
     break;
 
   case 16:
-#line 122 "hoa.y"
+#line 123 "hoa.y"
     { (yyval) = PROPERTIES; ;}
     break;
 
   case 17:
-#line 123 "hoa.y"
+#line 124 "hoa.y"
     { (yyval) = HEADERNAME; ;}
     break;
 
 
 /* Line 1267 of yacc.c.  */
-#line 1634 "hoaparser.c"
+#line 1635 "hoaparser.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -1850,11 +1851,11 @@ yyreturn:
 }
 
 
-#line 194 "hoa.y"
+#line 195 "hoa.y"
 
 /* Additional C code */
   
-int parseHoa(FILE* input) {
+int parseHoa(FILE* input, HoaData* data) {
     yyin = input;
     int ret = yyparse();
     return ret | autoError;

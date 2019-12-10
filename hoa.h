@@ -26,6 +26,62 @@
 
 #include <stdio.h>
 
-int parseHoa(FILE*);
+typedef enum {
+    NT_BOOL, NT_AND, NT_OR, NT_FIN, NT_INF, NT_NOT
+} NodeType;
+
+typedef struct BTree BTree;
+struct BTree {
+    BTree* left;
+    BTree* right;
+    int set;
+    NodeType type;
+};
+
+typedef struct StringList StringList;
+struct StringList {
+    char* str;
+    StringList* next;
+};
+
+typedef struct IntList IntList;
+struct IntList {
+    int i;
+    IntList* next;
+};
+
+typedef struct TransList TransList;
+struct TransList {
+    BTree* label;
+    IntList* successors;
+    IntList* accSig;
+};
+
+typedef struct StateList StateList;
+struct StateList {
+    int id;
+    char* name;
+    BTree* label;
+    IntList* accSig;
+    TransList* transitions;
+};
+
+typedef struct HoaData {
+    int noStates;
+    IntList* start;
+    char* version;
+    int noAccSets;
+    BTree* acc;
+    char* accNameID;
+    StringList* accNameParameters;
+    char* toolName;
+    char* toolVersion;
+    char* name;
+    StringList* properties;
+    StateList* states;
+} HoaData;
+
+// This function returns 0 if and only if parsing was successful
+int parseHoa(FILE*, HoaData*);
 
 #endif

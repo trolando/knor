@@ -28,6 +28,7 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include "hoa.h"
 #include "hoalexer.h"
 
 void yyerror(const char* str) {
@@ -194,7 +195,7 @@ trans_list: /* empty */
 %%
 /* Additional C code */
   
-int parseHoa(FILE* input) {
+int parseHoa(FILE* input, HoaData* data) {
     yyin = input;
     int ret = yyparse();
     return ret | autoError;

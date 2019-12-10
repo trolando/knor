@@ -27,6 +27,7 @@
 #include "hoa.h"
 
 int main(int argc, char* argv[]) {
-  int ret = parseHoa(stdin);
-  return EXIT_SUCCESS;
+    HoaData data;
+    int ret = parseHoa(stdin, &data);
+    return EXIT_SUCCESS;
 }
