@@ -312,7 +312,7 @@ extern int yylex (void);
 #undef YY_DECL
 #endif
 
-#line 70 "hoa.l"
+#line 72 "hoa.l"
 
 
 #line 319 "hoalexer.h"

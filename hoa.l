@@ -22,7 +22,9 @@
  * guillermoalberto.perez@uantwerpen.be
  *************************************************************************/
 
+#include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "hoaparser.h"
 %}
@@ -48,15 +50,15 @@ tool:                    return TOOL;
 name:                    return NAME;
 properties:              return PROPERTIES;
 State:                   return STATEHDR;
-[a-zA-Z_][0-9a-zA-Z_-]*: return HEADERNAME;
-0|[1-9][0-9]*            return INT;
-[tf]                     return BOOL;
+[a-zA-Z_][0-9a-zA-Z_-]*: { yylval.string = strdup(yytext); return HEADERNAME; }
+0|[1-9][0-9]*            { yylval.number = atoi(yytext); return INT; }
+[tf]                     { yylval.number = strcmp(yytext, "t"); return BOOL; }
 Fin                      return FIN;
 Inf                      return INF;
 --BODY--                 return BEGINBODY;
 --END--                  return ENDBODY;
-[a-zA-Z_][0-9a-zA-Z_-]*  return IDENTIFIER;
-@[0-9a-zA-Z_-]+          return ANAME;
+[a-zA-Z_][0-9a-zA-Z_-]*  { yylval.string = strdup(yytext); return IDENTIFIER; }
+@[0-9a-zA-Z_-]+          { yylval.string = strdup(yytext); return ANAME; }
 [ \t\n\r]+               /* ignore whitespace */;
 \(                       return LPAR;
 \)                       return RPAR;

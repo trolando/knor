@@ -83,5 +83,7 @@ typedef struct HoaData {
 
 // This function returns 0 if and only if parsing was successful
 int parseHoa(FILE*, HoaData*);
+IntList* newIntNode(int);
+IntList* appendIntNode(IntList*, int);
 
 #endif

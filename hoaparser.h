@@ -59,17 +59,17 @@
      BOOLOR = 264,
      BOOLAND = 265,
      BOOLNOT = 266,
-     STRING = 267,
-     INT = 268,
-     BOOL = 269,
-     IDENTIFIER = 270,
-     ANAME = 271,
-     HEADERNAME = 272,
-     STATEHDR = 273,
-     INF = 274,
-     FIN = 275,
-     BEGINBODY = 276,
-     ENDBODY = 277
+     STATEHDR = 267,
+     INF = 268,
+     FIN = 269,
+     BEGINBODY = 270,
+     ENDBODY = 271,
+     STRING = 272,
+     IDENTIFIER = 273,
+     ANAME = 274,
+     HEADERNAME = 275,
+     INT = 276,
+     BOOL = 277
    };
 #endif
 /* Tokens.  */
@@ -93,23 +93,33 @@
 #define BOOLOR 264
 #define BOOLAND 265
 #define BOOLNOT 266
-#define STRING 267
-#define INT 268
-#define BOOL 269
-#define IDENTIFIER 270
-#define ANAME 271
-#define HEADERNAME 272
-#define STATEHDR 273
-#define INF 274
-#define FIN 275
-#define BEGINBODY 276
-#define ENDBODY 277
+#define STATEHDR 267
+#define INF 268
+#define FIN 269
+#define BEGINBODY 270
+#define ENDBODY 271
+#define STRING 272
+#define IDENTIFIER 273
+#define ANAME 274
+#define HEADERNAME 275
+#define INT 276
+#define BOOL 277
 
 
 
 
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
-typedef int YYSTYPE;
+typedef union YYSTYPE
+#line 83 "hoa.y"
+{
+    int number;
+    char* string;
+    bool boolean;
+    IntList* numlist;
+}
+/* Line 1529 of yacc.c.  */
+#line 122 "hoaparser.h"
+	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
 # define YYSTYPE_IS_TRIVIAL 1

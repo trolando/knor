@@ -222,7 +222,7 @@ typedef union YYSTYPE
     IntList* numlist;
 }
 /* Line 193 of yacc.c.  */
-#line 226 "hoaparser.c"
+#line 226 "y.tab.c"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
@@ -247,7 +247,7 @@ typedef struct YYLTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 251 "hoaparser.c"
+#line 251 "y.tab.c"
 
 #ifdef short
 # undef short
@@ -1561,7 +1561,7 @@ yyreduce:
                 yyerror("No HOA: header item");
             if (!seenHeader[ACCEPTANCE])
                 yyerror("No Acceptance: header item");
-         ;}
+         }
     break;
 
   case 4:
@@ -1571,7 +1571,7 @@ yyreduce:
                       hdrItemError("HOA:");
                   else
                       seenHeader[HOAHDR] = true;
-              ;}
+              }
     break;
 
   case 6:
@@ -1583,7 +1583,7 @@ yyreduce:
                    else
                        seenHeader[(yyvsp[(2) - (2)].number)] = true;
                }
-           ;}
+           }
     break;
 
   case 7:
@@ -1591,7 +1591,7 @@ yyreduce:
     { 
                                                  loadedData->noStates = (yyvsp[(2) - (2)].number);
                                                  (yyval.number) = STATES;
-                                               ;}
+                                               }
     break;
 
   case 8:
@@ -1599,67 +1599,67 @@ yyreduce:
     {
                                                  loadedData->start = (yyvsp[(2) - (2)].numlist);
                                                  (yyval.number) = START;
-                                               ;}
+                                               }
     break;
 
   case 9:
 #line 137 "hoa.y"
-    { (yyval.number) = AP; ;}
+    { (yyval.number) = AP; }
     break;
 
   case 10:
 #line 138 "hoa.y"
-    { (yyval.number) = CNTAP; ;}
+    { (yyval.number) = CNTAP; }
     break;
 
   case 11:
 #line 139 "hoa.y"
-    { (yyval.number) = ALIAS; ;}
+    { (yyval.number) = ALIAS; }
     break;
 
   case 12:
 #line 140 "hoa.y"
-    { (yyval.number) = ACCEPTANCE; ;}
+    { (yyval.number) = ACCEPTANCE; }
     break;
 
   case 13:
 #line 141 "hoa.y"
-    { (yyval.number) = ACCNAME; ;}
+    { (yyval.number) = ACCNAME; }
     break;
 
   case 14:
 #line 142 "hoa.y"
-    { (yyval.number) = TOOL; ;}
+    { (yyval.number) = TOOL; }
     break;
 
   case 15:
 #line 143 "hoa.y"
-    { (yyval.number) = NAME; ;}
+    { (yyval.number) = NAME; }
     break;
 
   case 16:
 #line 144 "hoa.y"
-    { (yyval.number) = PROPERTIES; ;}
+    { (yyval.number) = PROPERTIES; }
     break;
 
   case 17:
 #line 145 "hoa.y"
-    { (yyval.number) = HEADERNAME; ;}
+    { (yyval.number) = HEADERNAME; }
     break;
 
   case 18:
 #line 148 "hoa.y"
-    { (yyval.numlist) = newIntNode((yyvsp[(1) - (1)].number)); ;}
+    { (yyval.numlist) = newIntNode((yyvsp[(1) - (1)].number)); }
     break;
 
   case 19:
 #line 149 "hoa.y"
-    { (yyval.numlist) = appendIntNode((yyvsp[(1) - (3)].numlist), (yyvsp[(3) - (3)].number)); ;}
+    { (yyval.numlist) = appendIntNode((yyvsp[(1) - (3)].numlist), (yyvsp[(3) - (3)].number)); }
     break;
 
 
 /* Line 1267 of yacc.c.  */
-#line 1663 "hoaparser.c"
+#line 1663 "y.tab.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);

@@ -1,13 +1,13 @@
 # Making the HOA2AIG file
 HDRS = hoalexer.h hoaparser.h hoa.h
-SRCS = hoalexer.c hoaparser.c
+SRCS = hoalexer.c hoaparser.c hoa.c hoa2aig.c
 
 CFLAGS = -O3 -DNDEBUG
 
 .PHONY: main tests clean
 
-main: hoa2aig.c hoaparser.c hoalexer.c
-	cc -o hoa2aig hoa2aig.c hoaparser.c hoalexer.c
+main: $(SRCS) $(HDRS)
+	cc -o hoa2aig $(SRCS)
 
 # The parser is flex + bison based, everything is generated from
 # hoa.l and hoa.y, the tokenizer and parser specifications

@@ -31,6 +31,8 @@
 #include "hoa.h"
 #include "hoalexer.h"
 
+HoaData* loadedData;
+
 void yyerror(const char* str) {
     fprintf(stderr, "Parsing error: %s [line %d]\n", str, yylineno);
 }
@@ -76,8 +78,21 @@ void hdrItemError(const char* str) {
 %token BOOLOR "|"
 %token BOOLAND "&"
 %token BOOLNOT "!"
-%token STRING INT BOOL IDENTIFIER ANAME HEADERNAME
 %token STATEHDR INF FIN BEGINBODY ENDBODY
+
+%union {
+    int number;
+    char* string;
+    bool boolean;
+    IntList* numlist;
+}
+
+%token <string> STRING IDENTIFIER ANAME HEADERNAME
+%token <number> INT
+%token <boolean> BOOL
+
+%type <number> header_item header_list
+%type <numlist> state_conj
 
 %%
 /* Grammar rules and actions follow */
@@ -111,8 +126,14 @@ header_list: /* empty */
                }
            };
 
-header_item: STATES INT                        { $$ = STATES; }
-           | START state_conj                  { $$ = START; }
+header_item: STATES INT                        { 
+                                                 loadedData->noStates = $2;
+                                                 $$ = STATES;
+                                               }
+           | START state_conj                  {
+                                                 loadedData->start = $2;
+                                                 $$ = START;
+                                               }
            | AP INT string_list                { $$ = AP; }
            | CNTAP int_list                    { $$ = CNTAP; }
            | ALIAS ANAME label_expr            { $$ = ALIAS; }
@@ -124,14 +145,15 @@ header_item: STATES INT                        { $$ = STATES; }
            | HEADERNAME boolintstrid_list      { $$ = HEADERNAME; }
            ;
 
-state_conj: INT
-          | state_conj "&" INT;
+state_conj: INT                 { $$ = newIntNode($1); }
+          | state_conj "&" INT { $$ = appendIntNode($1, $3); }
+          ;
 
 label_expr: lab_exp_conj
-          | lab_exp_conj "|" label_expr;
+          | label_expr "|" lab_exp_conj;
           
 lab_exp_conj: lab_exp_atom
-            | lab_exp_atom "&" lab_exp_conj;
+            | lab_exp_conj "&" lab_exp_atom;
 
 lab_exp_atom: BOOL
             | INT
@@ -140,10 +162,10 @@ lab_exp_atom: BOOL
             | "(" label_expr ")";
 
 acceptance_cond: acc_cond_conj
-               | acc_cond_conj "|" acceptance_cond;
+               | acceptance_cond "|" acc_cond_conj;
                
 acc_cond_conj: acc_cond_atom
-             | acc_cond_atom "&" acc_cond_conj;
+             | acc_cond_conj "&" acc_cond_atom;
              
 acc_cond_atom: accid "(" INT ")"
              | accid "(" "!" INT ")"
@@ -196,6 +218,7 @@ trans_list: /* empty */
 /* Additional C code */
   
 int parseHoa(FILE* input, HoaData* data) {
+    loadedData = data;
     yyin = input;
     int ret = yyparse();
     return ret | autoError;
