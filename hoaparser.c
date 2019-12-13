@@ -167,7 +167,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "hoa.h"
+#include "simplehoa.h"
 #include "hoalexer.h"
 
 HoaData* loadedData;
@@ -1574,6 +1574,11 @@ yyreduce:
               ;}
     break;
 
+  case 5:
+#line 118 "hoa.y"
+    { /* no new item, nothing to check */ ;}
+    break;
+
   case 6:
 #line 120 "hoa.y"
     {
@@ -1659,7 +1664,7 @@ yyreduce:
 
 
 /* Line 1267 of yacc.c.  */
-#line 1663 "hoaparser.c"
+#line 1668 "hoaparser.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);

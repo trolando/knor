@@ -1,6 +1,6 @@
 # Making the HOA2AIG file
-HDRS = hoalexer.h hoaparser.h hoa.h
-SRCS = hoalexer.c hoaparser.c hoa.c hoa2aig.c
+HDRS = hoalexer.h hoaparser.h simplehoa.h
+SRCS = hoalexer.c hoaparser.c simplehoa.c hoa2aig.c
 
 CFLAGS = -O3 -DNDEBUG
 
@@ -11,7 +11,7 @@ main: $(SRCS) $(HDRS)
 
 # The parser is flex + bison based, everything is generated from
 # hoa.l and hoa.y, the tokenizer and parser specifications
-hoalexer.c: hoa.l hoa.y hoaparser.c hoaparser.h
+hoalexer.c: hoa.l hoaparser.c hoaparser.h
 	flex --outfile=hoalexer.c --header-file=hoalexer.h hoa.l
 
 hoaparser.c: hoa.y

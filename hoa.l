@@ -25,9 +25,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
+#include <stdbool.h>    /* Must go BEFORE hoaparser.h */
 
-#include "hoa.h"  /* Must go BEFORE hoaparser.h */
+#include "simplehoa.h"  /* Must go BEFORE hoaparser.h */
 #include "hoaparser.h"
 %}
 

@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "hoa.h"
+#include "simplehoa.h"
 
 int main(int argc, char* argv[]) {
     HoaData data;

@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 
-#include "hoa.h"
+#include "simplehoa.h"
 
 IntList* newIntNode(int val) {
     IntList* list = malloc(sizeof(IntList));

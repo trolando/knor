@@ -28,7 +28,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "hoa.h"
+#include "simplehoa.h"
 #include "hoalexer.h"
 
 HoaData* loadedData;
@@ -115,7 +115,7 @@ format_version: HOAHDR IDENTIFIER
                       seenHeader[HOAHDR] = true;
               };
 
-header_list: /* empty */
+header_list: /* empty */ { /* no new item, nothing to check */ }
            | header_list header_item
            {
                if ($2 <= 7) {
