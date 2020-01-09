@@ -28,6 +28,10 @@
 
 int main(int argc, char* argv[]) {
     HoaData data;
+    defaultsHoa(&data);
     int ret = parseHoa(stdin, &data);
+    if (ret == 0)
+        printHoa(&data);
+    deleteHoa(&data);
     return EXIT_SUCCESS;
 }

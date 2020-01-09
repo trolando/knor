@@ -5,7 +5,6 @@ Start: 0
 Acceptance: 2 Inf(1) & Fin(0)
 AP: 4 "r_0" "r_1" "controllable_g_0" "controllable_g_1"
 controllable-AP: 2 3
-Acceptance: 1 Fin(0)
 acc-name: parity max even 3
 properties: trans-labels explicit-labels state-acc colored complete
 properties: deterministic

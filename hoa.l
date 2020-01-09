@@ -40,9 +40,10 @@
 <C_COMMENT>\*\/          { BEGIN(INITIAL); }
 <C_COMMENT>.|\n          { }
 
-\"(\.|[^\"])*\"          return STRING;
+\"(\.|[^\"])*\"          { yylval.string = strdup(yytext); return STRING; }
 HOA:                     return HOAHDR;
 Start:                   return START;
+States:                  return STATES;
 controllable-AP:         return CNTAP;
 AP:                      return AP;
 Alias:                   return ALIAS;

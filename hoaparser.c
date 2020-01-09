@@ -189,7 +189,7 @@ const char* headerStrs[] = {"", "HOA", "Acceptance", "States", "AP",
 void hdrItemError(const char* str) {
     fprintf(stderr,
             "Automaton error: more than one %s header item [line %d]\n",
-            str, yylineno);
+            str, yylineno - 1);  // FIXME: This is shifted for some reason
     autoError = true;
 }
 
@@ -219,10 +219,13 @@ typedef union YYSTYPE
     int number;
     char* string;
     bool boolean;
+    NodeType nodetype;
     IntList* numlist;
+    StringList* strlist;
+    BTree* tree;
 }
 /* Line 193 of yacc.c.  */
-#line 226 "hoaparser.c"
+#line 229 "hoaparser.c"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
@@ -247,7 +250,7 @@ typedef struct YYLTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 251 "hoaparser.c"
+#line 254 "hoaparser.c"
 
 #ifdef short
 # undef short
@@ -554,15 +557,15 @@ static const yytype_int8 yyrhs[] =
 };
 
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
-static const yytype_uint8 yyrline[] =
+static const yytype_uint16 yyrline[] =
 {
-       0,   100,   100,   108,   110,   118,   119,   129,   133,   137,
-     138,   139,   140,   141,   142,   143,   144,   145,   148,   149,
-     152,   153,   155,   156,   158,   159,   160,   161,   162,   164,
-     165,   167,   168,   170,   171,   172,   173,   175,   176,   178,
-     179,   180,   181,   183,   184,   185,   186,   187,   189,   190,
-     192,   193,   195,   197,   198,   200,   202,   203,   205,   206,
-     208,   209,   211,   212,   214,   215
+       0,   106,   106,   114,   116,   125,   126,   136,   140,   144,
+     149,   150,   151,   156,   166,   167,   171,   178,   185,   186,
+     189,   190,   192,   193,   195,   196,   197,   198,   199,   201,
+     202,   205,   206,   209,   210,   211,   212,   215,   216,   219,
+     220,   224,   229,   232,   233,   234,   235,   236,   238,   239,
+     242,   243,   246,   248,   249,   251,   253,   254,   256,   257,
+     259,   260,   262,   263,   265,   266
 };
 #endif
 
@@ -1555,7 +1558,7 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 101 "hoa.y"
+#line 107 "hoa.y"
     {
             if (!seenHeader[HOAHDR]) /* redundant because of the grammar */
                 yyerror("No HOA: header item");
@@ -1565,8 +1568,9 @@ yyreduce:
     break;
 
   case 4:
-#line 111 "hoa.y"
+#line 117 "hoa.y"
     {
+                  loadedData->version = (yyvsp[(2) - (2)].string);
                   if (seenHeader[HOAHDR])
                       hdrItemError("HOA:");
                   else
@@ -1575,12 +1579,12 @@ yyreduce:
     break;
 
   case 5:
-#line 118 "hoa.y"
+#line 125 "hoa.y"
     { /* no new item, nothing to check */ ;}
     break;
 
   case 6:
-#line 120 "hoa.y"
+#line 127 "hoa.y"
     {
                if ((yyvsp[(2) - (2)].number) <= 7) {
                    if (seenHeader[(yyvsp[(2) - (2)].number)])
@@ -1592,15 +1596,15 @@ yyreduce:
     break;
 
   case 7:
-#line 129 "hoa.y"
-    { 
+#line 136 "hoa.y"
+    {
                                                  loadedData->noStates = (yyvsp[(2) - (2)].number);
                                                  (yyval.number) = STATES;
                                                ;}
     break;
 
   case 8:
-#line 133 "hoa.y"
+#line 140 "hoa.y"
     {
                                                  loadedData->start = (yyvsp[(2) - (2)].numlist);
                                                  (yyval.number) = START;
@@ -1608,63 +1612,190 @@ yyreduce:
     break;
 
   case 9:
-#line 137 "hoa.y"
-    { (yyval.number) = AP; ;}
+#line 144 "hoa.y"
+    {
+                                                 loadedData->noAPs = (yyvsp[(2) - (3)].number);
+                                                 loadedData->aps = (yyvsp[(3) - (3)].strlist);
+                                                 (yyval.number) = AP;
+                                               ;}
     break;
 
   case 10:
-#line 138 "hoa.y"
+#line 149 "hoa.y"
     { (yyval.number) = CNTAP; ;}
     break;
 
   case 11:
-#line 139 "hoa.y"
+#line 150 "hoa.y"
     { (yyval.number) = ALIAS; ;}
     break;
 
   case 12:
-#line 140 "hoa.y"
-    { (yyval.number) = ACCEPTANCE; ;}
+#line 151 "hoa.y"
+    { 
+                                                 loadedData->noAccSets = (yyvsp[(2) - (3)].number);
+                                                 loadedData->acc (yyvsp[(3) - (3)].tree);
+                                                 (yyval.number) = ACCEPTANCE;
+                                               ;}
     break;
 
   case 13:
-#line 141 "hoa.y"
-    { (yyval.number) = ACCNAME; ;}
+#line 156 "hoa.y"
+    { 
+                                                 loadedData->accNameID = (yyvsp[(2) - (3)].string);
+                                                 loadedData->accNameParameters
+                                                    = concatStrLists(
+                                                        loadedData->
+                                                            accNameParameters,
+                                                        (yyvsp[(3) - (3)].strlist)
+                                                    );
+                                                 (yyval.number) = ACCNAME;
+                                               ;}
     break;
 
   case 14:
-#line 142 "hoa.y"
+#line 166 "hoa.y"
     { (yyval.number) = TOOL; ;}
     break;
 
   case 15:
-#line 143 "hoa.y"
-    { (yyval.number) = NAME; ;}
+#line 167 "hoa.y"
+    {
+                                                 loadedData->name = (yyvsp[(2) - (2)].string);
+                                                 (yyval.number) = NAME;
+                                               ;}
     break;
 
   case 16:
-#line 144 "hoa.y"
-    { (yyval.number) = PROPERTIES; ;}
+#line 171 "hoa.y"
+    { 
+                                                 loadedData->properties =
+                                                     concatStrLists(
+                                                         loadedData->properties,
+                                                         (yyvsp[(2) - (2)].strlist)
+                                                     );
+                                                 (yyval.number) = PROPERTIES; ;}
     break;
 
   case 17:
-#line 145 "hoa.y"
-    { (yyval.number) = HEADERNAME; ;}
+#line 178 "hoa.y"
+    { 
+                                                 printf("Headername: %s\n",
+                                                        (yyvsp[(1) - (2)].string));
+                                                 (yyval.number) = HEADERNAME;
+                                               ;}
     break;
 
   case 18:
-#line 148 "hoa.y"
+#line 185 "hoa.y"
     { (yyval.numlist) = newIntNode((yyvsp[(1) - (1)].number)); ;}
     break;
 
   case 19:
-#line 149 "hoa.y"
+#line 186 "hoa.y"
     { (yyval.numlist) = appendIntNode((yyvsp[(1) - (3)].numlist), (yyvsp[(3) - (3)].number)); ;}
+    break;
+
+  case 29:
+#line 201 "hoa.y"
+    { (yyval.tree) = (yyvsp[(1) - (1)].tree); ;}
+    break;
+
+  case 30:
+#line 202 "hoa.y"
+    { (yyval.tree) = orBTree((yyvsp[(1) - (3)].tree), (yyvsp[(3) - (3)].tree)); ;}
+    break;
+
+  case 31:
+#line 205 "hoa.y"
+    { (yyval.tree) = (yyvsp[(1) - (1)].tree); ;}
+    break;
+
+  case 32:
+#line 206 "hoa.y"
+    { (yyval.tree) = andBTree((yyvsp[(1) - (3)].tree), (yyvsp[(3) - (3)].tree)); ;}
+    break;
+
+  case 33:
+#line 209 "hoa.y"
+    { (yyval.tree) = idBTree((yyvsp[(1) - (4)].nodetype), (yyvsp[(3) - (4)].number), false); ;}
+    break;
+
+  case 34:
+#line 210 "hoa.y"
+    { (yyval.tree) = idBTree((yyvsp[(1) - (5)].nodetype), (yyvsp[(4) - (5)].number), true); ;}
+    break;
+
+  case 35:
+#line 211 "hoa.y"
+    { (yyval.tree) = (yyvsp[(2) - (3)].tree); ;}
+    break;
+
+  case 36:
+#line 212 "hoa.y"
+    { (yyval.tree) = boolBTree((yyvsp[(1) - (1)].boolean)); ;}
+    break;
+
+  case 37:
+#line 215 "hoa.y"
+    { (yyval.nodetype) = NT_FIN; ;}
+    break;
+
+  case 38:
+#line 216 "hoa.y"
+    { (yyval.nodetype) = NT_INF; ;}
+    break;
+
+  case 39:
+#line 219 "hoa.y"
+    { (yyval.strlist) = NULL; ;}
+    break;
+
+  case 40:
+#line 220 "hoa.y"
+    { 
+                                            (yyval.strlist) = (yyvsp[(2) - (2)].boolean) ? appendStrNode((yyvsp[(1) - (2)].strlist), "True")
+                                                    : appendStrNode((yyvsp[(1) - (2)].strlist), "False");
+                                          ;}
+    break;
+
+  case 41:
+#line 224 "hoa.y"
+    {
+                                            char buffer[66];
+                                            sprintf(buffer, "%d", (yyvsp[(2) - (2)].number));
+                                            (yyval.strlist) = appendStrNode((yyvsp[(1) - (2)].strlist), buffer);
+                                          ;}
+    break;
+
+  case 42:
+#line 229 "hoa.y"
+    { (yyval.strlist) = appendStrNode((yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].string)); ;}
+    break;
+
+  case 48:
+#line 238 "hoa.y"
+    { (yyval.strlist) = NULL; ;}
+    break;
+
+  case 49:
+#line 239 "hoa.y"
+    { (yyval.strlist) = appendStrNode((yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].string)); ;}
+    break;
+
+  case 50:
+#line 242 "hoa.y"
+    { (yyval.strlist) = NULL; ;}
+    break;
+
+  case 51:
+#line 243 "hoa.y"
+    { (yyval.strlist) = appendStrNode((yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].string)); ;}
     break;
 
 
 /* Line 1267 of yacc.c.  */
-#line 1668 "hoaparser.c"
+#line 1799 "hoaparser.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -1884,7 +2015,7 @@ yyreturn:
 }
 
 
-#line 217 "hoa.y"
+#line 268 "hoa.y"
 
 /* Additional C code */
   

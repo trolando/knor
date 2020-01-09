@@ -1,13 +1,14 @@
-# Making the HOA2AIG file
 HDRS = hoalexer.h hoaparser.h simplehoa.h
 SRCS = hoalexer.c hoaparser.c simplehoa.c hoa2aig.c
 
 CFLAGS = -O3 -DNDEBUG
+# With clang you can use the following instead
+DBGFLAGS = -g -fsanitize=address
 
-.PHONY: main tests clean
+.PHONY: tests clean
 
-main: $(SRCS) $(HDRS)
-	cc -o hoa2aig $(SRCS)
+hoa2aig: $(SRCS) $(HDRS)
+	cc $(DBGFLAGS) -o hoa2aig $(SRCS)
 
 # The parser is flex + bison based, everything is generated from
 # hoa.l and hoa.y, the tokenizer and parser specifications

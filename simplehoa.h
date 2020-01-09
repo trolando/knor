@@ -25,9 +25,10 @@
 #define _SIMPLEHOA_H
 
 #include <stdio.h>
+#include <stdbool.h>
 
 typedef enum {
-    NT_BOOL, NT_AND, NT_OR, NT_FIN, NT_INF, NT_NOT
+    NT_BOOL, NT_AND, NT_OR, NT_FIN, NT_INF, NT_NOT, NT_SET
 } NodeType;
 
 typedef struct BTree BTree;
@@ -68,22 +69,35 @@ struct StateList {
 
 typedef struct HoaData {
     int noStates;
-    IntList* start;
-    char* version;
-    int noAccSets;
-    BTree* acc;
-    char* accNameID;
+    StringList* aps;
     StringList* accNameParameters;
+    StringList* properties;
+    StateList* states;
+    IntList* start;
+    int noAccSets;
+    int noAPs;
+    BTree* acc;
+    char* version;
+    char* accNameID;
     char* toolName;
     char* toolVersion;
     char* name;
-    StringList* properties;
-    StateList* states;
 } HoaData;
 
 // This function returns 0 if and only if parsing was successful
 int parseHoa(FILE*, HoaData*);
+void defaultsHoa(HoaData*);
+void deleteHoa(HoaData*);
 IntList* newIntNode(int);
 IntList* appendIntNode(IntList*, int);
+StringList* appendStrNode(StringList*, char*);
+StringList* concatStrLists(StringList*, StringList*);
+BTree* boolBTree(bool);
+BTree* andBTree(BTree*, BTree*);
+BTree* orBTree(BTree*, BTree*);
+BTree* idBTree(int, bool);
+
+// For debugging purposes, this prints all data in human-readable form
+void printHoa(const HoaData*);
 
 #endif

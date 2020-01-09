@@ -115,10 +115,13 @@ typedef union YYSTYPE
     int number;
     char* string;
     bool boolean;
+    NodeType nodetype;
     IntList* numlist;
+    StringList* strlist;
+    BTree* tree;
 }
 /* Line 1529 of yacc.c.  */
-#line 122 "hoaparser.h"
+#line 125 "hoaparser.h"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1

@@ -50,7 +50,7 @@ const char* headerStrs[] = {"", "HOA", "Acceptance", "States", "AP",
 void hdrItemError(const char* str) {
     fprintf(stderr,
             "Automaton error: more than one %s header item [line %d]\n",
-            str, yylineno);
+            str, yylineno - 1);  // FIXME: This is shifted for some reason
     autoError = true;
 }
 %}
@@ -61,7 +61,7 @@ void hdrItemError(const char* str) {
 %error-verbose
 
 /* HEADER TOKENS */
-/* compulsory */
+/* compulsory: must appear exactly once */
 %token HOAHDR 1 ACCEPTANCE 2 /* indexed from 1 since 0 means EOF for bison */
 /* at most once */
 %token STATES 3 AP 4 CNTAP 5 ACCNAME 6 TOOL 7 NAME 8
@@ -84,7 +84,10 @@ void hdrItemError(const char* str) {
     int number;
     char* string;
     bool boolean;
+    NodeType nodetype;
     IntList* numlist;
+    StringList* strlist;
+    BTree* tree;
 }
 
 %token <string> STRING IDENTIFIER ANAME HEADERNAME
@@ -93,6 +96,9 @@ void hdrItemError(const char* str) {
 
 %type <number> header_item header_list
 %type <numlist> state_conj
+%type <strlist> string_list id_list boolintid_list
+%type <nodetype> accid
+%type <tree> acceptance_cond acc_cond_conj acc_cond_atom
 
 %%
 /* Grammar rules and actions follow */
@@ -109,6 +115,7 @@ header: format_version header_list;
 
 format_version: HOAHDR IDENTIFIER
               {
+                  loadedData->version = $2;
                   if (seenHeader[HOAHDR])
                       hdrItemError("HOA:");
                   else
@@ -126,7 +133,7 @@ header_list: /* empty */ { /* no new item, nothing to check */ }
                }
            };
 
-header_item: STATES INT                        { 
+header_item: STATES INT                        {
                                                  loadedData->noStates = $2;
                                                  $$ = STATES;
                                                }
@@ -134,19 +141,49 @@ header_item: STATES INT                        {
                                                  loadedData->start = $2;
                                                  $$ = START;
                                                }
-           | AP INT string_list                { $$ = AP; }
+           | AP INT string_list                {
+                                                 loadedData->noAPs = $2;
+                                                 loadedData->aps = $3;
+                                                 $$ = AP;
+                                               }
            | CNTAP int_list                    { $$ = CNTAP; }
            | ALIAS ANAME label_expr            { $$ = ALIAS; }
-           | ACCEPTANCE INT acceptance_cond    { $$ = ACCEPTANCE; }
-           | ACCNAME IDENTIFIER boolintid_list { $$ = ACCNAME; }
+           | ACCEPTANCE INT acceptance_cond    { 
+                                                 loadedData->noAccSets = $2;
+                                                 loadedData->acc $3;
+                                                 $$ = ACCEPTANCE;
+                                               }
+           | ACCNAME IDENTIFIER boolintid_list { 
+                                                 loadedData->accNameID = $2;
+                                                 loadedData->accNameParameters
+                                                    = concatStrLists(
+                                                        loadedData->
+                                                            accNameParameters,
+                                                        $3
+                                                    );
+                                                 $$ = ACCNAME;
+                                               }
            | TOOL STRING maybe_string          { $$ = TOOL; }
-           | NAME STRING                       { $$ = NAME; }
-           | PROPERTIES id_list                { $$ = PROPERTIES; }
-           | HEADERNAME boolintstrid_list      { $$ = HEADERNAME; }
+           | NAME STRING                       {
+                                                 loadedData->name = $2;
+                                                 $$ = NAME;
+                                               }
+           | PROPERTIES id_list                { 
+                                                 loadedData->properties =
+                                                     concatStrLists(
+                                                         loadedData->properties,
+                                                         $2
+                                                     );
+                                                 $$ = PROPERTIES; }
+           | HEADERNAME boolintstrid_list      { 
+                                                 printf("Headername: %s\n",
+                                                        $1);
+                                                 $$ = HEADERNAME;
+                                               }
            ;
 
 state_conj: INT                 { $$ = newIntNode($1); }
-          | state_conj "&" INT { $$ = appendIntNode($1, $3); }
+          | state_conj "&" INT  { $$ = appendIntNode($1, $3); }
           ;
 
 label_expr: lab_exp_conj
@@ -161,24 +198,36 @@ lab_exp_atom: BOOL
             | "!" lab_exp_atom
             | "(" label_expr ")";
 
-acceptance_cond: acc_cond_conj
-               | acceptance_cond "|" acc_cond_conj;
+acceptance_cond: acc_cond_conj                     { $$ = $1; }
+               | acceptance_cond "|" acc_cond_conj { $$ = orBTree($1, $3); }
+               ;
                
-acc_cond_conj: acc_cond_atom
-             | acc_cond_conj "&" acc_cond_atom;
+acc_cond_conj: acc_cond_atom                   { $$ = $1; }
+             | acc_cond_conj "&" acc_cond_atom { $$ = andBTree($1, $3); }
+             ;
              
-acc_cond_atom: accid "(" INT ")"
-             | accid "(" "!" INT ")"
-             | "(" acceptance_cond ")"
-             | BOOL;
+acc_cond_atom: accid "(" INT ")"       { $$ = idBTree($1, $3, false); }
+             | accid "(" "!" INT ")"   { $$ = idBTree($1, $4, true); }
+             | "(" acceptance_cond ")" { $$ = $2; }
+             | BOOL                    { $$ = boolBTree($1); }
+             ; 
 
-accid: FIN
-     | INF;
+accid: FIN { $$ = NT_FIN; }
+     | INF { $$ = NT_INF; }
+     ;
 
-boolintid_list: /* empty */
-              | boolintid_list BOOL
-              | boolintid_list INT
-              | boolintid_list IDENTIFIER;
+boolintid_list: /* empty */               { $$ = NULL; }
+              | boolintid_list BOOL       { 
+                                            $$ = $2 ? appendStrNode($1, "True")
+                                                    : appendStrNode($1, "False");
+                                          }
+              | boolintid_list INT        {
+                                            char buffer[66];
+                                            sprintf(buffer, "%d", $2);
+                                            $$ = appendStrNode($1, buffer);
+                                          }
+              | boolintid_list IDENTIFIER { $$ = appendStrNode($1, $2); }
+              ;
 
 boolintstrid_list: /* empty */
                  | boolintstrid_list BOOL
@@ -186,11 +235,13 @@ boolintstrid_list: /* empty */
                  | boolintstrid_list STRING
                  | boolintstrid_list IDENTIFIER;
 
-string_list: /* empty */
-           | string_list STRING;
+string_list: /* empty */        { $$ = NULL; }
+           | string_list STRING { $$ = appendStrNode($1, $2); }
+           ;
 
-id_list: /* empty */
-       | id_list IDENTIFIER;
+id_list: /* empty */        { $$ = NULL; }
+       | id_list IDENTIFIER { $$ = appendStrNode($1, $2); }
+       ;
 
 body: statespec_list;
 
