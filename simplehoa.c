@@ -69,8 +69,9 @@ BTree* boolBTree(bool b) {
     BTree* created = malloc(sizeof(BTree));
     created->left = NULL;
     created->right = NULL;
+    created->alias = NULL;
     created->type = NT_BOOL;
-    created->set = b ? 1 : 0;
+    created->id = b ? 1 : 0;
     return created;
 }
 
@@ -78,8 +79,9 @@ BTree* andBTree(BTree* u, BTree* v) {
     BTree* created = malloc(sizeof(BTree));
     created->left = u;
     created->right = v;
+    created->alias = NULL;
     created->type = NT_AND;
-    created->set = -1;
+    created->id = -1;
     return created;
 }
 
@@ -87,32 +89,46 @@ BTree* orBTree(BTree* u, BTree* v) {
     BTree* created = malloc(sizeof(BTree));
     created->left = u;
     created->right = v;
+    created->alias = NULL;
     created->type = NT_OR;
-    created->set = -1;
+    created->id = -1;
     return created;
 }
 
-BTree* idBTree(NoteType type, int set, bool negated) {
-    BTree* set = malloc(sizeof(BTree));
-    set->left = NULL;
-    set->right = NULL;
-    set->type = NT_SET;
-    set->set = set;
+BTree* apBTree(int id) {
+    BTree* created = malloc(sizeof(BTree));
+    created->left = NULL;
+    created->right = NULL;
+    created->alias = NULL;
+    created->type = NT_AP;
+    created->id = id;
+    return created;
+}
+
+BTree* accidBTree(NodeType type, int id, bool negated) {
+    BTree* tree = malloc(sizeof(BTree));
+    tree->left = NULL;
+    tree->right = NULL;
+    tree->alias = NULL;
+    tree->type = NT_SET;
+    tree->id = id;
 
     if (negated) {
-        BTree* original = set;
-        set = malloc(sizeof(BTree));
-        set->left = original;
-        set->right = NULL;
-        set->type = NT_NOT;
-        set->set -1;
+        BTree* original = tree;
+        tree = malloc(sizeof(BTree));
+        tree->left = original;
+        tree->right = NULL;
+        tree->alias = NULL;
+        tree->type = NT_NOT;
+        tree->id = -1;
     }
 
     BTree* created = malloc(sizeof(BTree));
-    created->left = set;
+    created->left = tree;
     created->right = NULL;
+    created->alias = NULL;
     created->type = type;
-    created->set = -1;
+    created->id = -1;
     return created;
 }
 
@@ -131,6 +147,7 @@ void defaultsHoa(HoaData* data) {
     data->name = NULL;
     data->properties = NULL;
     data->states = NULL;
+    data->cntAPs = NULL;
 }
 
 static void deleteStrList(StringList* list) {
@@ -153,6 +170,15 @@ static void deleteIntList(IntList* list) {
     }
 }
 
+// No magic here: a DFS deleting in post-order
+static void deleteBTree(BTree* root) {
+    if (root == NULL)
+        return;
+    deleteBTree(root->left);
+    deleteBTree(root->right);
+    free(root);
+}
+
 void deleteHoa(HoaData* data) {
     // Strings
     if (data->version != NULL) free(data->version);
@@ -166,13 +192,60 @@ void deleteHoa(HoaData* data) {
     deleteStrList(data->properties);
     // Int lists
     deleteIntList(data->start);
+    deleteIntList(data->cntAPs);
     // BTrees
-    //BTree* acc;
+    deleteBTree(data->acc);
     // State lists
     //StateList* staes;
 }
 
+// DFS printing in in/pre-order
+static void printBTree(BTree* root) {
+    if (root == NULL)
+        return;
+    switch (root->type) {
+        case NT_AND:
+            printf("AND(");
+            printBTree(root->left);
+            printf(",");
+            printBTree(root->right);
+            printf(")");
+            break;
+        case NT_OR:
+            printf("OR(");
+            printBTree(root->left);
+            printf(",");
+            printBTree(root->right);
+            printf(")");
+            break;
+        case NT_FIN:
+            printf("FIN(");
+            printBTree(root->left);
+            printf(")");
+            break;
+        case NT_INF:
+            printf("INF(");
+            printBTree(root->left);
+            printf(")");
+            break;
+        case NT_NOT:
+            printf("NOT(");
+            printBTree(root->left);
+            printf(")");
+            break;
+        case NT_SET:
+            printf("%d", root->id);
+            break;
+        case NT_BOOL:
+            if (root->id)
+                printf("True");
+            else
+                printf("False");
+    }
+}
+
 void printHoa(const HoaData* data) {
+    printf("== LOADED HOA FILE ==\n");
     printf("HOA format version: %s\n", data->version);
     if (data->name != NULL)
         printf("File name: %s\n", data->name);
@@ -189,11 +262,17 @@ void printHoa(const HoaData* data) {
     for (StringList* it = data->aps; it != NULL; it = it->next)
         printf("%s, ", it->str);
     printf("\n");
+    printf("Controllable APs: ");
+    for (IntList* it = data->cntAPs; it != NULL; it = it->next)
+        printf("%d, ", it->i);
+    printf("\n");
 
     printf("No. of acceptance sets: %d\n", data->noAccSets);
-    // TODO: print data->acc
     if (data->accNameID != NULL)
         printf("Acceptance name: %s\n", data->accNameID);
+    printf("Acceptance: ");
+    printBTree(data->acc);
+    printf("\n");
 
     printf("Acceptance parameters: ");
     for (StringList* it = data->accNameParameters; it != NULL; it = it->next)
@@ -211,5 +290,8 @@ void printHoa(const HoaData* data) {
     for (StringList* it = data->properties; it != NULL; it = it->next)
         printf("%s, ", it->str);
     printf("\n");
+    
     // TODO: print data->states
+
+    printf("== END HOA FILE DATA =\n");
 }

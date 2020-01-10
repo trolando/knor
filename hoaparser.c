@@ -560,12 +560,12 @@ static const yytype_int8 yyrhs[] =
 static const yytype_uint16 yyrline[] =
 {
        0,   106,   106,   114,   116,   125,   126,   136,   140,   144,
-     149,   150,   151,   156,   166,   167,   171,   178,   185,   186,
-     189,   190,   192,   193,   195,   196,   197,   198,   199,   201,
-     202,   205,   206,   209,   210,   211,   212,   215,   216,   219,
-     220,   224,   229,   232,   233,   234,   235,   236,   238,   239,
-     242,   243,   246,   248,   249,   251,   253,   254,   256,   257,
-     259,   260,   262,   263,   265,   266
+     149,   153,   154,   159,   169,   170,   174,   181,   184,   185,
+     188,   189,   191,   192,   194,   195,   196,   197,   198,   200,
+     201,   204,   205,   208,   209,   210,   211,   214,   215,   218,
+     219,   223,   228,   231,   232,   233,   234,   235,   237,   238,
+     241,   242,   245,   247,   248,   250,   252,   253,   255,   256,
+     258,   259,   261,   262,   265,   266
 };
 #endif
 
@@ -1622,25 +1622,28 @@ yyreduce:
 
   case 10:
 #line 149 "hoa.y"
-    { (yyval.number) = CNTAP; ;}
+    {
+                                                 loadedData->cntAPs = (yyvsp[(2) - (2)].numlist);
+                                                 (yyval.number) = CNTAP;
+                                               ;}
     break;
 
   case 11:
-#line 150 "hoa.y"
+#line 153 "hoa.y"
     { (yyval.number) = ALIAS; ;}
     break;
 
   case 12:
-#line 151 "hoa.y"
+#line 154 "hoa.y"
     { 
                                                  loadedData->noAccSets = (yyvsp[(2) - (3)].number);
-                                                 loadedData->acc (yyvsp[(3) - (3)].tree);
+                                                 loadedData->acc = (yyvsp[(3) - (3)].tree);
                                                  (yyval.number) = ACCEPTANCE;
                                                ;}
     break;
 
   case 13:
-#line 156 "hoa.y"
+#line 159 "hoa.y"
     { 
                                                  loadedData->accNameID = (yyvsp[(2) - (3)].string);
                                                  loadedData->accNameParameters
@@ -1654,12 +1657,12 @@ yyreduce:
     break;
 
   case 14:
-#line 166 "hoa.y"
+#line 169 "hoa.y"
     { (yyval.number) = TOOL; ;}
     break;
 
   case 15:
-#line 167 "hoa.y"
+#line 170 "hoa.y"
     {
                                                  loadedData->name = (yyvsp[(2) - (2)].string);
                                                  (yyval.number) = NAME;
@@ -1667,7 +1670,7 @@ yyreduce:
     break;
 
   case 16:
-#line 171 "hoa.y"
+#line 174 "hoa.y"
     { 
                                                  loadedData->properties =
                                                      concatStrLists(
@@ -1678,81 +1681,77 @@ yyreduce:
     break;
 
   case 17:
-#line 178 "hoa.y"
-    { 
-                                                 printf("Headername: %s\n",
-                                                        (yyvsp[(1) - (2)].string));
-                                                 (yyval.number) = HEADERNAME;
-                                               ;}
+#line 181 "hoa.y"
+    { (yyval.number) = HEADERNAME; ;}
     break;
 
   case 18:
-#line 185 "hoa.y"
+#line 184 "hoa.y"
     { (yyval.numlist) = newIntNode((yyvsp[(1) - (1)].number)); ;}
     break;
 
   case 19:
-#line 186 "hoa.y"
+#line 185 "hoa.y"
     { (yyval.numlist) = appendIntNode((yyvsp[(1) - (3)].numlist), (yyvsp[(3) - (3)].number)); ;}
     break;
 
   case 29:
-#line 201 "hoa.y"
+#line 200 "hoa.y"
     { (yyval.tree) = (yyvsp[(1) - (1)].tree); ;}
     break;
 
   case 30:
-#line 202 "hoa.y"
+#line 201 "hoa.y"
     { (yyval.tree) = orBTree((yyvsp[(1) - (3)].tree), (yyvsp[(3) - (3)].tree)); ;}
     break;
 
   case 31:
-#line 205 "hoa.y"
+#line 204 "hoa.y"
     { (yyval.tree) = (yyvsp[(1) - (1)].tree); ;}
     break;
 
   case 32:
-#line 206 "hoa.y"
+#line 205 "hoa.y"
     { (yyval.tree) = andBTree((yyvsp[(1) - (3)].tree), (yyvsp[(3) - (3)].tree)); ;}
     break;
 
   case 33:
-#line 209 "hoa.y"
+#line 208 "hoa.y"
     { (yyval.tree) = idBTree((yyvsp[(1) - (4)].nodetype), (yyvsp[(3) - (4)].number), false); ;}
     break;
 
   case 34:
-#line 210 "hoa.y"
+#line 209 "hoa.y"
     { (yyval.tree) = idBTree((yyvsp[(1) - (5)].nodetype), (yyvsp[(4) - (5)].number), true); ;}
     break;
 
   case 35:
-#line 211 "hoa.y"
+#line 210 "hoa.y"
     { (yyval.tree) = (yyvsp[(2) - (3)].tree); ;}
     break;
 
   case 36:
-#line 212 "hoa.y"
+#line 211 "hoa.y"
     { (yyval.tree) = boolBTree((yyvsp[(1) - (1)].boolean)); ;}
     break;
 
   case 37:
-#line 215 "hoa.y"
+#line 214 "hoa.y"
     { (yyval.nodetype) = NT_FIN; ;}
     break;
 
   case 38:
-#line 216 "hoa.y"
+#line 215 "hoa.y"
     { (yyval.nodetype) = NT_INF; ;}
     break;
 
   case 39:
-#line 219 "hoa.y"
+#line 218 "hoa.y"
     { (yyval.strlist) = NULL; ;}
     break;
 
   case 40:
-#line 220 "hoa.y"
+#line 219 "hoa.y"
     { 
                                             (yyval.strlist) = (yyvsp[(2) - (2)].boolean) ? appendStrNode((yyvsp[(1) - (2)].strlist), "True")
                                                     : appendStrNode((yyvsp[(1) - (2)].strlist), "False");
@@ -1760,7 +1759,7 @@ yyreduce:
     break;
 
   case 41:
-#line 224 "hoa.y"
+#line 223 "hoa.y"
     {
                                             char buffer[66];
                                             sprintf(buffer, "%d", (yyvsp[(2) - (2)].number));
@@ -1769,33 +1768,43 @@ yyreduce:
     break;
 
   case 42:
-#line 229 "hoa.y"
+#line 228 "hoa.y"
     { (yyval.strlist) = appendStrNode((yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].string)); ;}
     break;
 
   case 48:
-#line 238 "hoa.y"
+#line 237 "hoa.y"
     { (yyval.strlist) = NULL; ;}
     break;
 
   case 49:
-#line 239 "hoa.y"
+#line 238 "hoa.y"
     { (yyval.strlist) = appendStrNode((yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].string)); ;}
     break;
 
   case 50:
-#line 242 "hoa.y"
+#line 241 "hoa.y"
     { (yyval.strlist) = NULL; ;}
     break;
 
   case 51:
-#line 243 "hoa.y"
+#line 242 "hoa.y"
     { (yyval.strlist) = appendStrNode((yyvsp[(1) - (2)].strlist), (yyvsp[(2) - (2)].string)); ;}
+    break;
+
+  case 62:
+#line 261 "hoa.y"
+    { (yyval.numlist) = NULL; ;}
+    break;
+
+  case 63:
+#line 262 "hoa.y"
+    { (yyval.numlist) = appendIntNode((yyvsp[(1) - (2)].numlist), (yyvsp[(2) - (2)].number)); ;}
     break;
 
 
 /* Line 1267 of yacc.c.  */
-#line 1799 "hoaparser.c"
+#line 1808 "hoaparser.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);

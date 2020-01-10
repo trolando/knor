@@ -30,8 +30,12 @@ int main(int argc, char* argv[]) {
     HoaData data;
     defaultsHoa(&data);
     int ret = parseHoa(stdin, &data);
+
+#ifndef NDEBUG
     if (ret == 0)
         printHoa(&data);
+#endif
+
     deleteHoa(&data);
     return EXIT_SUCCESS;
 }

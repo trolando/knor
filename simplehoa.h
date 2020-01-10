@@ -28,14 +28,17 @@
 #include <stdbool.h>
 
 typedef enum {
-    NT_BOOL, NT_AND, NT_OR, NT_FIN, NT_INF, NT_NOT, NT_SET
+    NT_BOOL, NT_AND, NT_OR, NT_FIN,
+    NT_INF, NT_NOT, NT_SET,
+    NT_AP, NT_ALIAS
 } NodeType;
 
 typedef struct BTree BTree;
 struct BTree {
     BTree* left;
     BTree* right;
-    int set;
+    char* alias;
+    int id;
     NodeType type;
 };
 
@@ -74,6 +77,7 @@ typedef struct HoaData {
     StringList* properties;
     StateList* states;
     IntList* start;
+    IntList* cntAPs;
     int noAccSets;
     int noAPs;
     BTree* acc;
@@ -86,6 +90,8 @@ typedef struct HoaData {
 
 // This function returns 0 if and only if parsing was successful
 int parseHoa(FILE*, HoaData*);
+
+// Other functions
 void defaultsHoa(HoaData*);
 void deleteHoa(HoaData*);
 IntList* newIntNode(int);
@@ -95,7 +101,9 @@ StringList* concatStrLists(StringList*, StringList*);
 BTree* boolBTree(bool);
 BTree* andBTree(BTree*, BTree*);
 BTree* orBTree(BTree*, BTree*);
-BTree* idBTree(int, bool);
+BTree* accidBTree(NodeType, int, bool);
+BTree* apBTree(int);
+BTree* aliasBTree(char*);
 
 // For debugging purposes, this prints all data in human-readable form
 void printHoa(const HoaData*);

@@ -53,6 +53,7 @@ void hdrItemError(const char* str) {
             str, yylineno - 1);  // FIXME: This is shifted for some reason
     autoError = true;
 }
+
 %}
 
 /* Yacc declarations: Tokens/terminal used in the grammar */
@@ -95,10 +96,11 @@ void hdrItemError(const char* str) {
 %token <boolean> BOOL
 
 %type <number> header_item header_list
-%type <numlist> state_conj
+%type <numlist> state_conj int_list
 %type <strlist> string_list id_list boolintid_list
 %type <nodetype> accid
 %type <tree> acceptance_cond acc_cond_conj acc_cond_atom
+%type <tree> label_expr lab_exp_conj lab_exp_atom
 
 %%
 /* Grammar rules and actions follow */
@@ -146,11 +148,21 @@ header_item: STATES INT                        {
                                                  loadedData->aps = $3;
                                                  $$ = AP;
                                                }
-           | CNTAP int_list                    { $$ = CNTAP; }
-           | ALIAS ANAME label_expr            { $$ = ALIAS; }
+           | CNTAP int_list                    {
+                                                 loadedData->cntAPs = $2;
+                                                 $$ = CNTAP;
+                                               }
+           | ALIAS ANAME label_expr            {
+                                                 loadedData->aliases =
+                                                    appendAliasNode(
+                                                        loadedData->aliases,
+                                                        $1, $2
+                                                    );
+                                                 $$ = ALIAS;
+                                               }
            | ACCEPTANCE INT acceptance_cond    { 
                                                  loadedData->noAccSets = $2;
-                                                 loadedData->acc $3;
+                                                 loadedData->acc = $3;
                                                  $$ = ACCEPTANCE;
                                                }
            | ACCNAME IDENTIFIER boolintid_list { 
@@ -175,28 +187,27 @@ header_item: STATES INT                        {
                                                          $2
                                                      );
                                                  $$ = PROPERTIES; }
-           | HEADERNAME boolintstrid_list      { 
-                                                 printf("Headername: %s\n",
-                                                        $1);
-                                                 $$ = HEADERNAME;
-                                               }
+           | HEADERNAME boolintstrid_list      { $$ = HEADERNAME; }
            ;
 
 state_conj: INT                 { $$ = newIntNode($1); }
           | state_conj "&" INT  { $$ = appendIntNode($1, $3); }
           ;
 
-label_expr: lab_exp_conj
-          | label_expr "|" lab_exp_conj;
+label_expr: lab_exp_conj                { $$ = $1; }
+          | label_expr "|" lab_exp_conj { $$ = orBTree($1, $3); }
+          ;
           
-lab_exp_conj: lab_exp_atom
-            | lab_exp_conj "&" lab_exp_atom;
+lab_exp_conj: lab_exp_atom                  { $$ = $1; }
+            | lab_exp_conj "&" lab_exp_atom { $$ = andBTree($1, $3); }
+            ;
 
-lab_exp_atom: BOOL
-            | INT
-            | ANAME
-            | "!" lab_exp_atom
-            | "(" label_expr ")";
+lab_exp_atom: BOOL               { $$ = boolBTree($1); }
+            | INT                { $$ = apBTree($1); }
+            | ANAME              { $$ = aliasBTree($1); }
+            | "!" lab_exp_atom   { $$ = notBTree($2); }
+            | "(" label_expr ")" { $$ = $1; }
+            ;
 
 acceptance_cond: acc_cond_conj                     { $$ = $1; }
                | acceptance_cond "|" acc_cond_conj { $$ = orBTree($1, $3); }
@@ -206,8 +217,8 @@ acc_cond_conj: acc_cond_atom                   { $$ = $1; }
              | acc_cond_conj "&" acc_cond_atom { $$ = andBTree($1, $3); }
              ;
              
-acc_cond_atom: accid "(" INT ")"       { $$ = idBTree($1, $3, false); }
-             | accid "(" "!" INT ")"   { $$ = idBTree($1, $4, true); }
+acc_cond_atom: accid "(" INT ")"       { $$ = accidBTree($1, $3, false); }
+             | accid "(" "!" INT ")"   { $$ = accidBTree($1, $4, true); }
              | "(" acceptance_cond ")" { $$ = $2; }
              | BOOL                    { $$ = boolBTree($1); }
              ; 
@@ -259,8 +270,9 @@ maybe_string: /* empty */
 maybe_accsig: /* empty */
             | "{" int_list "}";
 
-int_list: /* empty */
-        | int_list INT;
+int_list: /* empty */  { $$ = NULL; }
+        | int_list INT { $$ = appendIntNode($1, $2); }
+        ;
 
 trans_list: /* empty */
           | trans_list maybe_label state_conj maybe_accsig;
@@ -272,5 +284,17 @@ int parseHoa(FILE* input, HoaData* data) {
     loadedData = data;
     yyin = input;
     int ret = yyparse();
-    return ret | autoError;
+    // Last (semantic) checks:
+    bool semanticError = false;
+    // let us check that the number of APs makes sense
+    int noAPs = 0;
+    for (StringList* it = loadedData->aps; it != NULL; it = it->next)
+        noAPs++;
+    if (noAPs != loadedData->noAPs) {
+        fprintf(stderr,
+                "Semantic error: the number and list of atomic propositions "
+                "do not match\n");
+        semanticError = true;
+    }
+    return ret | autoError | semanticError;
 }
