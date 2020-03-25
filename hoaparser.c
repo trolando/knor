@@ -536,13 +536,13 @@ static const yytype_uint8 yytranslate[] =
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   113,   113,   121,   123,   132,   133,   143,   147,   151,
-     156,   160,   168,   173,   183,   184,   188,   196,   199,   200,
-     203,   204,   207,   208,   211,   212,   213,   214,   215,   218,
-     219,   222,   223,   226,   227,   228,   229,   232,   233,   236,
-     237,   241,   246,   249,   250,   251,   252,   253,   255,   256,
-     259,   260,   263,   267,   268,   274,   278,   279,   282,   283,
-     286,   287,   290,   291,   294,   295
+       0,   113,   113,   121,   123,   132,   133,   143,   147,   155,
+     160,   164,   172,   177,   187,   188,   192,   200,   203,   204,
+     207,   208,   211,   212,   215,   216,   217,   218,   219,   222,
+     223,   226,   227,   230,   231,   232,   233,   236,   237,   240,
+     241,   247,   253,   256,   257,   258,   259,   260,   262,   263,
+     266,   267,   270,   274,   275,   281,   285,   286,   289,   290,
+     293,   294,   297,   298,   301,   302
 };
 #endif
 
@@ -1521,7 +1521,7 @@ yyreduce:
   case 6:
 #line 134 "hoa.y"
     {
-               if ((yyvsp[0].number) <= 7) {
+               if ((yyvsp[0].number) <= 8) {
                    if (seenHeader[(yyvsp[0].number)])
                        hdrItemError(headerStrs[(yyvsp[0].number)]);
                    else
@@ -1543,33 +1543,37 @@ yyreduce:
   case 8:
 #line 147 "hoa.y"
     {
-                                                 loadedData->start = (yyvsp[0].numlist);
+                                                 loadedData->start =
+                                                    concatIntLists(
+                                                        loadedData->start,
+                                                        (yyvsp[0].numlist)
+                                                    );
                                                  (yyval.number) = START;
                                                }
-#line 1550 "hoaparser.c"
+#line 1554 "hoaparser.c"
     break;
 
   case 9:
-#line 151 "hoa.y"
+#line 155 "hoa.y"
     {
                                                  loadedData->noAPs = (yyvsp[-1].number);
                                                  loadedData->aps = (yyvsp[0].strlist);
                                                  (yyval.number) = AP;
                                                }
-#line 1560 "hoaparser.c"
+#line 1564 "hoaparser.c"
     break;
 
   case 10:
-#line 156 "hoa.y"
+#line 160 "hoa.y"
     {
                                                  loadedData->cntAPs = (yyvsp[0].numlist);
                                                  (yyval.number) = CNTAP;
                                                }
-#line 1569 "hoaparser.c"
+#line 1573 "hoaparser.c"
     break;
 
   case 11:
-#line 160 "hoa.y"
+#line 164 "hoa.y"
     {
                                                  loadedData->aliases =
                                                     prependAliasNode(
@@ -1578,21 +1582,21 @@ yyreduce:
                                                     );
                                                  (yyval.number) = ALIAS;
                                                }
-#line 1582 "hoaparser.c"
+#line 1586 "hoaparser.c"
     break;
 
   case 12:
-#line 168 "hoa.y"
+#line 172 "hoa.y"
     { 
                                                  loadedData->noAccSets = (yyvsp[-1].number);
                                                  loadedData->acc = (yyvsp[0].tree);
                                                  (yyval.number) = ACCEPTANCE;
                                                }
-#line 1592 "hoaparser.c"
+#line 1596 "hoaparser.c"
     break;
 
   case 13:
-#line 173 "hoa.y"
+#line 177 "hoa.y"
     { 
                                                  loadedData->accNameID = (yyvsp[-1].string);
                                                  loadedData->accNameParameters
@@ -1603,26 +1607,26 @@ yyreduce:
                                                     );
                                                  (yyval.number) = ACCNAME;
                                                }
-#line 1607 "hoaparser.c"
+#line 1611 "hoaparser.c"
     break;
 
   case 14:
-#line 183 "hoa.y"
+#line 187 "hoa.y"
     { (yyval.number) = TOOL; }
-#line 1613 "hoaparser.c"
+#line 1617 "hoaparser.c"
     break;
 
   case 15:
-#line 184 "hoa.y"
+#line 188 "hoa.y"
     {
                                                  loadedData->name = (yyvsp[0].string);
                                                  (yyval.number) = NAME;
                                                }
-#line 1622 "hoaparser.c"
+#line 1626 "hoaparser.c"
     break;
 
   case 16:
-#line 188 "hoa.y"
+#line 192 "hoa.y"
     { 
                                                  loadedData->properties =
                                                      concatStrLists(
@@ -1631,284 +1635,287 @@ yyreduce:
                                                      );
                                                  (yyval.number) = PROPERTIES;
                                                }
-#line 1635 "hoaparser.c"
+#line 1639 "hoaparser.c"
     break;
 
   case 17:
-#line 196 "hoa.y"
+#line 200 "hoa.y"
     { (yyval.number) = HEADERNAME; }
-#line 1641 "hoaparser.c"
+#line 1645 "hoaparser.c"
     break;
 
   case 18:
-#line 199 "hoa.y"
+#line 203 "hoa.y"
     { (yyval.numlist) = newIntNode((yyvsp[0].number)); }
-#line 1647 "hoaparser.c"
+#line 1651 "hoaparser.c"
     break;
 
   case 19:
-#line 200 "hoa.y"
+#line 204 "hoa.y"
     { (yyval.numlist) = prependIntNode((yyvsp[0].numlist), (yyvsp[-2].number)); }
-#line 1653 "hoaparser.c"
+#line 1657 "hoaparser.c"
     break;
 
   case 20:
-#line 203 "hoa.y"
+#line 207 "hoa.y"
     { (yyval.tree) = (yyvsp[0].tree); }
-#line 1659 "hoaparser.c"
+#line 1663 "hoaparser.c"
     break;
 
   case 21:
-#line 204 "hoa.y"
+#line 208 "hoa.y"
     { (yyval.tree) = orBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
-#line 1665 "hoaparser.c"
+#line 1669 "hoaparser.c"
     break;
 
   case 22:
-#line 207 "hoa.y"
+#line 211 "hoa.y"
     { (yyval.tree) = (yyvsp[0].tree); }
-#line 1671 "hoaparser.c"
+#line 1675 "hoaparser.c"
     break;
 
   case 23:
-#line 208 "hoa.y"
+#line 212 "hoa.y"
     { (yyval.tree) = andBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
-#line 1677 "hoaparser.c"
+#line 1681 "hoaparser.c"
     break;
 
   case 24:
-#line 211 "hoa.y"
+#line 215 "hoa.y"
     { (yyval.tree) = boolBTree((yyvsp[0].boolean)); }
-#line 1683 "hoaparser.c"
+#line 1687 "hoaparser.c"
     break;
 
   case 25:
-#line 212 "hoa.y"
+#line 216 "hoa.y"
     { (yyval.tree) = apBTree((yyvsp[0].number)); }
-#line 1689 "hoaparser.c"
+#line 1693 "hoaparser.c"
     break;
 
   case 26:
-#line 213 "hoa.y"
+#line 217 "hoa.y"
     { (yyval.tree) = aliasBTree((yyvsp[0].string)); }
-#line 1695 "hoaparser.c"
+#line 1699 "hoaparser.c"
     break;
 
   case 27:
-#line 214 "hoa.y"
+#line 218 "hoa.y"
     { (yyval.tree) = notBTree((yyvsp[0].tree)); }
-#line 1701 "hoaparser.c"
+#line 1705 "hoaparser.c"
     break;
 
   case 28:
-#line 215 "hoa.y"
+#line 219 "hoa.y"
     { (yyval.tree) = (yyvsp[-1].tree); }
-#line 1707 "hoaparser.c"
+#line 1711 "hoaparser.c"
     break;
 
   case 29:
-#line 218 "hoa.y"
+#line 222 "hoa.y"
     { (yyval.tree) = (yyvsp[0].tree); }
-#line 1713 "hoaparser.c"
+#line 1717 "hoaparser.c"
     break;
 
   case 30:
-#line 219 "hoa.y"
+#line 223 "hoa.y"
     { (yyval.tree) = orBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
-#line 1719 "hoaparser.c"
+#line 1723 "hoaparser.c"
     break;
 
   case 31:
-#line 222 "hoa.y"
+#line 226 "hoa.y"
     { (yyval.tree) = (yyvsp[0].tree); }
-#line 1725 "hoaparser.c"
+#line 1729 "hoaparser.c"
     break;
 
   case 32:
-#line 223 "hoa.y"
+#line 227 "hoa.y"
     { (yyval.tree) = andBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
-#line 1731 "hoaparser.c"
+#line 1735 "hoaparser.c"
     break;
 
   case 33:
-#line 226 "hoa.y"
+#line 230 "hoa.y"
     { (yyval.tree) = accidBTree((yyvsp[-3].nodetype), (yyvsp[-1].number), false); }
-#line 1737 "hoaparser.c"
+#line 1741 "hoaparser.c"
     break;
 
   case 34:
-#line 227 "hoa.y"
+#line 231 "hoa.y"
     { (yyval.tree) = accidBTree((yyvsp[-4].nodetype), (yyvsp[-1].number), true); }
-#line 1743 "hoaparser.c"
+#line 1747 "hoaparser.c"
     break;
 
   case 35:
-#line 228 "hoa.y"
+#line 232 "hoa.y"
     { (yyval.tree) = (yyvsp[-1].tree); }
-#line 1749 "hoaparser.c"
+#line 1753 "hoaparser.c"
     break;
 
   case 36:
-#line 229 "hoa.y"
+#line 233 "hoa.y"
     { (yyval.tree) = boolBTree((yyvsp[0].boolean)); }
-#line 1755 "hoaparser.c"
+#line 1759 "hoaparser.c"
     break;
 
   case 37:
-#line 232 "hoa.y"
+#line 236 "hoa.y"
     { (yyval.nodetype) = NT_FIN; }
-#line 1761 "hoaparser.c"
+#line 1765 "hoaparser.c"
     break;
 
   case 38:
-#line 233 "hoa.y"
+#line 237 "hoa.y"
     { (yyval.nodetype) = NT_INF; }
-#line 1767 "hoaparser.c"
+#line 1771 "hoaparser.c"
     break;
 
   case 39:
-#line 236 "hoa.y"
+#line 240 "hoa.y"
     { (yyval.strlist) = NULL; }
-#line 1773 "hoaparser.c"
+#line 1777 "hoaparser.c"
     break;
 
   case 40:
-#line 237 "hoa.y"
+#line 241 "hoa.y"
     { 
-                                            (yyval.strlist) = (yyvsp[-1].boolean) ? prependStrNode((yyvsp[0].strlist), "True")
-                                                    : prependStrNode((yyvsp[0].strlist), "False");
+                                            (yyval.strlist) = (yyvsp[-1].boolean) ? prependStrNode((yyvsp[0].strlist),
+                                                                     strdup("True"))
+                                                : prependStrNode((yyvsp[0].strlist),
+                                                                 strdup("False"));
                                           }
-#line 1782 "hoaparser.c"
+#line 1788 "hoaparser.c"
     break;
 
   case 41:
-#line 241 "hoa.y"
+#line 247 "hoa.y"
     {
                                             char buffer[66];
                                             sprintf(buffer, "%d", (yyvsp[-1].number));
-                                            (yyval.strlist) = prependStrNode((yyvsp[0].strlist), buffer);
+                                            (yyval.strlist) = prependStrNode((yyvsp[0].strlist),
+                                                                strdup(buffer));
                                           }
-#line 1792 "hoaparser.c"
+#line 1799 "hoaparser.c"
     break;
 
   case 42:
-#line 246 "hoa.y"
+#line 253 "hoa.y"
     { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
-#line 1798 "hoaparser.c"
+#line 1805 "hoaparser.c"
     break;
 
   case 48:
-#line 255 "hoa.y"
+#line 262 "hoa.y"
     { (yyval.strlist) = NULL; }
-#line 1804 "hoaparser.c"
+#line 1811 "hoaparser.c"
     break;
 
   case 49:
-#line 256 "hoa.y"
+#line 263 "hoa.y"
     { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
-#line 1810 "hoaparser.c"
+#line 1817 "hoaparser.c"
     break;
 
   case 50:
-#line 259 "hoa.y"
+#line 266 "hoa.y"
     { (yyval.strlist) = NULL; }
-#line 1816 "hoaparser.c"
+#line 1823 "hoaparser.c"
     break;
 
   case 51:
-#line 260 "hoa.y"
+#line 267 "hoa.y"
     { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
-#line 1822 "hoaparser.c"
+#line 1829 "hoaparser.c"
     break;
 
   case 52:
-#line 264 "hoa.y"
+#line 271 "hoa.y"
     { loadedData->states = (yyvsp[0].statelist); }
-#line 1828 "hoaparser.c"
+#line 1835 "hoaparser.c"
     break;
 
   case 53:
-#line 267 "hoa.y"
+#line 274 "hoa.y"
     { (yyval.statelist) = NULL; }
-#line 1834 "hoaparser.c"
+#line 1841 "hoaparser.c"
     break;
 
   case 54:
-#line 269 "hoa.y"
+#line 276 "hoa.y"
     {
-                (yyval.statelist) = prependStateNode((yyvsp[-2].statelist), (yyvsp[0].statelist), (yyvsp[-1].trlist));
+                (yyval.statelist) = prependStateNode((yyvsp[0].statelist), (yyvsp[-2].statelist), (yyvsp[-1].trlist));
               }
-#line 1842 "hoaparser.c"
+#line 1849 "hoaparser.c"
     break;
 
   case 55:
-#line 275 "hoa.y"
+#line 282 "hoa.y"
     { (yyval.statelist) = newStateNode((yyvsp[-2].number), (yyvsp[-1].string), (yyvsp[-3].tree), (yyvsp[0].numlist)); }
-#line 1848 "hoaparser.c"
+#line 1855 "hoaparser.c"
     break;
 
   case 56:
-#line 278 "hoa.y"
+#line 285 "hoa.y"
     { (yyval.tree) = NULL; }
-#line 1854 "hoaparser.c"
+#line 1861 "hoaparser.c"
     break;
 
   case 57:
-#line 279 "hoa.y"
+#line 286 "hoa.y"
     { (yyval.tree) = (yyvsp[-1].tree); }
-#line 1860 "hoaparser.c"
+#line 1867 "hoaparser.c"
     break;
 
   case 58:
-#line 282 "hoa.y"
+#line 289 "hoa.y"
     { (yyval.string) = NULL; }
-#line 1866 "hoaparser.c"
+#line 1873 "hoaparser.c"
     break;
 
   case 59:
-#line 283 "hoa.y"
+#line 290 "hoa.y"
     { (yyval.string) = (yyvsp[0].string); }
-#line 1872 "hoaparser.c"
+#line 1879 "hoaparser.c"
     break;
 
   case 60:
-#line 286 "hoa.y"
+#line 293 "hoa.y"
     { (yyval.numlist) = NULL; }
-#line 1878 "hoaparser.c"
+#line 1885 "hoaparser.c"
     break;
 
   case 61:
-#line 287 "hoa.y"
+#line 294 "hoa.y"
     { (yyval.numlist) = (yyvsp[-1].numlist); }
-#line 1884 "hoaparser.c"
+#line 1891 "hoaparser.c"
     break;
 
   case 62:
-#line 290 "hoa.y"
+#line 297 "hoa.y"
     { (yyval.numlist) = NULL; }
-#line 1890 "hoaparser.c"
+#line 1897 "hoaparser.c"
     break;
 
   case 63:
-#line 291 "hoa.y"
+#line 298 "hoa.y"
     { (yyval.numlist) = prependIntNode((yyvsp[0].numlist), (yyvsp[-1].number)); }
-#line 1896 "hoaparser.c"
+#line 1903 "hoaparser.c"
     break;
 
   case 64:
-#line 294 "hoa.y"
+#line 301 "hoa.y"
     { (yyval.trlist) = NULL; }
-#line 1902 "hoaparser.c"
+#line 1909 "hoaparser.c"
     break;
 
   case 65:
-#line 296 "hoa.y"
+#line 303 "hoa.y"
     { (yyval.trlist) = prependTransNode((yyvsp[0].trlist), (yyvsp[-3].tree), (yyvsp[-2].numlist), (yyvsp[-1].numlist)); }
-#line 1908 "hoaparser.c"
+#line 1915 "hoaparser.c"
     break;
 
 
-#line 1912 "hoaparser.c"
+#line 1919 "hoaparser.c"
 
       default: break;
     }
@@ -2146,7 +2153,7 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 299 "hoa.y"
+#line 306 "hoa.y"
 
 /* Additional C code */
   

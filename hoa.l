@@ -29,6 +29,20 @@
 
 #include "simplehoa.h"  /* Must go BEFORE hoaparser.h */
 #include "hoaparser.h"
+
+char* getString(char* s) {
+    int newLen = strlen(s) - 1;
+    char* str = malloc(sizeof(char) * newLen);
+    strncpy(str, s + 1, newLen - 1);
+    str[newLen - 1] = '\0';
+    return str;
+}
+
+char* getAlias(char* s) {
+    char* str = malloc(sizeof(char) * strlen(s));
+    strcpy(str, s + 1);
+    return str;
+}
 %}
 
 %option yylineno
@@ -40,7 +54,7 @@
 <C_COMMENT>\*\/          { BEGIN(INITIAL); }
 <C_COMMENT>.|\n          { }
 
-\"(\.|[^\"])*\"          { yylval.string = strdup(yytext); return STRING; }
+\"(\.|[^\"])*\"          { yylval.string = getString(yytext); return STRING; }
 HOA:                     return HOAHDR;
 Start:                   return START;
 States:                  return STATES;
@@ -61,7 +75,7 @@ Inf                      return INF;
 --BODY--                 return BEGINBODY;
 --END--                  return ENDBODY;
 [a-zA-Z_][0-9a-zA-Z_-]*  { yylval.string = strdup(yytext); return IDENTIFIER; }
-@[0-9a-zA-Z_-]+          { yylval.string = strdup(yytext); return ANAME; }
+@[0-9a-zA-Z_-]+          { yylval.string = getAlias(yytext); return ANAME; }
 [ \t\n\r]+               /* ignore whitespace */;
 \(                       return LPAR;
 \)                       return RPAR;

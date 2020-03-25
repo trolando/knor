@@ -10,7 +10,5 @@ format. The parser is used to provide:
   tools.
 
 # TODO
-1. Parse state list into data structure
-2. Check no memory leaks occur
-3. Implement the translation to Aiger
-4. Plug in HOA to PGSolver translation from hoa2pg
+[ ] Implement the translation to Aiger
+[ ] Plug in HOA to PGSolver translation from hoa2pg

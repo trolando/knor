@@ -467,7 +467,7 @@ extern int yylex (void);
 #undef yyTABLES_NAME
 #endif
 
-#line 75 "hoa.l"
+#line 89 "hoa.l"
 
 
 #line 473 "hoalexer.h"

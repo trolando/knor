@@ -124,6 +124,7 @@ IntList* prependIntNode(IntList*, int);
 StringList* prependStrNode(StringList*, char*);
 AliasList* prependAliasNode(AliasList*, char*, BTree*);
 StringList* concatStrLists(StringList*, StringList*);
+IntList* concatIntLists(IntList*, IntList*);
 
 // tree management functions
 BTree* boolBTree(bool);
@@ -133,7 +134,6 @@ BTree* notBTree(BTree*);
 BTree* aliasBTree(char*);
 BTree* accidBTree(NodeType, int, bool);
 BTree* apBTree(int);
-BTree* aliasBTree(char*);
 
 // For debugging purposes, this prints all data in human-readable form
 void printHoa(const HoaData*);

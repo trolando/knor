@@ -33,12 +33,7 @@
 StateList* newStateNode(int id, char* name, BTree* label, IntList* accSig) {
     StateList* list = malloc(sizeof(StateList));
     list->id = id;
-    if (name != NULL) {
-        list->name = malloc(sizeof(char) * (strlen(name) + 1));
-        strcpy(list->name, name);
-    } else {
-        list->name = NULL;
-    }
+    list->name = name;
     list->label = label;
     list->accSig = accSig;
     list->transitions = NULL;
@@ -78,16 +73,14 @@ IntList* prependIntNode(IntList* node, int val) {
 
 StringList* prependStrNode(StringList* node, char* str) {
     StringList* newHead = malloc(sizeof(StringList));
-    newHead->str = malloc(sizeof(char) * (strlen(str) + 1));
-    strcpy(newHead->str, str);
+    newHead->str = str;
     newHead->next = node;
     return newHead;
 }
 
 AliasList* prependAliasNode(AliasList* node, char* alias, BTree* labelExpr) {
     AliasList* newHead = malloc(sizeof(AliasList));
-    newHead->alias = malloc(sizeof(char) * (strlen(alias) + 1));
-    strcpy(newHead->alias, alias);
+    newHead->alias = alias;
     newHead->next = node;
     newHead->labelExpr = labelExpr;
     newHead->next = node;
@@ -100,11 +93,24 @@ StringList* concatStrLists(StringList* list1, StringList* list2) {
     if (list1 == NULL)
         return list2;
 
-    StringList* cur = list2;
+    StringList* cur = list1;
     while (cur->next != NULL)
         cur = cur->next;
-    cur->next = list1;
-    return list2;
+    cur->next = list2;
+    return list1;
+}
+
+IntList* concatIntLists(IntList* list1, IntList* list2) {
+    if (list2 == NULL)
+        return list1;
+    if (list1 == NULL)
+        return list2;
+
+    IntList* cur = list1;
+    while (cur->next != NULL)
+        cur = cur->next;
+    cur->next = list2;
+    return list1;
 }
 
 BTree* boolBTree(bool b) {
@@ -151,8 +157,7 @@ BTree* aliasBTree(char* alias) {
     BTree* created = malloc(sizeof(BTree));
     created->left = NULL;
     created->right = NULL;
-    created->alias = malloc(sizeof(char) * strlen(alias));
-    strcpy(created->alias, (alias + 1));
+    created->alias = alias;
     created->type = NT_ALIAS;
     created->id = -1;
     return created;
@@ -245,6 +250,33 @@ static void deleteBTree(BTree* root) {
     free(root);
 }
 
+static void deleteTransList(TransList* list) {
+    TransList* cur = list;
+    while (cur != NULL) {
+        TransList* next = cur->next;
+        deleteBTree(cur->label);
+        deleteIntList(cur->successors);
+        deleteIntList(cur->accSig);
+        free(cur);
+        cur = next;
+    }
+}
+
+static void deleteStateList(StateList* list) {
+    StateList* cur = list;
+    while (cur != NULL) {
+        StateList* next = cur->next;
+        if (cur->name != NULL)
+            free(cur->name);
+        deleteBTree(cur->label);
+        deleteIntList(cur->accSig);
+        deleteTransList(cur->transitions);
+        free(cur);
+        cur = next;
+    }
+}
+
+
 static void deleteAliases(AliasList* list) {
     AliasList* cur = list;
     while (cur != NULL) {
@@ -274,9 +306,8 @@ void deleteHoa(HoaData* data) {
     deleteBTree(data->acc);
     // Aliases
     deleteAliases(data->aliases);
-
     // State lists
-    //StateList* states;
+    deleteStateList(data->states);
 }
 
 // DFS printing in in/pre-order
@@ -348,6 +379,7 @@ void printHoa(const HoaData* data) {
     for (StringList* it = data->aps; it != NULL; it = it->next)
         printf("%s, ", it->str);
     printf("\n");
+
     printf("Controllable APs: ");
     for (IntList* it = data->cntAPs; it != NULL; it = it->next)
         printf("%d, ", it->i);
@@ -356,16 +388,18 @@ void printHoa(const HoaData* data) {
     printf("No. of acceptance sets: %d\n", data->noAccSets);
     if (data->accNameID != NULL)
         printf("Acceptance name: %s\n", data->accNameID);
+
     printf("Acceptance: ");
     printBTree(data->acc);
     printf("\n");
 
-    printf("Aliases: \n");
+    printf("Aliases: ");
     for (AliasList* it = data->aliases; it != NULL; it = it->next) {
-        printf("* %s = ", it->alias);
+        printf("%s = ", it->alias);
         printBTree(it->labelExpr);
-        printf("\n");
+        printf(", ");
     }
+    printf("\n");
 
     printf("Acceptance parameters: ");
     for (StringList* it = data->accNameParameters; it != NULL; it = it->next)
@@ -383,8 +417,40 @@ void printHoa(const HoaData* data) {
     for (StringList* it = data->properties; it != NULL; it = it->next)
         printf("%s, ", it->str);
     printf("\n");
-    
-    // TODO: print data->states
+ 
+    for (StateList* it = data->states; it != NULL; it = it->next) {
+        printf("** State: %d", it->id);
+        if (it->name != NULL)
+            printf(" %s", it->name);
+        printf(" **\n");
+        if (it->label != NULL) {
+            printf("label = ");
+            printBTree(it->label);
+            printf("\n");
+        }
+        if (it->accSig != NULL) {
+            printf("acc sets = ");
+            for (IntList* jt = it->accSig; jt != NULL; jt = jt->next)
+                printf("%d, ", jt->i);
+            printf("\n");
+        }
+        printf("transitions:\n");
+        for (TransList* jt = it->transitions; jt != NULL; jt = jt->next) {
+            printf("to ");
+            for (IntList* kt = jt->successors; kt != NULL; kt = kt->next)
+                printf("%d, ", kt->i); 
+            if (jt->label != NULL) {
+                printf(" with label = ");
+                printBTree(it->label);
+            }
+            if (jt->accSig != NULL) {
+                printf(" acc sets = ");
+                for (IntList* kt = jt->accSig; kt != NULL; kt = kt->next)
+                    printf("%d, ", kt->i);
+            }
+            printf("\n");
+        }
+    }
 
     printf("== END HOA FILE DATA =\n");
 }

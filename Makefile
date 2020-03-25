@@ -26,6 +26,12 @@ tests: $(SRCS) $(HDRS)
 	cat examples/test3.ehoa | ./tests
 	cat examples/aut1.ehoa | ./tests
 	cat examples/aut2.ehoa | ./tests
+	cat examples/aut3.ehoa | ./tests
+	cat examples/aut4.ehoa | ./tests
+	cat examples/aut5.ehoa | ./tests
+	cat examples/aut6.ehoa | ./tests
+	cat examples/aut7.ehoa | ./tests
+	cat examples/aut8.ehoa | ./tests
 
 clean:
 	rm -f hoalexer.h hoalexer.c

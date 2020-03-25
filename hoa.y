@@ -132,7 +132,7 @@ format_version: HOAHDR IDENTIFIER
 header_list: /* empty */ { /* no new item, nothing to check */ }
            | header_list header_item
            {
-               if ($2 <= 7) {
+               if ($2 <= 8) {
                    if (seenHeader[$2])
                        hdrItemError(headerStrs[$2]);
                    else
@@ -145,7 +145,11 @@ header_item: STATES INT                        {
                                                  $$ = STATES;
                                                }
            | START state_conj                  {
-                                                 loadedData->start = $2;
+                                                 loadedData->start =
+                                                    concatIntLists(
+                                                        loadedData->start,
+                                                        $2
+                                                    );
                                                  $$ = START;
                                                }
            | AP INT string_list                {
@@ -235,13 +239,16 @@ accid: FIN { $$ = NT_FIN; }
 
 boolintid_list: /* empty */               { $$ = NULL; }
               | BOOL boolintid_list       { 
-                                            $$ = $1 ? prependStrNode($2, "True")
-                                                    : prependStrNode($2, "False");
+                                            $$ = $1 ? prependStrNode($2,
+                                                                     strdup("True"))
+                                                : prependStrNode($2,
+                                                                 strdup("False"));
                                           }
               | INT boolintid_list        {
                                             char buffer[66];
                                             sprintf(buffer, "%d", $1);
-                                            $$ = prependStrNode($2, buffer);
+                                            $$ = prependStrNode($2,
+                                                                strdup(buffer));
                                           }
               | IDENTIFIER boolintid_list { $$ = prependStrNode($2, $1); }
               ;
@@ -267,7 +274,7 @@ body: statespec_list
 statespec_list: /* empty */ { $$ = NULL; }
               | state_name trans_list statespec_list
               {
-                $$ = prependStateNode($1, $3, $2);
+                $$ = prependStateNode($3, $1, $2);
               }
               ;
 

@@ -598,9 +598,23 @@ char *yytext;
 
 #include "simplehoa.h"  /* Must go BEFORE hoaparser.h */
 #include "hoaparser.h"
-#line 601 "hoalexer.c"
 
-#line 603 "hoalexer.c"
+char* getString(char* s) {
+    int newLen = strlen(s) - 1;
+    char* str = malloc(sizeof(char) * newLen);
+    strncpy(str, s + 1, newLen - 1);
+    str[newLen - 1] = '\0';
+    return str;
+}
+
+char* getAlias(char* s) {
+    char* str = malloc(sizeof(char) * strlen(s));
+    strcpy(str, s + 1);
+    return str;
+}
+#line 615 "hoalexer.c"
+
+#line 617 "hoalexer.c"
 
 #define INITIAL 0
 #define C_COMMENT 1
@@ -818,9 +832,9 @@ YY_DECL
 		}
 
 	{
-#line 38 "hoa.l"
+#line 52 "hoa.l"
 
-#line 823 "hoalexer.c"
+#line 837 "hoalexer.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -889,188 +903,188 @@ do_action:	/* This label is used only to access EOF actions. */
 
 case 1:
 YY_RULE_SETUP
-#line 39 "hoa.l"
+#line 53 "hoa.l"
 { BEGIN(C_COMMENT); }
 	YY_BREAK
 case 2:
 YY_RULE_SETUP
-#line 40 "hoa.l"
+#line 54 "hoa.l"
 { BEGIN(INITIAL); }
 	YY_BREAK
 case 3:
 /* rule 3 can match eol */
 YY_RULE_SETUP
-#line 41 "hoa.l"
+#line 55 "hoa.l"
 { }
 	YY_BREAK
 case 4:
 /* rule 4 can match eol */
 YY_RULE_SETUP
-#line 43 "hoa.l"
-{ yylval.string = strdup(yytext); return STRING; }
+#line 57 "hoa.l"
+{ yylval.string = getString(yytext); return STRING; }
 	YY_BREAK
 case 5:
 YY_RULE_SETUP
-#line 44 "hoa.l"
+#line 58 "hoa.l"
 return HOAHDR;
 	YY_BREAK
 case 6:
 YY_RULE_SETUP
-#line 45 "hoa.l"
+#line 59 "hoa.l"
 return START;
 	YY_BREAK
 case 7:
 YY_RULE_SETUP
-#line 46 "hoa.l"
+#line 60 "hoa.l"
 return STATES;
 	YY_BREAK
 case 8:
 YY_RULE_SETUP
-#line 47 "hoa.l"
+#line 61 "hoa.l"
 return CNTAP;
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 48 "hoa.l"
+#line 62 "hoa.l"
 return AP;
 	YY_BREAK
 case 10:
 YY_RULE_SETUP
-#line 49 "hoa.l"
+#line 63 "hoa.l"
 return ALIAS;
 	YY_BREAK
 case 11:
 YY_RULE_SETUP
-#line 50 "hoa.l"
+#line 64 "hoa.l"
 return ACCEPTANCE;
 	YY_BREAK
 case 12:
 YY_RULE_SETUP
-#line 51 "hoa.l"
+#line 65 "hoa.l"
 return ACCNAME;
 	YY_BREAK
 case 13:
 YY_RULE_SETUP
-#line 52 "hoa.l"
+#line 66 "hoa.l"
 return TOOL;
 	YY_BREAK
 case 14:
 YY_RULE_SETUP
-#line 53 "hoa.l"
+#line 67 "hoa.l"
 return NAME;
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
-#line 54 "hoa.l"
+#line 68 "hoa.l"
 return PROPERTIES;
 	YY_BREAK
 case 16:
 YY_RULE_SETUP
-#line 55 "hoa.l"
+#line 69 "hoa.l"
 return STATEHDR;
 	YY_BREAK
 case 17:
 YY_RULE_SETUP
-#line 56 "hoa.l"
+#line 70 "hoa.l"
 { yylval.string = strdup(yytext); return HEADERNAME; }
 	YY_BREAK
 case 18:
 YY_RULE_SETUP
-#line 57 "hoa.l"
+#line 71 "hoa.l"
 { yylval.number = atoi(yytext); return INT; }
 	YY_BREAK
 case 19:
 YY_RULE_SETUP
-#line 58 "hoa.l"
+#line 72 "hoa.l"
 { yylval.boolean = (bool)strcmp(yytext, "t"); return BOOL; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
-#line 59 "hoa.l"
+#line 73 "hoa.l"
 return FIN;
 	YY_BREAK
 case 21:
 YY_RULE_SETUP
-#line 60 "hoa.l"
+#line 74 "hoa.l"
 return INF;
 	YY_BREAK
 case 22:
 YY_RULE_SETUP
-#line 61 "hoa.l"
+#line 75 "hoa.l"
 return BEGINBODY;
 	YY_BREAK
 case 23:
 YY_RULE_SETUP
-#line 62 "hoa.l"
+#line 76 "hoa.l"
 return ENDBODY;
 	YY_BREAK
 case 24:
 YY_RULE_SETUP
-#line 63 "hoa.l"
+#line 77 "hoa.l"
 { yylval.string = strdup(yytext); return IDENTIFIER; }
 	YY_BREAK
 case 25:
 YY_RULE_SETUP
-#line 64 "hoa.l"
-{ yylval.string = strdup(yytext); return ANAME; }
+#line 78 "hoa.l"
+{ yylval.string = getAlias(yytext); return ANAME; }
 	YY_BREAK
 case 26:
 /* rule 26 can match eol */
 YY_RULE_SETUP
-#line 65 "hoa.l"
+#line 79 "hoa.l"
 /* ignore whitespace */;
 	YY_BREAK
 case 27:
 YY_RULE_SETUP
-#line 66 "hoa.l"
+#line 80 "hoa.l"
 return LPAR;
 	YY_BREAK
 case 28:
 YY_RULE_SETUP
-#line 67 "hoa.l"
+#line 81 "hoa.l"
 return RPAR;
 	YY_BREAK
 case 29:
 YY_RULE_SETUP
-#line 68 "hoa.l"
+#line 82 "hoa.l"
 return LBRACE;
 	YY_BREAK
 case 30:
 YY_RULE_SETUP
-#line 69 "hoa.l"
+#line 83 "hoa.l"
 return RBRACE;
 	YY_BREAK
 case 31:
 YY_RULE_SETUP
-#line 70 "hoa.l"
+#line 84 "hoa.l"
 return LSQBRACE;
 	YY_BREAK
 case 32:
 YY_RULE_SETUP
-#line 71 "hoa.l"
+#line 85 "hoa.l"
 return RSQBRACE;
 	YY_BREAK
 case 33:
 YY_RULE_SETUP
-#line 72 "hoa.l"
+#line 86 "hoa.l"
 return BOOLAND;
 	YY_BREAK
 case 34:
 YY_RULE_SETUP
-#line 73 "hoa.l"
+#line 87 "hoa.l"
 return BOOLOR;
 	YY_BREAK
 case 35:
 YY_RULE_SETUP
-#line 74 "hoa.l"
+#line 88 "hoa.l"
 return BOOLNOT;
 	YY_BREAK
 case 36:
 YY_RULE_SETUP
-#line 75 "hoa.l"
+#line 89 "hoa.l"
 ECHO;
 	YY_BREAK
-#line 1073 "hoalexer.c"
+#line 1087 "hoalexer.c"
 case YY_STATE_EOF(INITIAL):
 case YY_STATE_EOF(C_COMMENT):
 	yyterminate();
@@ -2088,6 +2102,6 @@ void yyfree (void * ptr )
 
 #define YYTABLES_NAME "yytables"
 
-#line 75 "hoa.l"
+#line 89 "hoa.l"
 
 
