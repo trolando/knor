@@ -1,20 +1,20 @@
 /**************************************************************************
  * Copyright (c) 2019- Guillermo A. Perez
  * 
- * This file is part of the HOA2AIG tool.
+ * This file is part of HOATOOLS.
  * 
- * HOA2AIG is free software: you can redistribute it and/or modify
+ * HOATOOLS is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  * 
- * HOA2AIG is distributed in the hope that it will be useful,
+ * HOATOOLS is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with HOA2AIG. If not, see <http://www.gnu.org/licenses/>.
+ * along with HOATOOLS. If not, see <http://www.gnu.org/licenses/>.
  * 
  * Guillermo A. Perez
  * University of Antwerp
@@ -27,6 +27,10 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+/* All tree-like constructs will be BTrees, for binary tree. The
+ * following enumerate structure gives us the types of nodes 
+ * that could appear in such trees.
+ */
 typedef enum {
     NT_BOOL, NT_AND, NT_OR, NT_FIN,
     NT_INF, NT_NOT, NT_SET,
@@ -42,6 +46,9 @@ struct BTree {
     NodeType type;
 };
 
+/* Boiler-plate singly linked lists structures
+ * for information in the HOA files
+ */
 typedef struct StringList StringList;
 struct StringList {
     char* str;
@@ -77,6 +84,9 @@ struct AliasList {
     AliasList* next;
 };
 
+/* The centralized data structure for all data collected
+ * from the file is the following.
+ */
 typedef struct HoaData {
     int noStates;
     StringList* aps;
@@ -99,14 +109,18 @@ typedef struct HoaData {
 // This function returns 0 if and only if parsing was successful
 int parseHoa(FILE*, HoaData*);
 
-// Other functions
+// Defaults and destructor for centralized data structure
 void defaultsHoa(HoaData*);
 void deleteHoa(HoaData*);
+
+// list management functions
 IntList* newIntNode(int);
 IntList* prependIntNode(IntList*, int);
 StringList* prependStrNode(StringList*, char*);
 AliasList* prependAliasNode(AliasList*, char*, BTree*);
 StringList* concatStrLists(StringList*, StringList*);
+
+// tree management functions
 BTree* boolBTree(bool);
 BTree* andBTree(BTree*, BTree*);
 BTree* orBTree(BTree*, BTree*);

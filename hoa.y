@@ -2,20 +2,20 @@
 /**************************************************************************
  * Copyright (c) 2019- Guillermo A. Perez
  * 
- * This file is part of the HOA2AIG tool.
+ * This file is part of HOATOOLS.
  * 
- * HOA2AIG is free software: you can redistribute it and/or modify
+ * HOATOOLS is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  * 
- * HOA2AIG is distributed in the hope that it will be useful,
+ * HOATOOLS is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  * 
  * You should have received a copy of the GNU General Public License
- * along with HOA2AIG.  If not, see <http://www.gnu.org/licenses/>.
+ * along with HOATOOLS.  If not, see <http://www.gnu.org/licenses/>.
  * 
  * Guillermo A. Perez
  * University of Antwerp
@@ -88,19 +88,23 @@ void hdrItemError(const char* str) {
     NodeType nodetype;
     IntList* numlist;
     StringList* strlist;
+    TransList* trlist;
+    StateList* statelist;
     BTree* tree;
 }
 
-%token <string> STRING IDENTIFIER ANAME HEADERNAME
+%token <string> STRING IDENTIFIER ANAME HEADERNAME maybe_string
 %token <number> INT
 %token <boolean> BOOL
 
 %type <number> header_item header_list
-%type <numlist> state_conj int_list
+%type <numlist> state_conj int_list maybe_accsig
 %type <strlist> string_list id_list boolintid_list
+%type <trlist> trans_list
+%type <statelist> statespec_list state_name
 %type <nodetype> accid
 %type <tree> acceptance_cond acc_cond_conj acc_cond_atom
-%type <tree> label_expr lab_exp_conj lab_exp_atom
+%type <tree> label_expr lab_exp_conj lab_exp_atom maybe_label
 
 %%
 /* Grammar rules and actions follow */
@@ -261,21 +265,27 @@ statespec_list: /* empty */
 
 state_name: STATEHDR maybe_label INT maybe_string maybe_accsig;
 
-maybe_label: /* empty */
-           | "[" label_expr "]";
+maybe_label: /* empty */        { $$ = NULL; }
+           | "[" label_expr "]" { $$ = 2; }
+           ;
 
-maybe_string: /* empty */
-            | STRING;
+maybe_string: /* empty */ { $$ = NULL; }
+            | STRING      { $$ = 1; }
+            ;
 
-maybe_accsig: /* empty */
-            | "{" int_list "}";
+maybe_accsig: /* empty */      { $$ = NULL; }
+            | "{" int_list "}" { $$ = 2; }
+            ;
 
 int_list: /* empty */  { $$ = NULL; }
         | INT int_list { $$ = prependIntNode($2, $1); }
         ;
 
-trans_list: /* empty */
-          | trans_list maybe_label state_conj maybe_accsig;
+trans_list: /* empty */ { $$ = NULL; }
+          | maybe_label state_conj maybe_accsig trans_list
+          {  
+            $$ = prependTransNode(transition, $4); }
+          ;
 
 %%
 /* Additional C code */
