@@ -93,10 +93,11 @@ void hdrItemError(const char* str) {
     BTree* tree;
 }
 
-%token <string> STRING IDENTIFIER ANAME HEADERNAME maybe_string
+%token <string> STRING IDENTIFIER ANAME HEADERNAME
 %token <number> INT
 %token <boolean> BOOL
 
+%type <string> maybe_string
 %type <number> header_item header_list
 %type <numlist> state_conj int_list maybe_accsig
 %type <strlist> string_list id_list boolintid_list
@@ -190,7 +191,8 @@ header_item: STATES INT                        {
                                                          loadedData->properties,
                                                          $2
                                                      );
-                                                 $$ = PROPERTIES; }
+                                                 $$ = PROPERTIES;
+                                               }
            | HEADERNAME boolintstrid_list      { $$ = HEADERNAME; }
            ;
 
@@ -258,23 +260,31 @@ id_list: /* empty */        { $$ = NULL; }
        | IDENTIFIER id_list { $$ = prependStrNode($2, $1); }
        ;
 
-body: statespec_list;
+body: statespec_list
+    { loadedData->states = $1; }
+    ;
 
-statespec_list: /* empty */
-              | statespec_list state_name trans_list;
+statespec_list: /* empty */ { $$ = NULL; }
+              | state_name trans_list statespec_list
+              {
+                $$ = prependStateNode($1, $3, $2);
+              }
+              ;
 
-state_name: STATEHDR maybe_label INT maybe_string maybe_accsig;
+state_name: STATEHDR maybe_label INT maybe_string maybe_accsig
+          { $$ = newStateNode($3, $4, $2, $5); }
+          ;
 
 maybe_label: /* empty */        { $$ = NULL; }
-           | "[" label_expr "]" { $$ = 2; }
+           | "[" label_expr "]" { $$ = $2; }
            ;
 
 maybe_string: /* empty */ { $$ = NULL; }
-            | STRING      { $$ = 1; }
+            | STRING      { $$ = $1; }
             ;
 
 maybe_accsig: /* empty */      { $$ = NULL; }
-            | "{" int_list "}" { $$ = 2; }
+            | "{" int_list "}" { $$ = $2; }
             ;
 
 int_list: /* empty */  { $$ = NULL; }
@@ -283,8 +293,7 @@ int_list: /* empty */  { $$ = NULL; }
 
 trans_list: /* empty */ { $$ = NULL; }
           | maybe_label state_conj maybe_accsig trans_list
-          {  
-            $$ = prependTransNode(transition, $4); }
+          { $$ = prependTransNode($4, $1, $2, $3); }
           ;
 
 %%

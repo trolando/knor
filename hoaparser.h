@@ -95,9 +95,11 @@ union YYSTYPE
     NodeType nodetype;
     IntList* numlist;
     StringList* strlist;
+    TransList* trlist;
+    StateList* statelist;
     BTree* tree;
 
-#line 101 "hoaparser.h"
+#line 103 "hoaparser.h"
 
 };
 typedef union YYSTYPE YYSTYPE;

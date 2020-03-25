@@ -30,6 +30,38 @@
 
 #include "simplehoa.h"
 
+StateList* newStateNode(int id, char* name, BTree* label, IntList* accSig) {
+    StateList* list = malloc(sizeof(StateList));
+    list->id = id;
+    if (name != NULL) {
+        list->name = malloc(sizeof(char) * (strlen(name) + 1));
+        strcpy(list->name, name);
+    } else {
+        list->name = NULL;
+    }
+    list->label = label;
+    list->accSig = accSig;
+    list->transitions = NULL;
+    return list;
+}
+
+StateList* prependStateNode(StateList* node, StateList* newNode,
+                            TransList* transitions) {
+    newNode->next = node;
+    newNode->transitions = transitions;
+    return newNode;
+}
+
+TransList* prependTransNode(TransList* node , BTree* label,
+                            IntList* successors, IntList* accSig) {
+    TransList* newHead = malloc(sizeof(TransList));
+    newHead->label = label;
+    newHead->successors = successors;
+    newHead->accSig = accSig;
+    newHead->next = node;
+    return newHead;
+}
+
 IntList* newIntNode(int val) {
     IntList* list = malloc(sizeof(IntList));
     list->i = val;

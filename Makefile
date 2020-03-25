@@ -22,6 +22,10 @@ tests: $(SRCS) $(HDRS)
 	$(CC) $(DBGFLAGS) -o tests $(SRCS)
 	ASAN_OPTIONS=detect_leaks=1
 	cat examples/test1.ehoa | ./tests
+	cat examples/test2.ehoa | ./tests
+	cat examples/test3.ehoa | ./tests
+	cat examples/aut1.ehoa | ./tests
+	cat examples/aut2.ehoa | ./tests
 
 clean:
 	rm -f hoalexer.h hoalexer.c

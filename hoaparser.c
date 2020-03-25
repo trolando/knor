@@ -209,9 +209,11 @@ union YYSTYPE
     NodeType nodetype;
     IntList* numlist;
     StringList* strlist;
+    TransList* trlist;
+    StateList* statelist;
     BTree* tree;
 
-#line 215 "hoaparser.c"
+#line 217 "hoaparser.c"
 
 };
 typedef union YYSTYPE YYSTYPE;
@@ -477,7 +479,7 @@ union yyalloc
 /* YYFINAL -- State number of the termination state.  */
 #define YYFINAL  6
 /* YYLAST -- Last index in YYTABLE.  */
-#define YYLAST   95
+#define YYLAST   97
 
 /* YYNTOKENS -- Number of terminals.  */
 #define YYNTOKENS  34
@@ -486,7 +488,7 @@ union yyalloc
 /* YYNRULES -- Number of rules.  */
 #define YYNRULES  65
 /* YYNSTATES -- Number of states.  */
-#define YYNSTATES  109
+#define YYNSTATES  111
 
 #define YYUNDEFTOK  2
 #define YYMAXUTOK   277
@@ -534,13 +536,13 @@ static const yytype_uint8 yytranslate[] =
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   108,   108,   116,   118,   127,   128,   138,   142,   146,
-     151,   155,   163,   168,   178,   179,   183,   190,   193,   194,
-     197,   198,   201,   202,   205,   206,   207,   208,   209,   212,
-     213,   216,   217,   220,   221,   222,   223,   226,   227,   230,
-     231,   235,   240,   243,   244,   245,   246,   247,   249,   250,
-     253,   254,   257,   259,   260,   262,   264,   265,   267,   268,
-     270,   271,   273,   274,   277,   278
+       0,   113,   113,   121,   123,   132,   133,   143,   147,   151,
+     156,   160,   168,   173,   183,   184,   188,   196,   199,   200,
+     203,   204,   207,   208,   211,   212,   213,   214,   215,   218,
+     219,   222,   223,   226,   227,   228,   229,   232,   233,   236,
+     237,   241,   246,   249,   250,   251,   252,   253,   255,   256,
+     259,   260,   263,   267,   268,   274,   278,   279,   282,   283,
+     286,   287,   290,   291,   294,   295
 };
 #endif
 
@@ -575,10 +577,10 @@ static const yytype_uint16 yytoknum[] =
 };
 # endif
 
-#define YYPACT_NINF -52
+#define YYPACT_NINF -44
 
 #define yypact_value_is_default(Yystate) \
-  (!!((Yystate) == (-52)))
+  (!!((Yystate) == (-44)))
 
 #define YYTABLE_NINF -57
 
@@ -589,17 +591,18 @@ static const yytype_uint16 yytoknum[] =
      STATE-NUM.  */
 static const yytype_int8 yypact[] =
 {
-      13,   -11,    39,    17,   -52,   -52,   -52,   -52,    -3,    24,
-      29,    21,    23,    25,    26,    27,    31,    32,    33,    34,
-      37,   -52,   -52,   -52,    36,   -52,     1,   -52,    35,    26,
-     -52,    12,    40,   -52,    41,   -52,    -1,    37,   -52,    -9,
-      -1,    38,     4,     1,   -52,   -52,   -52,    47,    48,   -52,
-      57,    35,   -52,   -52,    12,    12,    12,   -52,   -52,   -52,
-      33,    -1,    -1,   -52,   -52,   -52,    53,    54,   -52,   -52,
-     -52,   -52,   -52,   -52,    30,    40,    33,    20,     1,     1,
-      -5,   -52,   -52,   -52,   -52,   -52,    22,   -52,    -1,    -1,
-     -52,    45,    45,   -52,    48,   -52,    42,    61,   -52,    54,
-     -52,    26,   -52,   -52,    62,   -52,    63,   -52,   -52
+      10,    -5,    36,    13,   -44,   -44,   -44,    21,    -1,    28,
+      24,   -44,    -4,    23,    25,    26,    27,    31,    33,    35,
+      30,    37,    39,   -44,   -44,     1,    32,   -44,    30,    21,
+       2,   -44,    38,    27,   -44,     9,    41,   -44,    44,   -44,
+       1,    39,   -44,   -11,     1,     1,   -44,   -44,   -44,    34,
+      49,   -44,    41,    40,   -44,     2,   -44,   -44,   -44,    51,
+      52,   -44,    58,    38,   -44,   -44,     9,     9,     9,   -44,
+     -44,   -44,    30,    54,   -44,   -44,   -44,   -44,   -44,     5,
+     -44,   -44,     1,     1,    40,    27,    -4,    17,     2,     2,
+      -3,   -44,   -44,   -44,   -44,   -44,   -44,    49,   -44,   -44,
+      59,   -44,   -44,    52,   -44,    43,    62,   -44,    63,   -44,
+     -44
 };
 
   /* YYDEFACT[STATE-NUM] -- Default reduction number in state STATE-NUM.
@@ -607,33 +610,34 @@ static const yytype_int8 yypact[] =
      means the default is an error.  */
 static const yytype_uint8 yydefact[] =
 {
-       0,     0,     0,     0,     5,     4,     1,    53,     3,     0,
-      52,     0,     0,     0,    62,     0,     0,     0,     0,     0,
-      50,    43,     6,     2,    56,    64,     0,     7,    48,    62,
-      10,    39,    58,    15,    18,     8,     0,    50,    16,    17,
-       0,     0,    54,     0,    38,    37,    36,    12,    29,    31,
-       0,    48,     9,    63,    39,    39,    39,    13,    59,    14,
-       0,     0,     0,    26,    25,    24,    11,    20,    22,    51,
-      46,    47,    45,    44,     0,    58,     0,     0,     0,     0,
-       0,    49,    42,    41,    40,    19,     0,    27,     0,     0,
-      57,    60,    60,    35,    30,    32,     0,     0,    28,    21,
-      23,    62,    55,    65,     0,    33,     0,    34,    61
+       0,     0,     0,     0,     5,     4,     1,    53,     3,    56,
+       0,    52,    64,     0,     0,     0,    62,     0,     0,     0,
+       0,     0,    50,    43,     6,     0,     0,     2,     0,    53,
+       0,     7,    48,    62,    10,    39,    58,    15,    18,     8,
+       0,    50,    16,    17,     0,     0,    26,    25,    24,     0,
+      20,    22,    58,    60,    54,     0,    38,    37,    36,    12,
+      29,    31,     0,    48,     9,    63,    39,    39,    39,    13,
+      59,    14,     0,    11,    51,    46,    47,    45,    44,     0,
+      27,    57,     0,     0,    60,    62,    64,     0,     0,     0,
+       0,    49,    42,    41,    40,    19,    28,    21,    23,    55,
+       0,    65,    35,    30,    32,     0,     0,    61,     0,    33,
+      34
 };
 
   /* YYPGOTO[NTERM-NUM].  */
 static const yytype_int8 yypgoto[] =
 {
-     -52,   -52,   -52,   -52,   -52,   -52,   -46,   -28,   -10,   -51,
-      43,     3,     0,   -52,    -8,   -52,    44,    46,   -52,   -52,
-     -52,    49,     7,    -7,   -29,   -52
+     -44,   -44,   -44,   -44,   -44,   -44,   -27,     3,    -2,   -43,
+      29,    -9,    -8,   -44,   -18,   -44,    19,    42,   -44,    56,
+     -44,    77,    45,     4,   -33,     6
 };
 
   /* YYDEFGOTO[NTERM-NUM].  */
 static const yytype_int8 yydefgoto[] =
 {
-      -1,     2,     3,     4,     8,    22,    35,    66,    67,    68,
-      47,    48,    49,    50,    57,    39,    52,    38,     9,    10,
-      25,    41,    59,   102,    30,    42
+      -1,     2,     3,     4,     8,    24,    39,    49,    50,    51,
+      59,    60,    61,    62,    69,    43,    64,    42,    10,    11,
+      12,    28,    71,    86,    34,    29
 };
 
   /* YYTABLE[YYPACT[STATE-NUM]] -- What to do in state STATE-NUM.  If
@@ -641,47 +645,48 @@ static const yytype_int8 yydefgoto[] =
      number is the opposite.  If YYTABLE_NINF, syntax error.  */
 static const yytype_int8 yytable[] =
 {
-      53,    11,    12,    13,    14,    15,    16,    17,    18,    19,
-      20,    87,    74,    61,    85,    43,     1,    96,     5,    70,
-      71,    62,    40,    72,    73,    44,    45,    97,    21,    63,
-      92,    64,    65,    86,    46,    93,   -56,    98,   100,     6,
-      78,    54,    88,     7,    55,    56,    82,    83,    84,    90,
-      88,    23,    24,    26,    40,    27,    31,    28,    29,    32,
-      33,   101,    60,    51,    36,    34,    37,    78,    58,    79,
-      75,    80,   106,    88,   104,    89,   105,   107,    99,    95,
-     108,    94,    91,    69,     0,   103,    77,     0,     0,     0,
-       0,    76,     0,     0,     0,    81
+      65,    53,    80,    13,    14,    15,    16,    17,    18,    19,
+      20,    21,    22,     1,    25,    44,    55,    75,    76,   105,
+      96,    77,    78,    45,     5,    82,    56,    57,   -56,   106,
+      23,    46,   102,    47,    48,    58,     6,    88,    66,     7,
+      98,    67,    68,    73,     9,    95,    25,    79,    92,    93,
+      94,    27,   100,    81,    82,    30,    85,    31,    32,    33,
+      35,    36,    38,    37,    52,    72,    63,    40,    41,    70,
+      83,    88,    90,    89,    82,   108,   107,   109,   110,   103,
+      97,   104,    91,    74,    87,    54,    26,     0,    99,     0,
+       0,     0,   101,     0,     0,     0,     0,    84
 };
 
 static const yytype_int8 yycheck[] =
 {
-      29,     4,     5,     6,     7,     8,     9,    10,    11,    12,
-      13,    62,    40,    14,    60,    14,     3,    22,    29,    28,
-      29,    22,    18,    32,    33,    24,    25,    32,    31,    30,
-      76,    32,    33,    61,    33,    15,    32,    15,    89,     0,
-      20,    29,    20,    26,    32,    33,    54,    55,    56,    19,
-      20,    27,    23,    32,    18,    32,    29,    32,    32,    28,
-      28,    16,    21,    28,    30,    32,    29,    20,    28,    21,
-      32,    14,   101,    20,    32,    21,    15,    15,    88,    79,
-      17,    78,    75,    37,    -1,    92,    43,    -1,    -1,    -1,
-      -1,    42,    -1,    -1,    -1,    51
+      33,    28,    45,     4,     5,     6,     7,     8,     9,    10,
+      11,    12,    13,     3,    18,    14,    14,    28,    29,    22,
+      15,    32,    33,    22,    29,    20,    24,    25,    32,    32,
+      31,    30,    15,    32,    33,    33,     0,    20,    29,    26,
+      83,    32,    33,    40,    23,    72,    18,    44,    66,    67,
+      68,    27,    85,    19,    20,    32,    16,    32,    32,    32,
+      29,    28,    32,    28,    32,    21,    28,    30,    29,    28,
+      21,    20,    14,    21,    20,    32,    17,    15,    15,    88,
+      82,    89,    63,    41,    55,    29,     9,    -1,    84,    -1,
+      -1,    -1,    86,    -1,    -1,    -1,    -1,    52
 };
 
   /* YYSTOS[STATE-NUM] -- The (internal number of the) accessing
      symbol of state STATE-NUM.  */
 static const yytype_uint8 yystos[] =
 {
-       0,     3,    35,    36,    37,    29,     0,    26,    38,    52,
-      53,     4,     5,     6,     7,     8,     9,    10,    11,    12,
-      13,    31,    39,    27,    23,    54,    32,    32,    32,    32,
-      58,    29,    28,    28,    32,    40,    30,    29,    51,    49,
-      18,    55,    59,    14,    24,    25,    33,    44,    45,    46,
-      47,    28,    50,    58,    29,    32,    33,    48,    28,    56,
-      21,    14,    22,    30,    32,    33,    41,    42,    43,    51,
-      28,    29,    32,    33,    41,    32,    55,    44,    20,    21,
-      14,    50,    48,    48,    48,    40,    41,    43,    20,    21,
-      19,    56,    40,    15,    45,    46,    22,    32,    15,    42,
-      43,    16,    57,    57,    32,    15,    58,    15,    17
+       0,     3,    35,    36,    37,    29,     0,    26,    38,    23,
+      52,    53,    54,     4,     5,     6,     7,     8,     9,    10,
+      11,    12,    13,    31,    39,    18,    55,    27,    55,    59,
+      32,    32,    32,    32,    58,    29,    28,    28,    32,    40,
+      30,    29,    51,    49,    14,    22,    30,    32,    33,    41,
+      42,    43,    32,    40,    53,    14,    24,    25,    33,    44,
+      45,    46,    47,    28,    50,    58,    29,    32,    33,    48,
+      28,    56,    21,    41,    51,    28,    29,    32,    33,    41,
+      43,    19,    20,    21,    56,    16,    57,    44,    20,    21,
+      14,    50,    48,    48,    48,    40,    15,    42,    43,    57,
+      58,    59,    15,    45,    46,    22,    32,    17,    32,    15,
+      15
 };
 
   /* YYR1[YYN] -- Symbol number of symbol that rule YYN derives.  */
@@ -1485,18 +1490,18 @@ yyreduce:
   switch (yyn)
     {
   case 2:
-#line 109 "hoa.y"
+#line 114 "hoa.y"
     {
             if (!seenHeader[HOAHDR]) /* redundant because of the grammar */
                 yyerror("No HOA: header item");
             if (!seenHeader[ACCEPTANCE])
                 yyerror("No Acceptance: header item");
          }
-#line 1496 "hoaparser.c"
+#line 1501 "hoaparser.c"
     break;
 
   case 4:
-#line 119 "hoa.y"
+#line 124 "hoa.y"
     {
                   loadedData->version = (yyvsp[0].string);
                   if (seenHeader[HOAHDR])
@@ -1504,17 +1509,17 @@ yyreduce:
                   else
                       seenHeader[HOAHDR] = true;
               }
-#line 1508 "hoaparser.c"
+#line 1513 "hoaparser.c"
     break;
 
   case 5:
-#line 127 "hoa.y"
+#line 132 "hoa.y"
     { /* no new item, nothing to check */ }
-#line 1514 "hoaparser.c"
+#line 1519 "hoaparser.c"
     break;
 
   case 6:
-#line 129 "hoa.y"
+#line 134 "hoa.y"
     {
                if ((yyvsp[0].number) <= 7) {
                    if (seenHeader[(yyvsp[0].number)])
@@ -1523,48 +1528,48 @@ yyreduce:
                        seenHeader[(yyvsp[0].number)] = true;
                }
            }
-#line 1527 "hoaparser.c"
+#line 1532 "hoaparser.c"
     break;
 
   case 7:
-#line 138 "hoa.y"
+#line 143 "hoa.y"
     {
                                                  loadedData->noStates = (yyvsp[0].number);
                                                  (yyval.number) = STATES;
                                                }
-#line 1536 "hoaparser.c"
+#line 1541 "hoaparser.c"
     break;
 
   case 8:
-#line 142 "hoa.y"
+#line 147 "hoa.y"
     {
                                                  loadedData->start = (yyvsp[0].numlist);
                                                  (yyval.number) = START;
                                                }
-#line 1545 "hoaparser.c"
+#line 1550 "hoaparser.c"
     break;
 
   case 9:
-#line 146 "hoa.y"
+#line 151 "hoa.y"
     {
                                                  loadedData->noAPs = (yyvsp[-1].number);
                                                  loadedData->aps = (yyvsp[0].strlist);
                                                  (yyval.number) = AP;
                                                }
-#line 1555 "hoaparser.c"
+#line 1560 "hoaparser.c"
     break;
 
   case 10:
-#line 151 "hoa.y"
+#line 156 "hoa.y"
     {
                                                  loadedData->cntAPs = (yyvsp[0].numlist);
                                                  (yyval.number) = CNTAP;
                                                }
-#line 1564 "hoaparser.c"
+#line 1569 "hoaparser.c"
     break;
 
   case 11:
-#line 155 "hoa.y"
+#line 160 "hoa.y"
     {
                                                  loadedData->aliases =
                                                     prependAliasNode(
@@ -1573,21 +1578,21 @@ yyreduce:
                                                     );
                                                  (yyval.number) = ALIAS;
                                                }
-#line 1577 "hoaparser.c"
+#line 1582 "hoaparser.c"
     break;
 
   case 12:
-#line 163 "hoa.y"
+#line 168 "hoa.y"
     { 
                                                  loadedData->noAccSets = (yyvsp[-1].number);
                                                  loadedData->acc = (yyvsp[0].tree);
                                                  (yyval.number) = ACCEPTANCE;
                                                }
-#line 1587 "hoaparser.c"
+#line 1592 "hoaparser.c"
     break;
 
   case 13:
-#line 168 "hoa.y"
+#line 173 "hoa.y"
     { 
                                                  loadedData->accNameID = (yyvsp[-1].string);
                                                  loadedData->accNameParameters
@@ -1598,237 +1603,312 @@ yyreduce:
                                                     );
                                                  (yyval.number) = ACCNAME;
                                                }
-#line 1602 "hoaparser.c"
+#line 1607 "hoaparser.c"
     break;
 
   case 14:
-#line 178 "hoa.y"
+#line 183 "hoa.y"
     { (yyval.number) = TOOL; }
-#line 1608 "hoaparser.c"
+#line 1613 "hoaparser.c"
     break;
 
   case 15:
-#line 179 "hoa.y"
+#line 184 "hoa.y"
     {
                                                  loadedData->name = (yyvsp[0].string);
                                                  (yyval.number) = NAME;
                                                }
-#line 1617 "hoaparser.c"
+#line 1622 "hoaparser.c"
     break;
 
   case 16:
-#line 183 "hoa.y"
+#line 188 "hoa.y"
     { 
                                                  loadedData->properties =
                                                      concatStrLists(
                                                          loadedData->properties,
                                                          (yyvsp[0].strlist)
                                                      );
-                                                 (yyval.number) = PROPERTIES; }
-#line 1629 "hoaparser.c"
-    break;
-
-  case 17:
-#line 190 "hoa.y"
-    { (yyval.number) = HEADERNAME; }
+                                                 (yyval.number) = PROPERTIES;
+                                               }
 #line 1635 "hoaparser.c"
     break;
 
-  case 18:
-#line 193 "hoa.y"
-    { (yyval.numlist) = newIntNode((yyvsp[0].number)); }
+  case 17:
+#line 196 "hoa.y"
+    { (yyval.number) = HEADERNAME; }
 #line 1641 "hoaparser.c"
     break;
 
-  case 19:
-#line 194 "hoa.y"
-    { (yyval.numlist) = prependIntNode((yyvsp[0].numlist), (yyvsp[-2].number)); }
+  case 18:
+#line 199 "hoa.y"
+    { (yyval.numlist) = newIntNode((yyvsp[0].number)); }
 #line 1647 "hoaparser.c"
     break;
 
-  case 20:
-#line 197 "hoa.y"
-    { (yyval.tree) = (yyvsp[0].tree); }
+  case 19:
+#line 200 "hoa.y"
+    { (yyval.numlist) = prependIntNode((yyvsp[0].numlist), (yyvsp[-2].number)); }
 #line 1653 "hoaparser.c"
     break;
 
-  case 21:
-#line 198 "hoa.y"
-    { (yyval.tree) = orBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
+  case 20:
+#line 203 "hoa.y"
+    { (yyval.tree) = (yyvsp[0].tree); }
 #line 1659 "hoaparser.c"
     break;
 
-  case 22:
-#line 201 "hoa.y"
-    { (yyval.tree) = (yyvsp[0].tree); }
+  case 21:
+#line 204 "hoa.y"
+    { (yyval.tree) = orBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
 #line 1665 "hoaparser.c"
     break;
 
-  case 23:
-#line 202 "hoa.y"
-    { (yyval.tree) = andBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
+  case 22:
+#line 207 "hoa.y"
+    { (yyval.tree) = (yyvsp[0].tree); }
 #line 1671 "hoaparser.c"
     break;
 
-  case 24:
-#line 205 "hoa.y"
-    { (yyval.tree) = boolBTree((yyvsp[0].boolean)); }
+  case 23:
+#line 208 "hoa.y"
+    { (yyval.tree) = andBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
 #line 1677 "hoaparser.c"
     break;
 
-  case 25:
-#line 206 "hoa.y"
-    { (yyval.tree) = apBTree((yyvsp[0].number)); }
+  case 24:
+#line 211 "hoa.y"
+    { (yyval.tree) = boolBTree((yyvsp[0].boolean)); }
 #line 1683 "hoaparser.c"
     break;
 
-  case 26:
-#line 207 "hoa.y"
-    { (yyval.tree) = aliasBTree((yyvsp[0].string)); }
+  case 25:
+#line 212 "hoa.y"
+    { (yyval.tree) = apBTree((yyvsp[0].number)); }
 #line 1689 "hoaparser.c"
     break;
 
-  case 27:
-#line 208 "hoa.y"
-    { (yyval.tree) = notBTree((yyvsp[0].tree)); }
+  case 26:
+#line 213 "hoa.y"
+    { (yyval.tree) = aliasBTree((yyvsp[0].string)); }
 #line 1695 "hoaparser.c"
     break;
 
-  case 28:
-#line 209 "hoa.y"
-    { (yyval.tree) = (yyvsp[-1].tree); }
+  case 27:
+#line 214 "hoa.y"
+    { (yyval.tree) = notBTree((yyvsp[0].tree)); }
 #line 1701 "hoaparser.c"
     break;
 
-  case 29:
-#line 212 "hoa.y"
-    { (yyval.tree) = (yyvsp[0].tree); }
+  case 28:
+#line 215 "hoa.y"
+    { (yyval.tree) = (yyvsp[-1].tree); }
 #line 1707 "hoaparser.c"
     break;
 
-  case 30:
-#line 213 "hoa.y"
-    { (yyval.tree) = orBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
+  case 29:
+#line 218 "hoa.y"
+    { (yyval.tree) = (yyvsp[0].tree); }
 #line 1713 "hoaparser.c"
     break;
 
-  case 31:
-#line 216 "hoa.y"
-    { (yyval.tree) = (yyvsp[0].tree); }
+  case 30:
+#line 219 "hoa.y"
+    { (yyval.tree) = orBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
 #line 1719 "hoaparser.c"
     break;
 
-  case 32:
-#line 217 "hoa.y"
-    { (yyval.tree) = andBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
+  case 31:
+#line 222 "hoa.y"
+    { (yyval.tree) = (yyvsp[0].tree); }
 #line 1725 "hoaparser.c"
     break;
 
-  case 33:
-#line 220 "hoa.y"
-    { (yyval.tree) = accidBTree((yyvsp[-3].nodetype), (yyvsp[-1].number), false); }
+  case 32:
+#line 223 "hoa.y"
+    { (yyval.tree) = andBTree((yyvsp[-2].tree), (yyvsp[0].tree)); }
 #line 1731 "hoaparser.c"
     break;
 
-  case 34:
-#line 221 "hoa.y"
-    { (yyval.tree) = accidBTree((yyvsp[-4].nodetype), (yyvsp[-1].number), true); }
+  case 33:
+#line 226 "hoa.y"
+    { (yyval.tree) = accidBTree((yyvsp[-3].nodetype), (yyvsp[-1].number), false); }
 #line 1737 "hoaparser.c"
     break;
 
-  case 35:
-#line 222 "hoa.y"
-    { (yyval.tree) = (yyvsp[-1].tree); }
+  case 34:
+#line 227 "hoa.y"
+    { (yyval.tree) = accidBTree((yyvsp[-4].nodetype), (yyvsp[-1].number), true); }
 #line 1743 "hoaparser.c"
     break;
 
-  case 36:
-#line 223 "hoa.y"
-    { (yyval.tree) = boolBTree((yyvsp[0].boolean)); }
+  case 35:
+#line 228 "hoa.y"
+    { (yyval.tree) = (yyvsp[-1].tree); }
 #line 1749 "hoaparser.c"
     break;
 
-  case 37:
-#line 226 "hoa.y"
-    { (yyval.nodetype) = NT_FIN; }
+  case 36:
+#line 229 "hoa.y"
+    { (yyval.tree) = boolBTree((yyvsp[0].boolean)); }
 #line 1755 "hoaparser.c"
     break;
 
-  case 38:
-#line 227 "hoa.y"
-    { (yyval.nodetype) = NT_INF; }
+  case 37:
+#line 232 "hoa.y"
+    { (yyval.nodetype) = NT_FIN; }
 #line 1761 "hoaparser.c"
     break;
 
-  case 39:
-#line 230 "hoa.y"
-    { (yyval.strlist) = NULL; }
+  case 38:
+#line 233 "hoa.y"
+    { (yyval.nodetype) = NT_INF; }
 #line 1767 "hoaparser.c"
     break;
 
+  case 39:
+#line 236 "hoa.y"
+    { (yyval.strlist) = NULL; }
+#line 1773 "hoaparser.c"
+    break;
+
   case 40:
-#line 231 "hoa.y"
+#line 237 "hoa.y"
     { 
                                             (yyval.strlist) = (yyvsp[-1].boolean) ? prependStrNode((yyvsp[0].strlist), "True")
                                                     : prependStrNode((yyvsp[0].strlist), "False");
                                           }
-#line 1776 "hoaparser.c"
+#line 1782 "hoaparser.c"
     break;
 
   case 41:
-#line 235 "hoa.y"
+#line 241 "hoa.y"
     {
                                             char buffer[66];
                                             sprintf(buffer, "%d", (yyvsp[-1].number));
                                             (yyval.strlist) = prependStrNode((yyvsp[0].strlist), buffer);
                                           }
-#line 1786 "hoaparser.c"
-    break;
-
-  case 42:
-#line 240 "hoa.y"
-    { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
 #line 1792 "hoaparser.c"
     break;
 
-  case 48:
-#line 249 "hoa.y"
-    { (yyval.strlist) = NULL; }
+  case 42:
+#line 246 "hoa.y"
+    { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
 #line 1798 "hoaparser.c"
     break;
 
-  case 49:
-#line 250 "hoa.y"
-    { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
+  case 48:
+#line 255 "hoa.y"
+    { (yyval.strlist) = NULL; }
 #line 1804 "hoaparser.c"
     break;
 
-  case 50:
-#line 253 "hoa.y"
-    { (yyval.strlist) = NULL; }
+  case 49:
+#line 256 "hoa.y"
+    { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
 #line 1810 "hoaparser.c"
     break;
 
-  case 51:
-#line 254 "hoa.y"
-    { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
+  case 50:
+#line 259 "hoa.y"
+    { (yyval.strlist) = NULL; }
 #line 1816 "hoaparser.c"
     break;
 
-  case 62:
-#line 273 "hoa.y"
-    { (yyval.numlist) = NULL; }
+  case 51:
+#line 260 "hoa.y"
+    { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
 #line 1822 "hoaparser.c"
     break;
 
-  case 63:
-#line 274 "hoa.y"
-    { (yyval.numlist) = prependIntNode((yyvsp[0].numlist), (yyvsp[-1].number)); }
+  case 52:
+#line 264 "hoa.y"
+    { loadedData->states = (yyvsp[0].statelist); }
 #line 1828 "hoaparser.c"
     break;
 
+  case 53:
+#line 267 "hoa.y"
+    { (yyval.statelist) = NULL; }
+#line 1834 "hoaparser.c"
+    break;
 
-#line 1832 "hoaparser.c"
+  case 54:
+#line 269 "hoa.y"
+    {
+                (yyval.statelist) = prependStateNode((yyvsp[-2].statelist), (yyvsp[0].statelist), (yyvsp[-1].trlist));
+              }
+#line 1842 "hoaparser.c"
+    break;
+
+  case 55:
+#line 275 "hoa.y"
+    { (yyval.statelist) = newStateNode((yyvsp[-2].number), (yyvsp[-1].string), (yyvsp[-3].tree), (yyvsp[0].numlist)); }
+#line 1848 "hoaparser.c"
+    break;
+
+  case 56:
+#line 278 "hoa.y"
+    { (yyval.tree) = NULL; }
+#line 1854 "hoaparser.c"
+    break;
+
+  case 57:
+#line 279 "hoa.y"
+    { (yyval.tree) = (yyvsp[-1].tree); }
+#line 1860 "hoaparser.c"
+    break;
+
+  case 58:
+#line 282 "hoa.y"
+    { (yyval.string) = NULL; }
+#line 1866 "hoaparser.c"
+    break;
+
+  case 59:
+#line 283 "hoa.y"
+    { (yyval.string) = (yyvsp[0].string); }
+#line 1872 "hoaparser.c"
+    break;
+
+  case 60:
+#line 286 "hoa.y"
+    { (yyval.numlist) = NULL; }
+#line 1878 "hoaparser.c"
+    break;
+
+  case 61:
+#line 287 "hoa.y"
+    { (yyval.numlist) = (yyvsp[-1].numlist); }
+#line 1884 "hoaparser.c"
+    break;
+
+  case 62:
+#line 290 "hoa.y"
+    { (yyval.numlist) = NULL; }
+#line 1890 "hoaparser.c"
+    break;
+
+  case 63:
+#line 291 "hoa.y"
+    { (yyval.numlist) = prependIntNode((yyvsp[0].numlist), (yyvsp[-1].number)); }
+#line 1896 "hoaparser.c"
+    break;
+
+  case 64:
+#line 294 "hoa.y"
+    { (yyval.trlist) = NULL; }
+#line 1902 "hoaparser.c"
+    break;
+
+  case 65:
+#line 296 "hoa.y"
+    { (yyval.trlist) = prependTransNode((yyvsp[0].trlist), (yyvsp[-3].tree), (yyvsp[-2].numlist), (yyvsp[-1].numlist)); }
+#line 1908 "hoaparser.c"
+    break;
+
+
+#line 1912 "hoaparser.c"
 
       default: break;
     }
@@ -2066,7 +2146,7 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 280 "hoa.y"
+#line 299 "hoa.y"
 
 /* Additional C code */
   

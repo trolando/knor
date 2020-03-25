@@ -66,6 +66,7 @@ struct TransList {
     BTree* label;
     IntList* successors;
     IntList* accSig;
+    TransList* next;
 };
 
 typedef struct StateList StateList;
@@ -75,6 +76,7 @@ struct StateList {
     BTree* label;
     IntList* accSig;
     TransList* transitions;
+    StateList* next;
 };
 
 typedef struct AliasList AliasList;
@@ -114,6 +116,9 @@ void defaultsHoa(HoaData*);
 void deleteHoa(HoaData*);
 
 // list management functions
+StateList* newStateNode(int, char*, BTree*, IntList*);
+StateList* prependStateNode(StateList*, StateList*, TransList*);
+TransList* prependTransNode(TransList*, BTree*, IntList*, IntList*);
 IntList* newIntNode(int);
 IntList* prependIntNode(IntList*, int);
 StringList* prependStrNode(StringList*, char*);
