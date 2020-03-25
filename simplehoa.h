@@ -70,12 +70,20 @@ struct StateList {
     TransList* transitions;
 };
 
+typedef struct AliasList AliasList;
+struct AliasList {
+    char* alias;
+    BTree* labelExpr;
+    AliasList* next;
+};
+
 typedef struct HoaData {
     int noStates;
     StringList* aps;
     StringList* accNameParameters;
     StringList* properties;
     StateList* states;
+    AliasList* aliases;
     IntList* start;
     IntList* cntAPs;
     int noAccSets;
@@ -95,12 +103,15 @@ int parseHoa(FILE*, HoaData*);
 void defaultsHoa(HoaData*);
 void deleteHoa(HoaData*);
 IntList* newIntNode(int);
-IntList* appendIntNode(IntList*, int);
-StringList* appendStrNode(StringList*, char*);
+IntList* prependIntNode(IntList*, int);
+StringList* prependStrNode(StringList*, char*);
+AliasList* prependAliasNode(AliasList*, char*, BTree*);
 StringList* concatStrLists(StringList*, StringList*);
 BTree* boolBTree(bool);
 BTree* andBTree(BTree*, BTree*);
 BTree* orBTree(BTree*, BTree*);
+BTree* notBTree(BTree*);
+BTree* aliasBTree(char*);
 BTree* accidBTree(NodeType, int, bool);
 BTree* apBTree(int);
 BTree* aliasBTree(char*);

@@ -37,17 +37,27 @@ IntList* newIntNode(int val) {
     return list;
 }
 
-IntList* appendIntNode(IntList* node, int val) {
+IntList* prependIntNode(IntList* node, int val) {
     IntList* newHead = malloc(sizeof(IntList));
     newHead->i = val;
     newHead->next = node;
     return newHead;
 }
 
-StringList* appendStrNode(StringList* node, char* str) {
+StringList* prependStrNode(StringList* node, char* str) {
     StringList* newHead = malloc(sizeof(StringList));
-    newHead->str = malloc(sizeof(char) * strlen(str) + 1);
+    newHead->str = malloc(sizeof(char) * (strlen(str) + 1));
     strcpy(newHead->str, str);
+    newHead->next = node;
+    return newHead;
+}
+
+AliasList* prependAliasNode(AliasList* node, char* alias, BTree* labelExpr) {
+    AliasList* newHead = malloc(sizeof(AliasList));
+    newHead->alias = malloc(sizeof(char) * (strlen(alias) + 1));
+    strcpy(newHead->alias, alias);
+    newHead->next = node;
+    newHead->labelExpr = labelExpr;
     newHead->next = node;
     return newHead;
 }
@@ -95,6 +105,27 @@ BTree* orBTree(BTree* u, BTree* v) {
     return created;
 }
 
+BTree* notBTree(BTree* u) {
+    BTree* created = malloc(sizeof(BTree));
+    created->left = u;
+    created->right = NULL;
+    created->alias = NULL;
+    created->type = NT_NOT;
+    created->id = -1;
+    return created;
+}
+
+BTree* aliasBTree(char* alias) {
+    BTree* created = malloc(sizeof(BTree));
+    created->left = NULL;
+    created->right = NULL;
+    created->alias = malloc(sizeof(char) * strlen(alias));
+    strcpy(created->alias, (alias + 1));
+    created->type = NT_ALIAS;
+    created->id = -1;
+    return created;
+}
+
 BTree* apBTree(int id) {
     BTree* created = malloc(sizeof(BTree));
     created->left = NULL;
@@ -138,6 +169,7 @@ void defaultsHoa(HoaData* data) {
     data->start = NULL;
     data->version = NULL;
     data->aps = NULL;
+    data->aliases = NULL;
     // data->noAccSets  // these need no default as they will
     // data->acc        // always be set by the parser
     data->accNameID = NULL;
@@ -174,9 +206,22 @@ static void deleteIntList(IntList* list) {
 static void deleteBTree(BTree* root) {
     if (root == NULL)
         return;
+    if (root->alias != NULL)
+        free(root->alias);
     deleteBTree(root->left);
     deleteBTree(root->right);
     free(root);
+}
+
+static void deleteAliases(AliasList* list) {
+    AliasList* cur = list;
+    while (cur != NULL) {
+        AliasList* next = cur->next;
+        free(cur->alias);
+        deleteBTree(cur->labelExpr);
+        free(cur);
+        cur = next;
+    }
 }
 
 void deleteHoa(HoaData* data) {
@@ -195,8 +240,11 @@ void deleteHoa(HoaData* data) {
     deleteIntList(data->cntAPs);
     // BTrees
     deleteBTree(data->acc);
+    // Aliases
+    deleteAliases(data->aliases);
+
     // State lists
-    //StateList* staes;
+    //StateList* states;
 }
 
 // DFS printing in in/pre-order
@@ -204,6 +252,12 @@ static void printBTree(BTree* root) {
     if (root == NULL)
         return;
     switch (root->type) {
+        case NT_AP:
+            printf("%d", root->id);
+            break;
+        case NT_ALIAS:
+            printf("@%s", root->alias);
+            break;
         case NT_AND:
             printf("AND(");
             printBTree(root->left);
@@ -273,6 +327,13 @@ void printHoa(const HoaData* data) {
     printf("Acceptance: ");
     printBTree(data->acc);
     printf("\n");
+
+    printf("Aliases: \n");
+    for (AliasList* it = data->aliases; it != NULL; it = it->next) {
+        printf("* %s = ", it->alias);
+        printBTree(it->labelExpr);
+        printf("\n");
+    }
 
     printf("Acceptance parameters: ");
     for (StringList* it = data->accNameParameters; it != NULL; it = it->next)

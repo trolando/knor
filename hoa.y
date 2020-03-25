@@ -59,7 +59,7 @@ void hdrItemError(const char* str) {
 /* Yacc declarations: Tokens/terminal used in the grammar */
 
 %locations
-%error-verbose
+%define parse.error verbose
 
 /* HEADER TOKENS */
 /* compulsory: must appear exactly once */
@@ -154,9 +154,9 @@ header_item: STATES INT                        {
                                                }
            | ALIAS ANAME label_expr            {
                                                  loadedData->aliases =
-                                                    appendAliasNode(
+                                                    prependAliasNode(
                                                         loadedData->aliases,
-                                                        $1, $2
+                                                        $2, $3
                                                     );
                                                  $$ = ALIAS;
                                                }
@@ -191,7 +191,7 @@ header_item: STATES INT                        {
            ;
 
 state_conj: INT                 { $$ = newIntNode($1); }
-          | state_conj "&" INT  { $$ = appendIntNode($1, $3); }
+          | INT "&" state_conj  { $$ = prependIntNode($3, $1); }
           ;
 
 label_expr: lab_exp_conj                { $$ = $1; }
@@ -206,7 +206,7 @@ lab_exp_atom: BOOL               { $$ = boolBTree($1); }
             | INT                { $$ = apBTree($1); }
             | ANAME              { $$ = aliasBTree($1); }
             | "!" lab_exp_atom   { $$ = notBTree($2); }
-            | "(" label_expr ")" { $$ = $1; }
+            | "(" label_expr ")" { $$ = $2; }
             ;
 
 acceptance_cond: acc_cond_conj                     { $$ = $1; }
@@ -228,16 +228,16 @@ accid: FIN { $$ = NT_FIN; }
      ;
 
 boolintid_list: /* empty */               { $$ = NULL; }
-              | boolintid_list BOOL       { 
-                                            $$ = $2 ? appendStrNode($1, "True")
-                                                    : appendStrNode($1, "False");
+              | BOOL boolintid_list       { 
+                                            $$ = $1 ? prependStrNode($2, "True")
+                                                    : prependStrNode($2, "False");
                                           }
-              | boolintid_list INT        {
+              | INT boolintid_list        {
                                             char buffer[66];
-                                            sprintf(buffer, "%d", $2);
-                                            $$ = appendStrNode($1, buffer);
+                                            sprintf(buffer, "%d", $1);
+                                            $$ = prependStrNode($2, buffer);
                                           }
-              | boolintid_list IDENTIFIER { $$ = appendStrNode($1, $2); }
+              | IDENTIFIER boolintid_list { $$ = prependStrNode($2, $1); }
               ;
 
 boolintstrid_list: /* empty */
@@ -247,11 +247,11 @@ boolintstrid_list: /* empty */
                  | boolintstrid_list IDENTIFIER;
 
 string_list: /* empty */        { $$ = NULL; }
-           | string_list STRING { $$ = appendStrNode($1, $2); }
+           | STRING string_list { $$ = prependStrNode($2, $1); }
            ;
 
 id_list: /* empty */        { $$ = NULL; }
-       | id_list IDENTIFIER { $$ = appendStrNode($1, $2); }
+       | IDENTIFIER id_list { $$ = prependStrNode($2, $1); }
        ;
 
 body: statespec_list;
@@ -271,7 +271,7 @@ maybe_accsig: /* empty */
             | "{" int_list "}";
 
 int_list: /* empty */  { $$ = NULL; }
-        | int_list INT { $$ = appendIntNode($1, $2); }
+        | INT int_list { $$ = prependIntNode($2, $1); }
         ;
 
 trans_list: /* empty */
@@ -293,7 +293,7 @@ int parseHoa(FILE* input, HoaData* data) {
     if (noAPs != loadedData->noAPs) {
         fprintf(stderr,
                 "Semantic error: the number and list of atomic propositions "
-                "do not match\n");
+                "do not match (%d vs %d)\n", noAPs, loadedData->noAPs);
         semanticError = true;
     }
     return ret | autoError | semanticError;
