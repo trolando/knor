@@ -308,6 +308,8 @@ void deleteHoa(HoaData* data) {
     deleteAliases(data->aliases);
     // State lists
     deleteStateList(data->states);
+    // free container
+    free(data);
 }
 
 // DFS printing in in/pre-order

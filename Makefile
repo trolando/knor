@@ -1,14 +1,16 @@
 CC = gcc
+
+# Common headers and sources are given names for convenience
 HDRS = hoalexer.h hoaparser.h simplehoa.h
-SRCS = hoalexer.c hoaparser.c simplehoa.c hoa2aig.c
+SRCS = hoalexer.c hoaparser.c simplehoa.c
 
 CFLAGS = -O3 -DNDEBUG
 DBGFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 
 .PHONY: clean
 
-hoa2aig: $(SRCS) $(HDRS)
-	$(CC) $(CFLAGS) -o hoa2aig $(SRCS)
+hoa2aig: $(SRCS) $(HDRS) hoa2aig.c
+	$(CC) $(DBGFLAGS) -lm -o hoa2aig $(SRCS) hoa2aig.c
 
 # The parser is flex + bison based, everything is generated from
 # hoa.l and hoa.y, the tokenizer and parser specifications
@@ -18,8 +20,8 @@ hoalexer.c: hoa.l hoaparser.c hoaparser.h
 hoaparser.c: hoa.y
 	bison --defines --output=hoaparser.c hoa.y
 
-tests: $(SRCS) $(HDRS)
-	$(CC) $(DBGFLAGS) -o tests $(SRCS)
+tests: $(SRCS) $(HDRS) tests.c
+	$(CC) $(DBGFLAGS) -o tests $(SRCS) tests.c
 	ASAN_OPTIONS=detect_leaks=1
 	cat examples/test1.ehoa | ./tests
 	cat examples/test2.ehoa | ./tests
