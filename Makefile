@@ -20,22 +20,22 @@ hoalexer.c: hoa.l hoaparser.c hoaparser.h
 hoaparser.c: hoa.y
 	bison --defines --output=hoaparser.c hoa.y
 
-tests: $(SRCS) $(HDRS) tests.c
-	$(CC) $(DBGFLAGS) -o tests $(SRCS) tests.c
+parsertests: $(SRCS) $(HDRS) parsertests.c
+	$(CC) $(DBGFLAGS) -o parsertests $(SRCS) parsertests.c
 	ASAN_OPTIONS=detect_leaks=1
-	cat examples/test1.ehoa | ./tests
-	cat examples/test2.ehoa | ./tests
-	cat examples/test3.ehoa | ./tests
-	cat examples/aut1.ehoa | ./tests
-	cat examples/aut2.ehoa | ./tests
-	cat examples/aut3.ehoa | ./tests
-	cat examples/aut4.ehoa | ./tests
-	cat examples/aut5.ehoa | ./tests
-	cat examples/aut6.ehoa | ./tests
-	cat examples/aut7.ehoa | ./tests
-	cat examples/aut8.ehoa | ./tests
+	cat examples/test1.ehoa | ./parsertests
+	cat examples/test2.ehoa | ./parsertests
+	cat examples/test3.ehoa | ./parsertests
+	cat examples/aut1.ehoa | ./parsertests
+	cat examples/aut2.ehoa | ./parsertests
+	cat examples/aut3.ehoa | ./parsertests
+	cat examples/aut4.ehoa | ./parsertests
+	cat examples/aut5.ehoa | ./parsertests
+	cat examples/aut6.ehoa | ./parsertests
+	cat examples/aut7.ehoa | ./parsertests
+	cat examples/aut8.ehoa | ./parsertests
 
 clean:
 	rm -f hoalexer.h hoalexer.c
 	rm -f hoaparser.h hoaparser.c
-	rm -f hoa2aig tests
+	rm -f hoa2aig parsertests
