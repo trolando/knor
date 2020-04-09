@@ -10,7 +10,7 @@ DBGFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 .PHONY: clean
 
 hoa2aig: $(SRCS) $(HDRS) hoa2aig.c
-	$(CC) $(DBGFLAGS) -lm -o hoa2aig $(SRCS) hoa2aig.c
+	$(CC) $(DBGFLAGS) -lm -o hoa2aig $(SRCS) aiger.c hoa2aig.c
 
 # The parser is flex + bison based, everything is generated from
 # hoa.l and hoa.y, the tokenizer and parser specifications

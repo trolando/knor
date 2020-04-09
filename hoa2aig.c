@@ -25,19 +25,20 @@
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <string.h>
+
+#include "aiger.h"
 
 #include "simplehoa.h"
 
 /* A red-black tree to keep track of all and gates
  * we create for the automaton's transition function
  * Conventions:
- * (1) literals are positive or negative integers
- *     depending on whether they are negated
- * (2) the key is composed of the left operand (literal)
- *     and the right operand with the left operand being
- *     the "smaller" variable (not literal)
- * (3) variables are indexed from 2 (so 1 is "True" and
- *     -1 is "False")
+ * (1) literals are positive or negative integers depending on whether they
+ * are negated
+ * (2) the key is composed of the left operand (literal) and the right operand
+ * with the left operand being the "smaller" variable (not literal)
+ * (3) variables are indexed from 2 (so 1 is "True" and -1 is "False")
  */
 typedef enum {BLACK, RED} NodeColor;
 
@@ -62,11 +63,27 @@ static void recursivePrint(RBTree* n, int h) {
     if (n == NULL)
         return;
     recursivePrint(n->left, h + 1);
-    printf("%d: key=(%d,%d), var=%d (%s); ", h, n->opLeft, n->opRight,
+    printf("%d: key=(%d,%d), var=%d (%s)\n", h, n->opLeft, n->opRight,
            n->var, colorStr(n->color));
     recursivePrint(n->right, h + 1);
 }
 #endif
+
+static void dumpAiger(RBTree* n, aiger* aig) {
+    // Essentially: a DFS with in-order dump
+    if (n == NULL)
+        return;
+    dumpAiger(n->left, aig);
+    unsigned var = 2 * (n->var - 1);
+    unsigned op1 = 2 * (abs(n->opLeft) - 1);
+    if (n->opLeft < 0)
+        op1 += 1;
+    unsigned op2 = 2 * (abs(n->opRight) - 1);
+    if (n->opRight < 0)
+        op2 += 1;
+    aiger_add_and(aig, var, op1, op2);
+    dumpAiger(n->right, aig);
+}
 
 static void deleteTree(RBTree* n) {
     if (n == NULL)
@@ -267,8 +284,12 @@ static inline int and(AigTable* table, int op1, int op2) {
     return t->var;
 }
 
+static inline int or(AigTable* table, int op1, int op2) {
+    return -1 * and(table, -1 * op1, -1 * op2);
+}
+
 /* Read the EHOA file, encode the automaton in and-inverter
- * graphs, then use A. Biere's AIGER to write the graph
+ * graphs, then use A. Biere's AIGER to dump the graph
  */
 int main(int argc, char* argv[]) {
     HoaData* data = malloc(sizeof(HoaData));
@@ -277,38 +298,131 @@ int main(int argc, char* argv[]) {
     // 0 means everything was parsed correctly
     if (ret != 0)
         return ret;
+    // A few semantic checks!
+    // (1) the automaton should be a parity one
+    if (strncmp(data->accNameID, "parity", 6) != 0) {
+        fprintf(stderr, "Expected \"parity...\" automaton, found \"%s\" "
+                        "as automaton type\n", data->accNameID);
+        return 100;
+    }
+    // (2) the automaton should be deterministic
+    bool det = false;
+    for (StringList* prop = data->properties; prop != NULL; prop = prop->next) {
+        if (strncmp(prop->str, "deterministic", 13) == 0)
+            det = true;
+    }
+    if (!det) {
+        fprintf(stderr, "Expected a deterministic automaton, "
+                        "did not find \"deterministic\" in the properties\n");
+        return 200;
+    }
 
     // We now encode the transition relation into our
-    // "unique" AIG symbol table
+    // "sorta unique" AIG symbol table
     AigTable andGates;
     andGates.root = NULL;
     andGates.nextVar = 2;
-    // I need to reserve a few variables though
-    // (1) one per input + an extra input I will introduce
-    // (2) one per latch needed for the states + 2
-    //     extra that I will need to simulate FG
-    andGates.nextVar += data->noAPs + 1;
+
+    // We need to reserve a few variables though
+    // (1) one per input + an extra input we will introduce
+    // (2) one per latch needed for the states + 2 extra that we will need to
+    // simulate eventual safety via safety
+    int noInputs = data->noAPs + 1;
+    andGates.nextVar += noInputs;
     // we need floor(lg(#states)) + 1 just for the states,
     // where lg is the logarithm base 2; but C only has
     // natural logarithms
-    int noLatches = (int) (log(data->noStates) / log(2.0)) + 1;
-    andGates.nextVar += noLatches + 2;
+    int noLatches = (int) (log(data->noStates) / log(2.0)) + 3;
+    andGates.nextVar += noLatches;
 #ifndef NDEBUG
     printf("Reserved %d variables for inputs\n",
-           data->noAPs + 1);
-    printf("Reserved %d variables for latches\n",
-           noLatches + 2);
+           noInputs);
+    printf("Reserved %d variables for latches to encode %d states\n",
+           noLatches, data->noStates);
 #endif
-    int v = and(&andGates, 4, -2);
-    v = and(&andGates, 5, 4);
-    v = and(&andGates, 4, v * -1);
-    //assert(v < andGates.nextVar);
+
+    // We will traverse states, their transitions, bits set to 1 in the
+    // successor via the transition, and add (i.e. logical or in place)
+    // the transition
+    // Step 1: set up state encodings
+    int statecode[data->noStates];
+    for (int i = 0; i < data->noStates; i++)
+        statecode[i] = 1;
+    for (int src = 0; src < data->noStates; src++) {
+        // Step 1.1: create the encoding of the source state based on the
+        // binary encoding of its number
+        int mask = 1;
+        for (int latch = 0; latch < noLatches - 2; latch++) {
+            int latchlit = noInputs + latch;
+            if ((src & mask) != mask)
+                latchlit *= -1;
+            statecode[src] = and(&andGates, statecode[src], latchlit);
+            mask = mask << 1;
+        }
+    }
+    // Step 2: set up trivial predecessor relations
+    int predecessors[noLatches];
+    memset(predecessors, 0, noLatches * sizeof(int));
+    // Step 3: traverse the list of successors to update the latter
+    for (StateList* src = data->states; src != NULL; src = src->next) {
+        for (TransList* trans = src->transitions; trans != NULL;
+                                                  trans = trans->next) {
+            int noSuccessors = 0;
+            for (IntList* tgt = trans->successors; tgt != NULL;
+                                                   tgt = tgt->next) {
+                int mask = 1;
+                for (int latch = 0; latch < noLatches - 2; latch++) {
+                    if (tgt->i & mask == 1) {
+                        // Step 3.1: for each latch which should be set to 1
+                        // for this successor, we update its predecessor
+                        // relation
+                        // FIXME: the transition label on the inputs is
+                        // missing
+                        predecessors[latch] = or(&andGates,
+                                                 predecessors[latch],
+                                                 statecode[src->id]);
+                    }
+                    mask << 1;
+                }
+                noSuccessors++;
+            }
+            // since the automaton is supposedly deterministic, we should only
+            // see one successor per transition
+            assert(noSuccessors == 1);
+        }
+    }
 
 #ifndef NDEBUG
     recursivePrint(andGates.root, 0);
-    printf("\n");
 #endif
+    // Create and print the constructed AIG
+    aiger* aig = aiger_init();
+    // add inputs
+    int lit = 2;
+    for (StringList* aps = data->aps; aps != NULL; aps = aps->next) {
+        aiger_add_input(aig, lit, aps->str);
+        lit += 2;
+    }
+    // add the extra input
+    aiger_add_input(aig, lit, "reset_safety");
+    lit += 2;
+    // add latches
+    char latchName[50];
+    for (int latch = 0; latch < noLatches; latch++) {
+        sprintf("latch_%d", latchName, latch);
+        aiger_add_latch(aig, lit, 2 * (predecessors[latch] - 1), latchName); 
+        lit += 2;
+    }
+    // add and-gates
+    dumpAiger(andGates.root, aig);
+#ifndef NDEBUG
+    aiger_check(aig);
+#endif
+    // and dump the aig
+    aiger_write_to_file(aig, aiger_ascii_mode, stdout);
 
+    // Free dynamic memory
+    aiger_reset(aig);
     deleteTree(andGates.root);
     deleteHoa(data);
     return EXIT_SUCCESS;
