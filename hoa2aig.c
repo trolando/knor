@@ -69,19 +69,26 @@ static void recursivePrint(RBTree* n, int h) {
 }
 #endif
 
+static inline unsigned var2aiglit(int var) {
+    if (var == -1)
+        return 0;
+    if (var == 1)
+        return 1;
+    int aiglit = 2 * (abs(var) - 1);
+    if (var < 0)
+        aiglit += 1;
+    return aiglit;
+}
+
 static void dumpAiger(RBTree* n, aiger* aig) {
     // Essentially: a DFS with in-order dump
     if (n == NULL)
         return;
     dumpAiger(n->left, aig);
-    unsigned var = 2 * (n->var - 1);
-    unsigned op1 = 2 * (abs(n->opLeft) - 1);
-    if (n->opLeft < 0)
-        op1 += 1;
-    unsigned op2 = 2 * (abs(n->opRight) - 1);
-    if (n->opRight < 0)
-        op2 += 1;
-    aiger_add_and(aig, var, op1, op2);
+    aiger_add_and(aig,
+                  var2aiglit(n->var),
+                  var2aiglit(n->opLeft),
+                  var2aiglit(n->opRight));
     dumpAiger(n->right, aig);
 }
 
@@ -288,6 +295,10 @@ static inline int or(AigTable* table, int op1, int op2) {
     return -1 * and(table, -1 * op1, -1 * op2);
 }
 
+static int label2aig(AigTable* aig, RBTree* label) {
+    // TODO
+}
+
 /* Read the EHOA file, encode the automaton in and-inverter
  * graphs, then use A. Biere's AIGER to dump the graph
  */
@@ -315,6 +326,11 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Expected a deterministic automaton, "
                         "did not find \"deterministic\" in the properties\n");
         return 200;
+    }
+    // (3) the automaton should have a unique start state
+    if (data->start == NULL || data->start->next != NULL) {
+        fprintf(stderr, "Expected a unique start state\n");
+        return 300;
     }
 
     // We now encode the transition relation into our
@@ -348,13 +364,24 @@ int main(int argc, char* argv[]) {
     int statecode[data->noStates];
     for (int i = 0; i < data->noStates; i++)
         statecode[i] = 1;
+    // AIGER assumes 0 is the initial state, so we need to give the start
+    // state the right latch valuation
+    int start = data->start->i;
+    int nextId = 1;
     for (int src = 0; src < data->noStates; src++) {
         // Step 1.1: create the encoding of the source state based on the
         // binary encoding of its number
         int mask = 1;
+        int curId;
+        if (src == start) {
+            curId = 0;
+        } else {
+            curId = nextId;
+            nextId++;
+        }
         for (int latch = 0; latch < noLatches - 2; latch++) {
-            int latchlit = noInputs + latch;
-            if ((src & mask) != mask)
+            int latchlit = 2 + noInputs + latch;
+            if ((curId & mask) != mask)
                 latchlit *= -1;
             statecode[src] = and(&andGates, statecode[src], latchlit);
             mask = mask << 1;
@@ -362,11 +389,23 @@ int main(int argc, char* argv[]) {
     }
     // Step 2: set up trivial predecessor relations
     int predecessors[noLatches];
-    memset(predecessors, 0, noLatches * sizeof(int));
+    for (int i = 0; i < noLatches; i++)
+        predecessors[i] = -1;
     // Step 3: traverse the list of successors to update the latter
     for (StateList* src = data->states; src != NULL; src = src->next) {
+        bool labelled = false;
+        int labelCode;
+        if (src->label != NULL) {
+            labelCode = label2aig(&andGates, src->label);
+            labelled = true;
+        }
+
         for (TransList* trans = src->transitions; trans != NULL;
                                                   trans = trans->next) {
+            if (!labelled) {
+                assert(trans->label != NULL);
+                labelCode = label2aig(&andGates, trans->label);
+            }
             int noSuccessors = 0;
             for (IntList* tgt = trans->successors; tgt != NULL;
                                                    tgt = tgt->next) {
@@ -376,11 +415,13 @@ int main(int argc, char* argv[]) {
                         // Step 3.1: for each latch which should be set to 1
                         // for this successor, we update its predecessor
                         // relation
+                        int transCode = and(&andGates,
+                                            labelCode,
+                                            statecode[src->id]);
                         // FIXME: the transition label on the inputs is
                         // missing
-                        predecessors[latch] = or(&andGates,
-                                                 predecessors[latch],
-                                                 statecode[src->id]);
+                        predecessors[latch] = or(&andGates, transCode,
+                                                 predecessors[latch]);
                     }
                     mask << 1;
                 }
@@ -395,8 +436,10 @@ int main(int argc, char* argv[]) {
 #ifndef NDEBUG
     recursivePrint(andGates.root, 0);
 #endif
+
     // Create and print the constructed AIG
     aiger* aig = aiger_init();
+    printf("AIG structure initialized\n");
     // add inputs
     int lit = 2;
     for (StringList* aps = data->aps; aps != NULL; aps = aps->next) {
@@ -406,17 +449,28 @@ int main(int argc, char* argv[]) {
     // add the extra input
     aiger_add_input(aig, lit, "reset_safety");
     lit += 2;
+    printf("Inputs done!\n");
     // add latches
     char latchName[50];
     for (int latch = 0; latch < noLatches; latch++) {
-        sprintf("latch_%d", latchName, latch);
-        aiger_add_latch(aig, lit, 2 * (predecessors[latch] - 1), latchName); 
+        sprintf(latchName, "latch_%d", latch);
+        printf("latch %d with next var/lit %d/%d and name %s\n",
+               lit, predecessors[latch], 
+               var2aiglit(predecessors[latch]), latchName);
+        aiger_add_latch(aig, lit, var2aiglit(predecessors[latch]), latchName); 
         lit += 2;
     }
     // add and-gates
+    printf("Just before dumping aiger gates\n");
     dumpAiger(andGates.root, aig);
 #ifndef NDEBUG
-    aiger_check(aig);
+    printf("Just before the AIG check...\n");
+    const char* msg = aiger_check(aig);
+    if (msg) {
+        fprintf(stderr, msg);
+        return 400;
+    }
+
 #endif
     // and dump the aig
     aiger_write_to_file(aig, aiger_ascii_mode, stdout);
