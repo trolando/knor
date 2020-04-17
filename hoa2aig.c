@@ -27,7 +27,7 @@
 #include <math.h>
 #include <string.h>
 
-#include "aiger.h"
+#include "aiger/aiger.h"
 
 #include "simplehoa.h"
 
@@ -295,8 +295,31 @@ static inline int or(AigTable* table, int op1, int op2) {
     return -1 * and(table, -1 * op1, -1 * op2);
 }
 
-static int label2aig(AigTable* aig, RBTree* label) {
-    // TODO
+static int label2aig(AigTable* aig, BTree* label, AliasList* aliases) {
+    assert(label != NULL);
+    switch(label->type) {
+        case NT_BOOL:
+            return label->id;
+        case NT_AND:
+            return and(aig, label2aig(aig, label->left, aliases),
+                            label2aig(aig, label->right, aliases));
+        case NT_OR:
+            return or(aig, label2aig(aig, label->left, aliases),
+                           label2aig(aig, label->right, aliases));
+        case NT_NOT:
+            return -1 * label2aig(aig, label->left, aliases);
+        case NT_AP:
+            return label->id + 2;  // FIXME: make this a global constant instead?
+        case NT_ALIAS:
+            for (AliasList* a = aliases; a != NULL; a = a->next) {
+                if (strcmp(a->alias, label->alias) == 0)
+                    return label2aig(aig, a->labelExpr, aliases);
+            }
+            break;
+        default:
+            assert(false);  // all cases should be covered above
+    }
+    return -1;
 }
 
 /* Read the EHOA file, encode the automaton in and-inverter
@@ -318,14 +341,22 @@ int main(int argc, char* argv[]) {
     }
     // (2) the automaton should be deterministic
     bool det = false;
+    bool complete = false;
     for (StringList* prop = data->properties; prop != NULL; prop = prop->next) {
         if (strncmp(prop->str, "deterministic", 13) == 0)
             det = true;
+        if (strncmp(prop->str, "complete", 8) == 0)
+            complete = true;
     }
     if (!det) {
         fprintf(stderr, "Expected a deterministic automaton, "
                         "did not find \"deterministic\" in the properties\n");
         return 200;
+    }
+    if (!complete) {
+        fprintf(stderr, "Expected a complete automaton, "
+                        "did not find \"complete\" in the properties\n");
+        return 201;
     }
     // (3) the automaton should have a unique start state
     if (data->start == NULL || data->start->next != NULL) {
@@ -368,6 +399,7 @@ int main(int argc, char* argv[]) {
     // state the right latch valuation
     int start = data->start->i;
     int nextId = 1;
+    int stateIds[data->noStates];
     for (int src = 0; src < data->noStates; src++) {
         // Step 1.1: create the encoding of the source state based on the
         // binary encoding of its number
@@ -379,6 +411,7 @@ int main(int argc, char* argv[]) {
             curId = nextId;
             nextId++;
         }
+        stateIds[src] = curId;
         for (int latch = 0; latch < noLatches - 2; latch++) {
             int latchlit = 2 + noInputs + latch;
             if ((curId & mask) != mask)
@@ -396,34 +429,39 @@ int main(int argc, char* argv[]) {
         bool labelled = false;
         int labelCode;
         if (src->label != NULL) {
-            labelCode = label2aig(&andGates, src->label);
+            labelCode = label2aig(&andGates, src->label, data->aliases);
             labelled = true;
         }
 
         for (TransList* trans = src->transitions; trans != NULL;
                                                   trans = trans->next) {
             if (!labelled) {
-                assert(trans->label != NULL);
-                labelCode = label2aig(&andGates, trans->label);
+                if (trans->label == NULL) {
+                    fprintf(stderr, "Cannot determine the label of a transition from state "
+                                    "%d\n", src->id);
+                    return 400;
+                }
+                labelCode = label2aig(&andGates, trans->label, data->aliases);
+                printf("The (internal) aig code for the label is %d\n", labelCode);
             }
             int noSuccessors = 0;
             for (IntList* tgt = trans->successors; tgt != NULL;
                                                    tgt = tgt->next) {
                 int mask = 1;
                 for (int latch = 0; latch < noLatches - 2; latch++) {
-                    if (tgt->i & mask == 1) {
+                    if ((stateIds[tgt->i] & mask) == mask) {
                         // Step 3.1: for each latch which should be set to 1
                         // for this successor, we update its predecessor
                         // relation
+                        printf("Updating predecessors for target %d (id %d) and latch %d\n",
+                               tgt->i, stateIds[tgt->i], latch);
                         int transCode = and(&andGates,
                                             labelCode,
                                             statecode[src->id]);
-                        // FIXME: the transition label on the inputs is
-                        // missing
                         predecessors[latch] = or(&andGates, transCode,
                                                  predecessors[latch]);
                     }
-                    mask << 1;
+                    mask = mask << 1;
                 }
                 noSuccessors++;
             }
@@ -468,7 +506,7 @@ int main(int argc, char* argv[]) {
     const char* msg = aiger_check(aig);
     if (msg) {
         fprintf(stderr, msg);
-        return 400;
+        return 500;
     }
 
 #endif
