@@ -10,7 +10,7 @@ format. The parser is used to provide:
   tools.
 
 # TODO
-- [ ] Implement the translation to Aiger
+- [ ] Test the translation to Aiger
 - [ ] Plug in HOA to PGSolver translation from hoa2pg
 
 # Citing

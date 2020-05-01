@@ -85,6 +85,12 @@ static void dumpAiger(RBTree* n, aiger* aig) {
     if (n == NULL)
         return;
     dumpAiger(n->left, aig);
+#ifndef NDEBUG
+    fprintf(stderr, "Adding variable %d (%d)\n", var2aiglit(n->var), n->var);
+    fprintf(stderr, "tis an and of %d (%d) with %d (%d)\n",
+            var2aiglit(n->opLeft), n->opLeft,
+            var2aiglit(n->opRight), n->opRight);
+#endif
     aiger_add_and(aig,
                   var2aiglit(n->var),
                   var2aiglit(n->opLeft),
@@ -283,6 +289,7 @@ typedef struct {
 } AigTable;
 
 static inline int and(AigTable* table, int op1, int op2) {
+    assert(op1 != 0 && op2 != 0);
     RBTree* t = insertNode(table->root, op1, op2, table->nextVar);
     if (t->var == table->nextVar) {
         table->nextVar++;
@@ -299,7 +306,7 @@ static int label2aig(AigTable* aig, BTree* label, AliasList* aliases) {
     assert(label != NULL);
     switch(label->type) {
         case NT_BOOL:
-            return label->id;
+            return label->id ? 1 : -1;  // 0 becomes -1 like this
         case NT_AND:
             return and(aig, label2aig(aig, label->left, aliases),
                             label2aig(aig, label->right, aliases));
@@ -354,11 +361,11 @@ int main(int argc, char* argv[]) {
             foundOrd = true;
         }
         if (strcmp(param->str, "even") == 0) {
-            winRes = 1;
+            winRes = 0;
             foundRes = true;
         }
         if (strcmp(param->str, "odd") == 0) {
-            winRes = 0;
+            winRes = 1;
             foundRes = true;
         }
     }
@@ -370,14 +377,17 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Expected \"even\" or \"odd\" in the acceptance name\n");
         return 102;
     }
-    // (2) the automaton should be deterministic
+    // (2) the automaton should be deterministic, complete, colored
     bool det = false;
     bool complete = false;
+    bool colored = false;
     for (StringList* prop = data->properties; prop != NULL; prop = prop->next) {
         if (strcmp(prop->str, "deterministic") == 0)
             det = true;
         if (strcmp(prop->str, "complete") == 0)
             complete = true;
+        if (strcmp(prop->str, "colored") == 0)
+            colored = true;
     }
     if (!det) {
         fprintf(stderr, "Expected a deterministic automaton, "
@@ -388,6 +398,11 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Expected a complete automaton, "
                         "did not find \"complete\" in the properties\n");
         return 201;
+    }
+    if (!colored) {
+        fprintf(stderr, "Expected one acceptance set per transition, "
+                        "did not find \"colored\" in the properties\n");
+        return 202;
     }
     // (3) the automaton should have a unique start state
     if (data->start == NULL || data->start->next != NULL) {
@@ -404,19 +419,21 @@ int main(int argc, char* argv[]) {
     // We need to reserve a few variables though
     // (1) one per input + an extra input we will introduce
     // (2) one per latch needed for the states + 2 extra that we will need to
-    // simulate eventual safety via safety
+    // simulate eventual safety via safety + one per "good" acceptance set
     int noInputs = data->noAPs + 1;
     andGates.nextVar += noInputs;
     // we need floor(lg(#states)) + 1 just for the states,
     // where lg is the logarithm base 2; but C only has
     // natural logarithms
-    int noLatches = (int) (log(data->noStates) / log(2.0)) + 3;
+    int goodAccSets = (int) (ceil(data->noAccSets / 2.0));
+    int noLatches = (int) (log(data->noStates) / log(2.0)) + 3 + goodAccSets;
     andGates.nextVar += noLatches;
 #ifndef NDEBUG
     fprintf(stderr, "Reserved %d variables for %d inputs\n",
             noInputs, noInputs);
     fprintf(stderr, "Reserved %d variables for latches to encode %d states\n",
             noLatches, data->noStates);
+    fprintf(stderr, "of them, %d are for good acceptance sets\n", goodAccSets);
 #endif
 
     // We will traverse states, their transitions, bits set to 1 in the
@@ -443,7 +460,7 @@ int main(int argc, char* argv[]) {
             nextId++;
         }
         stateIds[src] = curId;
-        for (int latch = 0; latch < noLatches - 2; latch++) {
+        for (int latch = 0; latch < noLatches - 2 - goodAccSets; latch++) {
             int latchlit = 2 + noInputs + latch;
             if ((curId & mask) != mask)
                 latchlit *= -1;
@@ -484,7 +501,7 @@ int main(int argc, char* argv[]) {
                                     labelCode,
                                     statecode[src->id]);
                 int mask = 1;
-                for (int latch = 0; latch < noLatches - 2; latch++) {
+                for (int latch = 0; latch < noLatches - 2 - goodAccSets; latch++) {
                     if ((stateIds[tgt->i] & mask) == mask) {
                         // Step 3.1: for each latch which should be set to 1
                         // for this successor, we update its predecessor
@@ -503,7 +520,6 @@ int main(int argc, char* argv[]) {
                 // one of the two should be non-NULL
                 assert(acc != NULL);
                 for (; acc != NULL; acc = acc->next) {
-                    fprintf(stderr, "Prepping logic for acceptance set %d\n", acc->i);
                     acceptance[acc->i] = or(&andGates, acceptance[acc->i], transCode);
                 }
             }
@@ -515,9 +531,9 @@ int main(int argc, char* argv[]) {
     // Step 4: add logic regarding transitions of the sub-machine making sure
     // the new reset signal is used precisely once
     int resetInputVar = 2 + noInputs - 1;
-    int resetLatch0 = noLatches - 2;
+    int resetLatch0 = noLatches - 2 - goodAccSets;
     int resetL0Var = 2 + noInputs + resetLatch0;
-    int resetLatch1 = noLatches - 1;
+    int resetLatch1 = noLatches - 1 - goodAccSets;
     int resetL1Var = 2 + noInputs + resetLatch1;
     // we move to accepting (i.e. ~resetLatch1 & resetLatch0) if
     // we are at the initial state and read a reset input
@@ -538,7 +554,22 @@ int main(int argc, char* argv[]) {
                                    loseState);
     // Step 5: we prepare the logic for the justice conditions based on the type
     // of parity condition
-    // TODO
+    // NOTE: winRes = 1 for odd parity conditions, winRes = 0 otherwise
+    int safeResetLatch = noLatches - goodAccSets;
+    for (int p = 1 - winRes; p < data->noAccSets; p += 2) {
+        int trumpP = -1;
+        // NOTE: maxPriority = true iff we have a max priority condition
+        int q = maxPriority ? p + 1 : p - 1;
+        while (q >= 0 && q < data->noAccSets) {
+            trumpP = or(&andGates, trumpP, acceptance[q]);
+            q += maxPriority ? 2 : -2;
+        }
+        predecessors[safeResetLatch] = or(&andGates, safeResetLatch,
+                                          and(&andGates,
+                                              acceptState,
+                                              trumpP));
+        safeResetLatch++;
+    }
 
 #ifndef NDEBUG
     recursivePrint(andGates.root, 0);
@@ -556,19 +587,46 @@ int main(int argc, char* argv[]) {
     aiger_add_input(aig, lit, "reset_safety");
     lit += 2;
     // add latches
-    char latchName[50];
-    for (int latch = 0; latch < noLatches; latch++) {
-        aiger_add_latch(aig, lit, var2aiglit(predecessors[latch]), latchName); 
+    for (int latch = 0; latch < noLatches - 2 - goodAccSets; latch++) {
+        aiger_add_latch(aig, lit, var2aiglit(predecessors[latch]), ""); 
         lit += 2;
     }
+    aiger_add_latch(aig, lit,
+                    var2aiglit(predecessors[noLatches - 2 - goodAccSets]),
+                    "reset_once_latch0");
+    lit += 2;
+    aiger_add_latch(aig, lit,
+                    var2aiglit(predecessors[noLatches - 1 - goodAccSets]),
+                    "reset_once_latch1");
+    lit += 2;
+    char latchName[50];
+    for (int latch = noLatches - goodAccSets; latch < noLatches; latch++) {
+        int localNo = latch - (noLatches - goodAccSets);
+        sprintf(latchName, "safe_with_1_reset%d", localNo);
+        aiger_add_latch(aig, lit, var2aiglit(predecessors[latch]), latchName);
+        lit += 2;
+    }
+    
     // add and-gates
+#ifndef NDEBUG
+    fprintf(stderr, "Dumping AND-gates into aiger structure\n");
+#endif
     dumpAiger(andGates.root, aig);
     // add fairness constraint for the extra input
-    aiger_add_fairness(aig, acceptState, "reset_safety_once");
+    aiger_add_fairness(aig, var2aiglit(acceptState), "reset_safety_once");
     // add justice constraints
-    // TODO
+    safeResetLatch = noLatches - goodAccSets;
+    char justiceName[50];
+    for (int p = 1 - winRes; p < data->noAccSets; p += 2) {
+        unsigned justice[2] = {var2aiglit(-1 * safeResetLatch),
+                               var2aiglit(acceptance[p])};
+        sprintf(justiceName, "priority_%d_untrumped", p);
+        aiger_add_justice(aig, 2, justice, justiceName);
+        safeResetLatch++;
+    }
 
 #ifndef NDEBUG
+    fprintf(stderr, "AIG structure created, now checking it!\n");
     const char* msg = aiger_check(aig);
     if (msg) {
         fprintf(stderr, msg);

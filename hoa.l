@@ -69,7 +69,7 @@ properties:              return PROPERTIES;
 State:                   return STATEHDR;
 [a-zA-Z_][0-9a-zA-Z_-]*: { yylval.string = strdup(yytext); return HEADERNAME; }
 0|[1-9][0-9]*            { yylval.number = atoi(yytext); return INT; }
-[tf]                     { yylval.boolean = (bool)strcmp(yytext, "t"); return BOOL; }
+[tf]                     { yylval.boolean = !((bool)strcmp(yytext, "t")); return BOOL; }
 Fin                      return FIN;
 Inf                      return INF;
 --BODY--                 return BEGINBODY;

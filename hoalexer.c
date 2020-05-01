@@ -996,7 +996,7 @@ YY_RULE_SETUP
 case 19:
 YY_RULE_SETUP
 #line 72 "hoa.l"
-{ yylval.boolean = (bool)strcmp(yytext, "t"); return BOOL; }
+{ yylval.boolean = !((bool)strcmp(yytext, "t")); return BOOL; }
 	YY_BREAK
 case 20:
 YY_RULE_SETUP
