@@ -564,7 +564,8 @@ int main(int argc, char* argv[]) {
             trumpP = or(&andGates, trumpP, acceptance[q]);
             q += maxPriority ? 2 : -2;
         }
-        predecessors[safeResetLatch] = or(&andGates, safeResetLatch,
+        int safeResetVar = 2 + noInputs + safeResetLatch;
+        predecessors[safeResetLatch] = or(&andGates, safeResetVar,
                                           and(&andGates,
                                               acceptState,
                                               trumpP));
@@ -618,7 +619,8 @@ int main(int argc, char* argv[]) {
     safeResetLatch = noLatches - goodAccSets;
     char justiceName[50];
     for (int p = 1 - winRes; p < data->noAccSets; p += 2) {
-        unsigned justice[2] = {var2aiglit(-1 * safeResetLatch),
+        int safeResetVar = 2 + noInputs + safeResetLatch;
+        unsigned justice[2] = {var2aiglit(-1 * safeResetVar),
                                var2aiglit(acceptance[p])};
         sprintf(justiceName, "priority_%d_untrumped", p);
         aiger_add_justice(aig, 2, justice, justiceName);
