@@ -5,6 +5,10 @@ format. The parser is used to provide:
 1. A translator from extended HOA to PGSolver format
 2. A translation to an Aiger file for model checking
 
+Additionally, some sample extended-HOA files are included. Most were generated
+using scripts from https://github.com/gaperez64/tlsf2gpg and dumping an
+extended HOA file instead of going to a parity game.
+
 ## HOA2PG
 TODO: port https://github.com/gaperez64/hoa2pg to here in order to use the new
 HOA parser
