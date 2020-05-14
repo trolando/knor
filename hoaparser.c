@@ -1731,7 +1731,7 @@ yyreduce:
 
   case 17:
 #line 200 "hoa.y"
-                                               { (yyval.number) = HEADERNAME; }
+                                               { free((yyvsp[-1].string)); (yyval.number) = HEADERNAME; }
 #line 1736 "hoaparser.c"
     break;
 
@@ -1895,40 +1895,46 @@ yyreduce:
 #line 1896 "hoaparser.c"
     break;
 
+  case 47:
+#line 260 "hoa.y"
+                                                { free((yyvsp[0].string)); }
+#line 1902 "hoaparser.c"
+    break;
+
   case 48:
 #line 262 "hoa.y"
                                 { (yyval.strlist) = NULL; }
-#line 1902 "hoaparser.c"
+#line 1908 "hoaparser.c"
     break;
 
   case 49:
 #line 263 "hoa.y"
                                 { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
-#line 1908 "hoaparser.c"
+#line 1914 "hoaparser.c"
     break;
 
   case 50:
 #line 266 "hoa.y"
                             { (yyval.strlist) = NULL; }
-#line 1914 "hoaparser.c"
+#line 1920 "hoaparser.c"
     break;
 
   case 51:
 #line 267 "hoa.y"
                             { (yyval.strlist) = prependStrNode((yyvsp[0].strlist), (yyvsp[-1].string)); }
-#line 1920 "hoaparser.c"
+#line 1926 "hoaparser.c"
     break;
 
   case 52:
 #line 271 "hoa.y"
     { loadedData->states = (yyvsp[0].statelist); }
-#line 1926 "hoaparser.c"
+#line 1932 "hoaparser.c"
     break;
 
   case 53:
 #line 274 "hoa.y"
                             { (yyval.statelist) = NULL; }
-#line 1932 "hoaparser.c"
+#line 1938 "hoaparser.c"
     break;
 
   case 54:
@@ -1936,77 +1942,77 @@ yyreduce:
               {
                 (yyval.statelist) = prependStateNode((yyvsp[0].statelist), (yyvsp[-2].statelist), (yyvsp[-1].trlist));
               }
-#line 1940 "hoaparser.c"
+#line 1946 "hoaparser.c"
     break;
 
   case 55:
 #line 282 "hoa.y"
           { (yyval.statelist) = newStateNode((yyvsp[-2].number), (yyvsp[-1].string), (yyvsp[-3].tree), (yyvsp[0].numlist)); }
-#line 1946 "hoaparser.c"
+#line 1952 "hoaparser.c"
     break;
 
   case 56:
 #line 285 "hoa.y"
                                 { (yyval.tree) = NULL; }
-#line 1952 "hoaparser.c"
+#line 1958 "hoaparser.c"
     break;
 
   case 57:
 #line 286 "hoa.y"
                                 { (yyval.tree) = (yyvsp[-1].tree); }
-#line 1958 "hoaparser.c"
+#line 1964 "hoaparser.c"
     break;
 
   case 58:
 #line 289 "hoa.y"
                           { (yyval.string) = NULL; }
-#line 1964 "hoaparser.c"
+#line 1970 "hoaparser.c"
     break;
 
   case 59:
 #line 290 "hoa.y"
                           { (yyval.string) = (yyvsp[0].string); }
-#line 1970 "hoaparser.c"
+#line 1976 "hoaparser.c"
     break;
 
   case 60:
 #line 293 "hoa.y"
                                { (yyval.numlist) = NULL; }
-#line 1976 "hoaparser.c"
+#line 1982 "hoaparser.c"
     break;
 
   case 61:
 #line 294 "hoa.y"
                                { (yyval.numlist) = (yyvsp[-1].numlist); }
-#line 1982 "hoaparser.c"
+#line 1988 "hoaparser.c"
     break;
 
   case 62:
 #line 297 "hoa.y"
                        { (yyval.numlist) = NULL; }
-#line 1988 "hoaparser.c"
+#line 1994 "hoaparser.c"
     break;
 
   case 63:
 #line 298 "hoa.y"
                        { (yyval.numlist) = prependIntNode((yyvsp[0].numlist), (yyvsp[-1].number)); }
-#line 1994 "hoaparser.c"
+#line 2000 "hoaparser.c"
     break;
 
   case 64:
 #line 301 "hoa.y"
                         { (yyval.trlist) = NULL; }
-#line 2000 "hoaparser.c"
+#line 2006 "hoaparser.c"
     break;
 
   case 65:
 #line 303 "hoa.y"
           { (yyval.trlist) = prependTransNode((yyvsp[0].trlist), (yyvsp[-3].tree), (yyvsp[-2].numlist), (yyvsp[-1].numlist)); }
-#line 2006 "hoaparser.c"
+#line 2012 "hoaparser.c"
     break;
 
 
-#line 2010 "hoaparser.c"
+#line 2016 "hoaparser.c"
 
       default: break;
     }

@@ -197,7 +197,7 @@ header_item: STATES INT                        {
                                                      );
                                                  $$ = PROPERTIES;
                                                }
-           | HEADERNAME boolintstrid_list      { $$ = HEADERNAME; }
+           | HEADERNAME boolintstrid_list      { free($1); $$ = HEADERNAME; }
            ;
 
 state_conj: INT                 { $$ = newIntNode($1); }
@@ -257,7 +257,7 @@ boolintstrid_list: /* empty */
                  | boolintstrid_list BOOL
                  | boolintstrid_list INT
                  | boolintstrid_list STRING
-                 | boolintstrid_list IDENTIFIER;
+                 | boolintstrid_list IDENTIFIER { free($2); };
 
 string_list: /* empty */        { $$ = NULL; }
            | STRING string_list { $$ = prependStrNode($2, $1); }

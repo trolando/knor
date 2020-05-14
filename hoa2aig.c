@@ -53,7 +53,6 @@ struct RBTree {
     int var;
 };
 
-#ifndef NDEBUG
 static char* colorStr(NodeColor c) {
     return c == RED ? "red" : "black";
 }
@@ -67,7 +66,6 @@ static void recursivePrint(RBTree* n, int h) {
             n->opRight, n->var, colorStr(n->color));
     recursivePrint(n->right, h + 1);
 }
-#endif
 
 static inline unsigned var2aiglit(int var) {
     if (var == -1)

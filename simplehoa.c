@@ -454,5 +454,5 @@ void printHoa(const HoaData* data) {
         }
     }
 
-    printf("== END HOA FILE DATA =\n");
+    printf("== END HOA FILE DATA ==\n");
 }

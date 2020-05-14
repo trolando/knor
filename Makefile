@@ -7,10 +7,11 @@ SRCS = hoalexer.c hoaparser.c simplehoa.c
 CFLAGS = -O3 -DNDEBUG
 DBGFLAGS = -fsanitize=address -fno-omit-frame-pointer -g
 
-.PHONY: clean
-
 hoa2aig: $(SRCS) $(HDRS) hoa2aig.c aiger/aiger.c aiger/aiger.h
 	$(CC) $(CFLAGS) -lm -o hoa2aig $(SRCS) aiger/aiger.c hoa2aig.c
+
+hoa2pg: $(SRCS) $(HDRS) hoa2pg.c
+	$(CC) $(DBGFLAGS) -o hoa2pg $(SRCS) hoa2pg.c
 
 # The parser is flex + bison based, everything is generated from
 # hoa.l and hoa.y, the tokenizer and parser specifications
@@ -35,7 +36,11 @@ parsertests: $(SRCS) $(HDRS) parsertests.c
 	cat examples/aut7.ehoa | ./parsertests
 	cat examples/aut8.ehoa | ./parsertests
 
+.PHONY: clean all
+
 clean:
 	rm -f hoalexer.h hoalexer.c
 	rm -f hoaparser.h hoaparser.c
 	rm -f hoa2aig parsertests
+
+all: hoa2aig hoa2pg
