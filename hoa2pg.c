@@ -23,6 +23,9 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+
+#include "cudd/cudd.h"
 
 #include "simplehoa.h"
 
@@ -110,9 +113,9 @@ int main(int argc, char* argv[]) {
     
     printf("Everything loaded successfully!\n");
 
+    // TODO: do something here
+
     // Free dynamic memory
-    aiger_reset(aig);
-    deleteTree(andGates.root);
     deleteHoa(data);
     return EXIT_SUCCESS;
 }

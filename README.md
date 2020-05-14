@@ -3,7 +3,8 @@ This is a set of utilities to work with the extended HOA format for reactive
 synthesis. Part of the code consists in a _Flex_ + _Bison_ parser for the
 format. The parser is used to provide:
 1. A translator from extended HOA to PGSolver format
-2. A translation to an Aiger file for model checking
+2. A translator from extended HOA to Aiger format, for model checking
+Both tools read from the standard input and output to the standard output.
 
 Additionally, some sample extended-HOA files are included. Most were generated
 using scripts from https://github.com/gaperez64/tlsf2gpg and dumping an
