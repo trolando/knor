@@ -25,8 +25,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "cudd/cudd.h"
-
 #include "simplehoa.h"
 
 

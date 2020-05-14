@@ -1,4 +1,4 @@
-CC = gcc
+CC = clang
 
 # Common headers and sources are given names for convenience
 HDRS = hoalexer.h hoaparser.h simplehoa.h
