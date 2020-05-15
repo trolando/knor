@@ -224,7 +224,7 @@ int main(int argc, char* argv[]) {
     const int numValuations = (1 << numUcntAPs);
     int nextIndex = data->noStates;
     // We start by printing the header for the PGSolver file
-    printf("parity %d;\n", (nextIndex * (numValuations + 1)) - 1);
+    printf("parity %d;\n", (nextIndex * (numValuations + 1)) - 1);  // TODO: too low
     for (StateList* state = data->states; state != NULL;
          state = state->next) {
         int firstSucc = nextIndex;
