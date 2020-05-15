@@ -37,54 +37,48 @@ typedef enum {
     NT_AP, NT_ALIAS
 } NodeType;
 
-typedef struct BTree BTree;
-struct BTree {
-    BTree* left;
-    BTree* right;
+typedef struct BTree {
+    struct BTree* left;
+    struct BTree* right;
     char* alias;
     int id;
     NodeType type;
-};
+} BTree;
 
 /* Boiler-plate singly linked lists structures
  * for information in the HOA files
  */
-typedef struct StringList StringList;
-struct StringList {
+typedef struct StringList {
     char* str;
-    StringList* next;
-};
+    struct StringList* next;
+} StringList;
 
-typedef struct IntList IntList;
-struct IntList {
+typedef struct IntList {
     int i;
-    IntList* next;
-};
+    struct IntList* next;
+} IntList;
 
-typedef struct TransList TransList;
-struct TransList {
+typedef struct TransList {
     BTree* label;
     IntList* successors;
     IntList* accSig;
-    TransList* next;
-};
+    struct TransList* next;
+} TransList;
 
-typedef struct StateList StateList;
-struct StateList {
+typedef struct StateList {
     int id;
     char* name;
     BTree* label;
     IntList* accSig;
     TransList* transitions;
-    StateList* next;
-};
+    struct StateList* next;
+} StateList;
 
-typedef struct AliasList AliasList;
-struct AliasList {
+typedef struct AliasList {
     char* alias;
     BTree* labelExpr;
-    AliasList* next;
-};
+    struct AliasList* next;
+} AliasList;
 
 /* The centralized data structure for all data collected
  * from the file is the following.
@@ -125,6 +119,7 @@ StringList* prependStrNode(StringList*, char*);
 AliasList* prependAliasNode(AliasList*, char*, BTree*);
 StringList* concatStrLists(StringList*, StringList*);
 IntList* concatIntLists(IntList*, IntList*);
+void deleteIntList(IntList*);
 
 // tree management functions
 BTree* boolBTree(bool);

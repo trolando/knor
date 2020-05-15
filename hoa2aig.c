@@ -21,10 +21,10 @@
  * guillermoalberto.perez@uantwerpen.be
  *************************************************************************/
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "aiger/aiger.h"
@@ -302,7 +302,7 @@ static inline int or(AigTable* table, int op1, int op2) {
 
 static int label2aig(AigTable* aig, BTree* label, AliasList* aliases) {
     assert(label != NULL);
-    switch(label->type) {
+    switch (label->type) {
         case NT_BOOL:
             return label->id ? 1 : -1;  // 0 becomes -1 like this
         case NT_AND:
@@ -324,7 +324,7 @@ static int label2aig(AigTable* aig, BTree* label, AliasList* aliases) {
         default:
             assert(false);  // all cases should be covered above
     }
-    return -1;
+    return -2;
 }
 
 /* Read the EHOA file, encode the automaton in and-inverter
@@ -516,10 +516,9 @@ int main(int argc, char* argv[]) {
                 if (src->accSig == NULL)
                     acc = trans->accSig;
                 // one of the two should be non-NULL
-                assert(acc != NULL);
-                for (; acc != NULL; acc = acc->next) {
-                    acceptance[acc->i] = or(&andGates, acceptance[acc->i], transCode);
-                }
+                // and there should be exactly one acceptance set!
+                assert(acc != NULL && acc->next == NULL);
+                acceptance[acc->i] = or(&andGates, acceptance[acc->i], transCode);
             }
             // since the automaton is supposedly deterministic, we should only
             // see one successor per transition

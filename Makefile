@@ -41,6 +41,6 @@ parsertests: $(SRCS) $(HDRS) parsertests.c
 clean:
 	rm -f hoalexer.h hoalexer.c
 	rm -f hoaparser.h hoaparser.c
-	rm -f hoa2aig parsertests
+	rm -f hoa2aig parsertests hoa2pg
 
 all: hoa2aig hoa2pg
