@@ -230,7 +230,7 @@ static void deleteStrList(StringList* list) {
     }
 }
 
-void deleteIntList(IntList* list) {
+static void deleteIntList(IntList* list) {
     IntList* cur = list;
     while (cur != NULL) {
         IntList* next = cur->next;

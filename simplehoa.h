@@ -47,6 +47,11 @@ typedef struct BTree {
 
 /* Boiler-plate singly linked lists structures
  * for information in the HOA files
+ *
+ * TODO: String and Int lists should probably disappear
+ * in favor of arrays (push lists into the parser!) and
+ * the other lists should become just structures for
+ * arrays
  */
 typedef struct StringList {
     char* str;
@@ -110,6 +115,7 @@ void defaultsHoa(HoaData*);
 void deleteHoa(HoaData*);
 
 // list management functions
+// TODO: should this be inside the parser code and not in this header?
 StateList* newStateNode(int, char*, BTree*, IntList*);
 StateList* prependStateNode(StateList*, StateList*, TransList*);
 TransList* prependTransNode(TransList*, BTree*, IntList*, IntList*);
@@ -119,9 +125,9 @@ StringList* prependStrNode(StringList*, char*);
 AliasList* prependAliasNode(AliasList*, char*, BTree*);
 StringList* concatStrLists(StringList*, StringList*);
 IntList* concatIntLists(IntList*, IntList*);
-void deleteIntList(IntList*);
 
 // tree management functions
+// TODO: same here?
 BTree* boolBTree(bool);
 BTree* andBTree(BTree*, BTree*);
 BTree* orBTree(BTree*, BTree*);

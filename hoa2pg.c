@@ -28,6 +28,66 @@
 
 #include "simplehoa.h"
 
+// A simple data structure for a linked list of PGSolver vertex
+// entries
+
+typedef struct PGSVertices {
+    int id;
+    int owner;
+    int priority;
+    char* name;
+    IntList* successors;
+    struct PGSVertices* next;
+} PGSVertices;
+
+static PGSVertices* initPGSVertices(size_t amount) {
+    assert(amount > 0);
+    PGSVertices* head = malloc(sizeof(PGSVertices));
+    head->name = NULL;
+    head->successors = NULL;
+    head->next = NULL;
+    PGSVertices* cur = head;
+    for (int i = 0; i < amount - 1; i++) {
+        cur->next = malloc(sizeof(PGSVertices));
+        cur = cur->next;
+        cur->name = NULL;
+        cur->successors = NULL;
+        cur->next = NULL;
+    }
+    return head;
+}
+
+static void deletePGSVertices(PGSVertices* u) {
+    if (u == NULL)
+        return;
+    PGSVertices* v = u->next;
+    if (u->name != NULL)
+        free(u->name);
+    IntList* succ = u->successors;
+    while (succ != NULL) {
+        IntList* temp = succ->next;
+        free(succ);
+        succ = temp;
+    }
+    free(u);
+    deletePGSVertices(v);
+}
+
+static void printPGSVertices(PGSVertices* vlist) {
+    for (PGSVertices* v = vlist; v != NULL; v = v->next) {
+        assert(v->successors != NULL);
+        printf("%d %d %d %d", v->id, v->priority, v->owner,
+               v->successors->i);
+        for (IntList* succ = v->successors->next; succ != NULL; succ = succ->next) {
+            printf(",%d", succ->i);
+        }
+        if (v->name != NULL)
+            printf(" \"%s\"\n", v->name);
+        else
+            printf(" \"%d\"\n", v->id);
+    }
+}
+
 /* Given a label and a valuation of some of the atomic propositions,
  * we determine whether the label is true (1), false (-1), or its
  * value is unknown (0). The valuation is expected as an unsigned
@@ -221,16 +281,20 @@ int main(int argc, char* argv[]) {
     // vertices for both players and edges to go with them
     // NOTE: states retain their index while "intermediate" state-valuation
     // vertices receive new indices
-    const int numValuations = (1 << numUcntAPs);
+    const unsigned numValuations = (1 << numUcntAPs);
     int nextIndex = data->noStates;
-    // We start by printing the header for the PGSolver file
-    printf("parity %d;\n", (nextIndex * (numValuations + 1)) - 1);  // TODO: too low
+    // we need to store vertices and edges somehow:
+    PGSVertices* states = initPGSVertices(data->noStates);
+    PGSVertices* curState = states;
+    PGSVertices* partVals = initPGSVertices(data->noStates * numValuations);
+    PGSVertices* curPartVal = partVals;
+    PGSVertices* fullVals = NULL;
+    PGSVertices* curFullVal = NULL;
     for (StateList* state = data->states; state != NULL;
          state = state->next) {
         int firstSucc = nextIndex;
         nextIndex += numValuations;
         for (unsigned value = 0; value < numValuations; value++) {
-            int partVal = firstSucc + value;
             IntList* validVals = NULL;
             for (TransList* trans = state->transitions;
                  trans != NULL; trans = trans->next) {
@@ -265,37 +329,69 @@ int main(int argc, char* argv[]) {
                         value, numUcntAPs, evald);
 #endif
                 if (evald != -1) {
-                    int fullVal = nextIndex;
+                    int fval = nextIndex;
                     nextIndex++;
                     // as unique successor we add the successor via the
                     // transition (so the choice of player is unimportant)
-                    printf("%d %d 0 %d \"%d\"\n", fullVal, priority,
-                           trans->successors->i, fullVal);
-                    validVals = prependIntNode(validVals, fullVal);
+                    if (curFullVal == NULL) {
+                        assert(fullVals == NULL);
+                        fullVals = malloc(sizeof(PGSVertices));
+                        curFullVal = fullVals;
+                    } else {
+                        assert(fullVals != NULL);
+                        curFullVal->next = malloc(sizeof(PGSVertices));
+                        curFullVal = curFullVal->next;
+                    }
+                    assert(curFullVal != NULL);
+                    curFullVal->id = fval;
+                    curFullVal->priority = priority;
+                    curFullVal->owner = 0;
+                    curFullVal->name = NULL;
+                    curFullVal->next = NULL;
+                    curFullVal->successors = prependIntNode(NULL, trans->successors->i);
+                    // we also keep it as a list for the successors of the
+                    // partial value
+                    validVals = prependIntNode(validVals, fval);
                 }
             }
             assert(validVals != NULL);
-            printf("%d 0 0 %d", partVal, validVals->i);
-            for (IntList* fullVal = validVals->next; fullVal != NULL;
-                 fullVal = fullVal->next) {
-                printf(",%d", fullVal->i);
-            }
-            printf(" \"%d\"\n", partVal);
-            deleteIntList(validVals);
+            assert(curPartVal != NULL);
+            // Now we can add priority-0 edges from the player-0
+            // partial-valuation vertices to full-valuation vertices
+            curPartVal->id = firstSucc + value;
+            curPartVal->priority = 0;
+            curPartVal->owner = 0;
+            curPartVal->successors = validVals;
+            curPartVal = curPartVal->next;
         }
         // Now we can add priority-0 edges from the player-1 vertex to
         // all partial-valuation vertices owned by player 0
-        printf("%d 0 1 %d", state->id, firstSucc);
-        for (int succ = firstSucc; succ < firstSucc + numValuations; succ++) {
-            printf(",%d", succ);
-        }
-        if (state->name != NULL)
-            printf(" \"%s\"\n", state->name);
-        else
-            printf(" \"%d\"\n", state->id);
+        assert(curState != NULL);
+        curState->id = state->id;
+        curState->priority = 0;
+        curState->owner = 1;
+        for (int succ = firstSucc; succ < firstSucc + numValuations; succ++) 
+            curState->successors = prependIntNode(curState->successors, succ);
+        curState->name = state->name;
+        curState = curState->next;
     }
+
+    // Step 3: print the PGSolver file
+    printf("parity %d;\n", nextIndex - 1);
+    printPGSVertices(states);
+#ifndef NDEBUG
+    fprintf(stderr, "Partial valuation vertices:\n");
+#endif
+    printPGSVertices(partVals);
+#ifndef NDEBUG
+    fprintf(stderr, "Full valuation vertices:\n");
+#endif
+    printPGSVertices(fullVals);
 
     // Free dynamic memory
     deleteHoa(data);
+    deletePGSVertices(states);
+    deletePGSVertices(partVals);
+    deletePGSVertices(fullVals);
     return EXIT_SUCCESS;
 }

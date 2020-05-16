@@ -42,16 +42,15 @@
  */
 typedef enum {BLACK, RED} NodeColor;
 
-typedef struct RBTree RBTree;
-struct RBTree {
-    RBTree* parent;
-    RBTree* left;
-    RBTree* right;
+typedef struct RBTree {
+    struct RBTree* parent;
+    struct RBTree* left;
+    struct RBTree* right;
     NodeColor color;
     int opLeft;
     int opRight;
     int var;
-};
+} RBTree;
 
 static char* colorStr(NodeColor c) {
     return c == RED ? "red" : "black";
