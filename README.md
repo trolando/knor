@@ -20,6 +20,7 @@ transition from p to q, via a valuation Val, we add vertices to the game:
    player 0 can choose a valuation of the controllable APs;
 3. a vertex owned by player 0 for each such full valuation Val; from here there is
    no choice but to advance to q.
+
 All vertices have priority 0 except for full-valuation vertices which have the
 priority (i.e. acceptance set) of the automaton's transition + 2. (The cases
 for min and odd parity automata are similar.)
