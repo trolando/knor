@@ -11,8 +11,18 @@ using scripts from https://github.com/gaperez64/tlsf2gpg and dumping an
 extended HOA file instead of going to a parity game.
 
 ## HOA2PG
-TODO: port https://github.com/gaperez64/hoa2pg to here in order to use the new
-HOA parser
+The translation from a HOA file, specifying a *complete* and *deterministic*
+parity automaton, to a PGSolver-format parity game is quite simple. For
+transition from p to q, via a valuation Val, we add vertices to the game:
+1. a vertex owned by player 1 corresponding to p; from here, player can choose
+   a valuation of the uncontrollable atomic propositions;
+2. a vertex owned by player 0 for each such partial valuation; from here,
+   player 0 can choose a valuation of the controllable APs;
+3. a vertex owned by player 0 for each such full valuation Val; from here there is
+   no choice but to advance to q.
+All vertices have priority 0 except for full-valuation vertices which have the
+priority (i.e. acceptance set) of the automaton's transition + 2. (The cases
+for min and odd parity automata are similar.)
 
 ## HOA2AIG
 The translation from a HOA file, specifying a *complete* and *deterministic*
