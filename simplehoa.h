@@ -139,4 +139,7 @@ BTree* apBTree(int);
 // For debugging purposes, this prints all data in human-readable form
 void printHoa(const HoaData*);
 
+// To check if the parsed automaton is a parity one that is good-for-games
+int isParityGFG(const HoaData*, bool*, short*);
+
 #endif

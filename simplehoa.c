@@ -456,3 +456,74 @@ void printHoa(const HoaData* data) {
 
     printf("== END HOA FILE DATA ==\n");
 }
+
+int isParityGFG(const HoaData* data, bool* isMaxParity, short* resGoodPriority) {
+    // (1) the automaton should be a parity one
+    if (strcmp(data->accNameID, "parity") != 0) {
+        fprintf(stderr, "Expected \"parity...\" automaton, found \"%s\" "
+                        "as automaton type\n", data->accNameID);
+        return 100;
+    }
+    bool foundOrd = false;
+    bool foundRes = false;
+    for (StringList* param = data->accNameParameters; param != NULL;
+            param = param->next) {
+        if (strcmp(param->str, "max") == 0) {
+            (*isMaxParity) = true;
+            foundOrd = true;
+        }
+        if (strcmp(param->str, "min") == 0) {
+            (*isMaxParity) = false;
+            foundOrd = true;
+        }
+        if (strcmp(param->str, "even") == 0) {
+            (*resGoodPriority) = 0;
+            foundRes = true;
+        }
+        if (strcmp(param->str, "odd") == 0) {
+            (*resGoodPriority) = 1;
+            foundRes = true;
+        }
+    }
+    if (!foundOrd) {
+        fprintf(stderr, "Expected \"max\" or \"min\" in the acceptance name\n");
+        return 101;
+    }
+    if (!foundRes) {
+        fprintf(stderr, "Expected \"even\" or \"odd\" in the acceptance name\n");
+        return 102;
+    }
+    // (2) the automaton should be deterministic, complete, colored
+    bool det = false;
+    bool complete = false;
+    bool colored = false;
+    for (StringList* prop = data->properties; prop != NULL; prop = prop->next) {
+        if (strcmp(prop->str, "deterministic") == 0)
+            det = true;
+        if (strcmp(prop->str, "complete") == 0)
+            complete = true;
+        if (strcmp(prop->str, "colored") == 0)
+            colored = true;
+    }
+    if (!det) {
+        fprintf(stderr, "Expected a deterministic automaton, "
+                        "did not find \"deterministic\" in the properties\n");
+        return 200;
+    }
+    if (!complete) {
+        fprintf(stderr, "Expected a complete automaton, "
+                        "did not find \"complete\" in the properties\n");
+        return 201;
+    }
+    if (!colored) {
+        fprintf(stderr, "Expected one acceptance set per transition, "
+                        "did not find \"colored\" in the properties\n");
+        return 202;
+    }
+    // (3) the automaton should have a unique start state
+    if (data->start == NULL || data->start->next != NULL) {
+        fprintf(stderr, "Expected a unique start state\n");
+        return 300;
+    }
+    return 0;
+}

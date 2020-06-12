@@ -23,6 +23,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "simplehoa.h"
 
@@ -31,8 +32,18 @@ int main(int argc, char* argv[]) {
     defaultsHoa(data);
     int ret = parseHoa(stdin, data);
 
-    if (ret == 0)
-        printHoa(data);
+    if (ret != 0)
+        return ret;
+    
+    bool isMaxParity;
+    short resGoodPriority;
+    ret = isParityGFG(data, &isMaxParity, &resGoodPriority);
+    if (ret != 0)
+        return ret;
+
+#ifndef NDEBUG
+    printHoa(data);
+#endif
 
     deleteHoa(data);
     return EXIT_SUCCESS;

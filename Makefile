@@ -13,6 +13,9 @@ hoa2aig: $(SRCS) $(HDRS) hoa2aig.c aiger/aiger.c aiger/aiger.h
 hoa2pg: $(SRCS) $(HDRS) hoa2pg.c
 	$(CC) $(CFLAGS) -o hoa2pg $(SRCS) hoa2pg.c
 
+hoacheck: $(SRCS) $(HDRS) hoacheck.c
+	$(CC) $(CFLAGS) -o hoacheck $(SRCS) hoacheck.c
+
 # The parser is flex + bison based, everything is generated from
 # hoa.l and hoa.y, the tokenizer and parser specifications
 hoalexer.c: hoa.l hoaparser.c hoaparser.h
@@ -21,26 +24,11 @@ hoalexer.c: hoa.l hoaparser.c hoaparser.h
 hoaparser.c: hoa.y
 	bison --defines --output=hoaparser.c hoa.y
 
-parsertests: $(SRCS) $(HDRS) parsertests.c
-	$(CC) $(DBGFLAGS) -o parsertests $(SRCS) parsertests.c
-	ASAN_OPTIONS=detect_leaks=1
-	cat examples/test1.ehoa | ./parsertests
-	cat examples/test2.ehoa | ./parsertests
-	cat examples/test3.ehoa | ./parsertests
-	cat examples/aut1.ehoa | ./parsertests
-	cat examples/aut2.ehoa | ./parsertests
-	cat examples/aut3.ehoa | ./parsertests
-	cat examples/aut4.ehoa | ./parsertests
-	cat examples/aut5.ehoa | ./parsertests
-	cat examples/aut6.ehoa | ./parsertests
-	cat examples/aut7.ehoa | ./parsertests
-	cat examples/aut8.ehoa | ./parsertests
-
 .PHONY: clean all
 
 clean:
 	rm -f hoalexer.h hoalexer.c
 	rm -f hoaparser.h hoaparser.c
-	rm -f hoa2aig parsertests hoa2pg
+	rm -f hoa2aig hoacheck hoa2pg
 
 all: hoa2aig hoa2pg

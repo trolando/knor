@@ -182,7 +182,7 @@ int main(int argc, char* argv[]) {
     // 0 means everything was parsed correctly
     if (ret != 0)
         return ret;
-    // A few semantic checks!
+    // A few semantic checks! TODO: use checkParityGFG function instead
     // (1) the automaton should be a parity one
     if (strcmp(data->accNameID, "parity") != 0) {
         fprintf(stderr, "Expected \"parity...\" automaton, found \"%s\" "
