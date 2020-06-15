@@ -1,0 +1,3 @@
+#!/bin/bash
+./knor $1 npp 2>/dev/null
+

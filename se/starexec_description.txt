@@ -1,0 +1,1 @@
+Knor, a HOA parity automaton realizability checker based on Oink
