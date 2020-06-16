@@ -1,3 +1,6 @@
 [submodule "oink"]
 	path = oink
 	url = https://www.github.com/trolando/oink
+[submodule "sylvan"]
+	path = sylvan
+	url = https://github.com/trolando/sylvan/

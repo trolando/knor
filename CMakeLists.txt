@@ -42,5 +42,8 @@ ADD_FLEX_BISON_DEPENDENCY(hoalexer hoaparser)
 add_subdirectory("oink")
 include_directories(oink/src)
 
+add_subdirectory("sylvan")
+include_directories(sylvan/src)
+
 add_executable(knor src/knor.cpp src/simplehoa.c ${BISON_hoaparser_OUTPUTS} ${FLEX_hoalexer_OUTPUTS})
-target_link_libraries(knor oink)
+target_link_libraries(knor oink sylvan)
