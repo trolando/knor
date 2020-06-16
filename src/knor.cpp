@@ -26,12 +26,10 @@
  * t.vandijk@utwente.nl
  *************************************************************************/
 
-#include <cassert>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+#include <cassert> // for assert
+#include <cstring> // for strcmp
 #include <iostream>
-#include <sys/time.h>
+#include <sys/time.h> // for gettimeofday
 
 #include <game.hpp>
 #include <oink.hpp>
@@ -55,15 +53,12 @@ wctime()
 
 static double t_start;
 
-/* Given a label and a valuation of some of the atomic propositions,
- * we determine whether the label is true (1), false (-1), or its
- * value is unknown (0). The valuation is expected as an unsigned
- * integer whose i-th bit is 1 iff the i-th AP in apIds is set to 1
+/**
+ * evalLabel converts a label on a transition to a MTBDD encoding the label
  */
 #define evalLabel(a,b,c) CALL(evalLabel, a, b, c)
 TASK_3(MTBDD, evalLabel, BTree*, label, AliasList*, aliases, uint32_t*, variables)
 {
-    assert(label != NULL);
     MTBDD left = mtbdd_false, right = mtbdd_false, result = mtbdd_false;
     mtbdd_refs_pushptr(&left);
     mtbdd_refs_pushptr(&right);
@@ -102,40 +97,37 @@ TASK_3(MTBDD, evalLabel, BTree*, label, AliasList*, aliases, uint32_t*, variable
     return result;
 }
 
-/* Adjust the priorities since we have to make sure we output a max, even
- * parity game and that the priorities of player-0 vertices are useless
- * (that is, irrelevant). This assumes maxPriority is true iff the original
- * objective is max and winRes = 0 if even, otherwise it is 1 if odd.
+
+
+
+/**
+ * This helper function ensures that the priority p is adjusted to
+ * ensure we have a "max, even" parity game, as this is what Oink expects.
  */
-static inline int adjustPriority(int p, bool maxPriority, short winRes,
-                                 int noPriorities) {
+static inline int
+adjustPriority(int p, bool maxPriority, short winRes, int noPriorities)
+{
     // To deal with max vs min, we subtract from noPriorities if
     // originally it was min (for this we need it to be even!)
-    int evenMax = noPriorities;
-    if (evenMax % 2 != 0)
-        evenMax += 1;
-    int pForMax = maxPriority ? p : evenMax - p;
-    // The plan is to use 0 as the priority for player-0 vertices,
-    // this means shifting everything up; we take the opportunity
-    // to make odd priorities even if the original objective asked
-    // for odd ones
-    int shifted = pForMax + (2 - winRes);
-#ifndef NDEBUG
-    if (0) {
-        fprintf(stderr, "Changed %d into %d. Original objective: %s %s with "
-                    "maximal priority %d\n", p, shifted,
-                    (maxPriority ? "max" : "min"),
-                    (winRes == 0 ? "even" : "odd"),
-                    noPriorities);
+    if (!maxPriority) {
+        int evenMax = 2*((noPriorities+1)/2);
+        p = evenMax - p;  // flip from min to max
     }
-#endif
-    return shifted;
+    // We reserve priority 0, so do not use it.
+    p += 2;
+    // If "winRes" is 1 (odd), automatically adjust the priority
+    return p - winRes;
 }
 
 
 
+
+/**
+ * Collect all intermediary MTBDD roots that become the vertices
+ * where player 0 chooses the response in controllable APs
+ */
 void
-collect_inter(MTBDD trans, int uap_count, int cap_count, std::set<MTBDD> &res)
+collect_inter(MTBDD trans, int uap_count, std::set<MTBDD> &res)
 {
     if (mtbdd_isleaf(trans)) {
         res.insert(trans);
@@ -144,8 +136,8 @@ collect_inter(MTBDD trans, int uap_count, int cap_count, std::set<MTBDD> &res)
         uint32_t var = mtbdd_getvar(trans);
         if (var < (unsigned)uap_count) {
             // uncontrollable ap
-            collect_inter(mtbdd_gethigh(trans), uap_count, cap_count, res);
-            collect_inter(mtbdd_getlow(trans), uap_count, cap_count, res);
+            collect_inter(mtbdd_gethigh(trans), uap_count, res);
+            collect_inter(mtbdd_getlow(trans), uap_count, res);
         } else {
             // controllable ap
             res.insert(trans);
@@ -154,6 +146,11 @@ collect_inter(MTBDD trans, int uap_count, int cap_count, std::set<MTBDD> &res)
 }
 
 
+/**
+ * Given some intermediary MTBDD root, collect all the MTBDD
+ * leafs, representing the target vertices of the full transition
+ * and the transition priority encoded in a single 64-bit value
+ */
 void
 collect_targets(MTBDD trans, std::set<uint64_t> &res)
 {
@@ -167,6 +164,9 @@ collect_targets(MTBDD trans, std::set<uint64_t> &res)
 
 
 
+/**
+ * The main function
+ */
 int
 main(int argc, char* argv[])
 {
@@ -195,56 +195,61 @@ main(int argc, char* argv[])
     int ret = isParityGFG(data, &maxPriority, &winRes);
     if (ret != 0) return ret;
 
-    // Step 1: which APs are controllable
+    // Set which APs are controllable in the bitset controllable
     pg::bitset controllable(data->noAPs);
     for (IntList* c = data->cntAPs; c != NULL; c = c->next) controllable[c->i] = 1;
 
+    // Count the number of controllable/uncontrollable APs
     const int cap_count = controllable.count();
     const int uap_count = data->noAPs - cap_count;
 
-    // order uncontrollable < controllable
+    // Initialize the BDD variable indices
+    // Variable order uncontrollable < controllable
     uint32_t variables[data->noAPs];
-    long uidx = 0, oidx = data->noAPs - controllable.count();
+    uint32_t uidx = 0, oidx = data->noAPs - controllable.count();
     for (int i=0; i<data->noAPs; i++) {
         if (controllable[i]) variables[i] = oidx++;
         else variables[i] = uidx++;
     }
-    assert(uidx == (data->noAPs - controllable.count()));
+    assert(uidx == (data->noAPs - cap_count));
     assert(oidx == data->noAPs);
 
-    // At this point, we need to initialize Sylvan for support
+    // Initialize Lace
     lace_init(1, 0); // initialize Lace, but sequentially
     lace_startup(0, 0, 0); // no thread spawning
     LACE_ME;
-    sylvan_set_limits(16LL << 25, 1, 16); // should be enough
+
+    // And initialize Sylvan
+    sylvan_set_limits(128LL << 20, 1, 16); // should be enough (128 megabytes)
     sylvan_init_package();
     sylvan_init_mtbdd();
 
-    int nv = data->noStates * 100; // it will actually grow larger automatically
-    pg::Game game(nv);
-    int nextIndex = data->noStates; // number of states
+    // Now initialize a new parity game
+    pg::Game game(data->noStates * 10); // start with 10 the number of states
+    // notice that the number of vertices automatically grows when needed anyway
 
-    std::vector<int> inter;
-    std::vector<int> succie;
+    int nextIndex = data->noStates; // index of the next vertex to make
 
-    MTBDD var_bdd = mtbdd_set_from_array(variables, data->noAPs);
-    mtbdd_refs_pushptr(&var_bdd);
-
-    MTBDD uvar_bdd = mtbdd_set_from_array(variables, uap_count);
-    mtbdd_refs_pushptr(&uvar_bdd);
-
-    MTBDD cvar_bdd = mtbdd_set_from_array(variables+uap_count, cap_count);
-    mtbdd_refs_pushptr(&cvar_bdd);
+    std::vector<int> succ_state;  // for current state, the successors
+    std::vector<int> succ_inter;  // for current intermediate state, the successors
 
     MTBDD trans_bdd = mtbdd_false;
     mtbdd_refs_pushptr(&trans_bdd);
 
-    std::set<MTBDD> halfway_bdds;
+    std::set<MTBDD> inter_bdds;
     std::set<uint64_t> targets;
+
+    // these variables are used deeper in the for loops, however we can
+    // push them to mtbdd refs here and avoid unnecessary pushing and popping
+    MTBDD lblbdd = mtbdd_false;
+    MTBDD leaf = mtbdd_false;
+    mtbdd_refs_pushptr(&lblbdd);
+    mtbdd_refs_pushptr(&leaf);
 
     // Loop over every state
     for (StateList* state = data->states; state != NULL; state = state->next) {
         trans_bdd = mtbdd_false;
+
         for (TransList* trans = state->transitions; trans != NULL; trans = trans->next) {
             // there should be a single successor per transition
             assert(trans->successors != NULL && trans->successors->next == NULL);
@@ -264,15 +269,19 @@ main(int argc, char* argv[])
             int target = trans->successors->i;
 
             // tricky tricky
-            MTBDD lblbdd = evalLabel(label, data->aliases, variables);
-            MTBDD leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)target);
+            lblbdd = evalLabel(label, data->aliases, variables);
+            leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)target);
             trans_bdd = mtbdd_ite(lblbdd, leaf, trans_bdd);
+            lblbdd = leaf = mtbdd_false;
         }
 
-        collect_inter(trans_bdd, uap_count, cap_count, halfway_bdds);
+        // At this point, we have the transitions from the state all in a neat
+        // single BDD. Time to generate the split game fragment from the current
+        // state.
 
-        for (MTBDD ASDF : halfway_bdds) {
-            collect_targets(ASDF, targets);
+        collect_inter(trans_bdd, uap_count, inter_bdds);
+        for (MTBDD inter_bdd : inter_bdds) {
+            collect_targets(inter_bdd, targets);
             for (uint64_t lval : targets) {
                 int priority = (int)(lval >> 32);
                 int target = (int)(lval & 0xffffffff);
@@ -282,40 +291,50 @@ main(int argc, char* argv[])
                 game.e_start(vfin);
                 game.e_add(vfin, target);
                 game.e_finish();
-                succie.push_back(vfin);
+                succ_inter.push_back(vfin);
             }
 
             int vinter = nextIndex++;
-            inter.push_back(vinter);
             game.init_vertex(vinter, 0, 0);
             game.e_start(vinter);
-            for (int to : succie) game.e_add(vinter, to);
+            for (int to : succ_inter) game.e_add(vinter, to);
             game.e_finish();
-            succie.clear();
+            succ_state.push_back(vinter);
+
+            succ_inter.clear();
             targets.clear();
         }
 
         game.init_vertex(state->id, 0, 1, state->name ? state->name : "");
         game.e_start(state->id);
-        for (int to : inter) game.e_add(state->id, to);
+        for (int to : succ_state) game.e_add(state->id, to);
         game.e_finish();
-        inter.clear();
-        halfway_bdds.clear();
+
+        succ_state.clear();
+        inter_bdds.clear();
     }
 
-    mtbdd_refs_popptr(4);
+    // we're done with Sylvan
+    mtbdd_refs_popptr(3);
     sylvan_quit();
 
+    // tell Oink we're done adding stuff, resize game to final size
+    game.v_resize(nextIndex);
+
+    // get the start vertex before we delete the HOA data
     int vstart = data->start->i;
 
+    // free HOA allocated data structure
     deleteHoa(data);
     std::cerr << "finished constructing game." << std::endl;
 
-    game.v_resize(nextIndex);
+    if (0) {
+        // in case we want to write the file to PGsolver file format...
+        game.write_pgsolver(std::cout);
+        // std::cerr << "initial vertex: " << vstart << std::endl;
+    }
 
-    // game.write_pgsolver(std::cout);
-    // std::cerr << "initial vertex: " << vstart << std::endl;
-
+    // we sort now, so we can track the initial state
     int *mapping = new int[game.vertexcount()];
     game.sort(mapping);
     for (int i=0; i<nextIndex; i++) {
@@ -326,23 +345,23 @@ main(int argc, char* argv[])
     }
     delete[] mapping;
 
-    pg::Oink en(game, std::cerr);
-    en.setTrace(0);
-    en.setRenumber();
-    if (argc > 2) en.setSolver(argv[2]);
-    else en.setSolver("fpi");
-    en.setWorkers(-1);
+    // OK, fire up the engine
+    pg::Oink engine(game, std::cerr);
+    engine.setTrace(0);
+    engine.setRenumber();
+    if (argc > 2) engine.setSolver(argv[2]);
+    else engine.setSolver("fpi");
+    engine.setWorkers(-1);
 
+    // and run the solver
     double begin = wctime();
-    en.run();
+    engine.run();
     double end = wctime();
 
+    // report how long it all took
     std::cerr << "total solving time: " << std::fixed << (end-begin) << " sec." << std::endl;
 
-    // game.write_pgsolver(std::cout);
-    // std::cerr << "initial vertex: " << vstart << std::endl;
-    // game.write_sol(std::cout);
-
+    // finally, check if the initial vertex is won by controller or environment
     if (game.winner[vstart] == 0) {
         std::cout << "REALIZABLE";
         exit(10);
@@ -351,3 +370,4 @@ main(int argc, char* argv[])
         exit(20);
     }
 }
+
