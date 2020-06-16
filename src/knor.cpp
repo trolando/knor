@@ -35,10 +35,15 @@
 
 #include <game.hpp>
 #include <oink.hpp>
+#include <sylvan.h>
+#include <map>
+#include <set>
 
 extern "C" {
 #include "simplehoa.h"
 }
+
+using namespace sylvan;
 
 static double
 wctime()
@@ -55,54 +60,46 @@ static double t_start;
  * value is unknown (0). The valuation is expected as an unsigned
  * integer whose i-th bit is 1 iff the i-th AP in apIds is set to 1
  */
-static int evalLabel(BTree* label, AliasList* aliases, 
-                      int numAPs, int* apIds, unsigned value) {
+#define evalLabel(a,b,c) CALL(evalLabel, a, b, c)
+TASK_3(MTBDD, evalLabel, BTree*, label, AliasList*, aliases, uint32_t*, variables)
+{
     assert(label != NULL);
-    int left;
-    int right;
-    unsigned mask;
+    MTBDD left = mtbdd_false, right = mtbdd_false, result = mtbdd_false;
+    mtbdd_refs_pushptr(&left);
+    mtbdd_refs_pushptr(&right);
     switch (label->type) {
         case NT_BOOL:
-            return label->id ? 1 : -1;  // 0 becomes -1 like this
+            result = label->id ? mtbdd_true : mtbdd_false;
+            break;
         case NT_AND:
-            left = evalLabel(label->left, aliases, numAPs, apIds, value);
-            right = evalLabel(label->right, aliases, numAPs, apIds, value);
-            if (left == -1 || right == -1)
-                return -1;
-            if (left == 0 || right == 0)
-                return 0;
-            // otherwise
-            return 1;
+            left = evalLabel(label->left, aliases, variables);
+            right = evalLabel(label->right, aliases, variables);
+            result = sylvan_and(left, right);
+            break;
         case NT_OR:
-            left = evalLabel(label->left, aliases, numAPs, apIds, value);
-            right = evalLabel(label->right, aliases, numAPs, apIds, value);
-            if (left == 1 || right == 1)
-                return 1;
-            if (left == 0 || right == 0)
-                return 0;
-            // otherwise
-            return -1;
+            left = evalLabel(label->left, aliases, variables);
+            right = evalLabel(label->right, aliases, variables);
+            result = sylvan_or(left, right);
+            break;
         case NT_NOT:
-            return -1 * evalLabel(label->left, aliases, numAPs, apIds, value);
+            left = evalLabel(label->left, aliases, variables);
+            result = sylvan_not(left);
+            break;
         case NT_AP:
-            mask = 1;
-            for (int i = 0; i < numAPs; i++) {
-                if (label->id == apIds[i]) {
-                    return ((mask & value) == mask) ? 1 : -1;
-                }
-                mask = mask << 1;
-            }
-            return 0;
+            result = mtbdd_ithvar(variables[label->id]);
+            break;
         case NT_ALIAS:
             for (AliasList* a = aliases; a != NULL; a = a->next) {
-                if (strcmp(a->alias, label->alias) == 0)
-                    return evalLabel(a->labelExpr, aliases, numAPs, apIds, value);
+                if (strcmp(a->alias, label->alias) == 0) {
+                    return evalLabel(a->labelExpr, aliases, variables);
+                }
             }
             break;
         default:
             assert(false);  // all cases should be covered above
     }
-    return -2;
+    mtbdd_refs_popptr(2);
+    return result;
 }
 
 /* Adjust the priorities since we have to make sure we output a max, even
@@ -136,6 +133,40 @@ static inline int adjustPriority(int p, bool maxPriority, short winRes,
 }
 
 
+
+void
+collect_inter(MTBDD trans, int uap_count, int cap_count, std::set<MTBDD> &res)
+{
+    if (mtbdd_isleaf(trans)) {
+        res.insert(trans);
+    } else {
+        // node
+        uint32_t var = mtbdd_getvar(trans);
+        if (var < (unsigned)uap_count) {
+            // uncontrollable ap
+            collect_inter(mtbdd_gethigh(trans), uap_count, cap_count, res);
+            collect_inter(mtbdd_getlow(trans), uap_count, cap_count, res);
+        } else {
+            // controllable ap
+            res.insert(trans);
+        }
+    }
+}
+
+
+void
+collect_targets(MTBDD trans, std::set<uint64_t> &res)
+{
+    if (mtbdd_isleaf(trans)) {
+        res.insert(mtbdd_getint64(trans));
+    } else {
+        collect_targets(mtbdd_gethigh(trans), res);
+        collect_targets(mtbdd_getlow(trans), res);
+    }
+}
+
+
+
 int
 main(int argc, char* argv[])
 {
@@ -164,73 +195,92 @@ main(int argc, char* argv[])
     int ret = isParityGFG(data, &maxPriority, &winRes);
     if (ret != 0) return ret;
 
-    // Step 1: prepare a list of all uncontrollable inputs
-    int numUcntAPs = data->noAPs;
-    for (IntList* c = data->cntAPs; c != NULL; c = c->next)
-        numUcntAPs--;
-    int ucntAPs[numUcntAPs];
-    int apIdx = 0;
-    for (int i = 0; i < data->noAPs; i++) {
-        bool found = false;
-        for (IntList* c = data->cntAPs; c != NULL; c = c->next) {
-            if (i == c->i) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            ucntAPs[apIdx] = i;
-#ifndef NDEBUG
-            if (0) {
-                fprintf(stderr, "Found an uncontrollable AP: %d\n", i);
-            }
-#endif
-            apIdx++;
-        }
+    // Step 1: which APs are controllable
+    pg::bitset controllable(data->noAPs);
+    for (IntList* c = data->cntAPs; c != NULL; c = c->next) controllable[c->i] = 1;
+
+    const int cap_count = controllable.count();
+    const int uap_count = data->noAPs - cap_count;
+
+    // order uncontrollable < controllable
+    uint32_t variables[data->noAPs];
+    long uidx = 0, oidx = data->noAPs - controllable.count();
+    for (int i=0; i<data->noAPs; i++) {
+        if (controllable[i]) variables[i] = oidx++;
+        else variables[i] = uidx++;
     }
-    assert(apIdx == numUcntAPs);
+    assert(uidx == (data->noAPs - controllable.count()));
+    assert(oidx == data->noAPs);
 
-    // Step 2: for all states in the automaton and all valuations, create
-    // vertices for both players and edges to go with them
-    // NOTE: states retain their index while "intermediate" state-valuation
-    // vertices receive new indices
-    const unsigned numValuations = (1 << numUcntAPs);
-    int nextIndex = data->noStates; // number of states
+    // At this point, we need to initialize Sylvan for support
+    lace_init(1, 0); // initialize Lace, but sequentially
+    lace_startup(0, 0, 0); // no thread spawning
+    LACE_ME;
+    sylvan_set_limits(16LL << 25, 1, 16); // should be enough
+    sylvan_init_package();
+    sylvan_init_mtbdd();
 
-    int nv = data->noStates + data->noStates*numValuations; // it will actually grow larger...
+    int nv = data->noStates * 100; // it will actually grow larger automatically
     pg::Game game(nv);
+    int nextIndex = data->noStates; // number of states
 
     std::vector<int> inter;
     std::vector<int> succie;
 
+    MTBDD var_bdd = mtbdd_set_from_array(variables, data->noAPs);
+    mtbdd_refs_pushptr(&var_bdd);
+
+    MTBDD uvar_bdd = mtbdd_set_from_array(variables, uap_count);
+    mtbdd_refs_pushptr(&uvar_bdd);
+
+    MTBDD cvar_bdd = mtbdd_set_from_array(variables+uap_count, cap_count);
+    mtbdd_refs_pushptr(&cvar_bdd);
+
+    MTBDD trans_bdd = mtbdd_false;
+    mtbdd_refs_pushptr(&trans_bdd);
+
+    std::set<MTBDD> halfway_bdds;
+    std::set<uint64_t> targets;
+
     // Loop over every state
     for (StateList* state = data->states; state != NULL; state = state->next) {
-        for (unsigned value = 0; value < numValuations; value++) {
-            // for every valuation to the uncontrollable APs, we make an intermediate vertex
-            for (TransList* trans = state->transitions; trans != NULL; trans = trans->next) {
-                // there should be a single successor per transition
-                assert(trans->successors != NULL && trans->successors->next == NULL);
-                // there should be a label at state or transition level
-                BTree* label;
-                if (state->label != NULL) label = state->label;
-                else label = trans->label;
-                assert(label != NULL);
-                // there should be a priority at state or transition level
-                IntList* acc = state->accSig;
-                if (state->accSig == NULL) acc = trans->accSig;
-                // there should be exactly one acceptance set!
-                assert(acc != NULL && acc->next == NULL);
-                // we add a vertex + edges if the transition is compatible with the
-                // valuation we are currently considering
-                int evald = evalLabel(label, data->aliases, numUcntAPs, ucntAPs, value);
-                if (evald == -1) continue; // not compatible
-                // adjust priority
-                int priority = adjustPriority(acc->i, maxPriority, winRes, data->noAccSets);
+        trans_bdd = mtbdd_false;
+        for (TransList* trans = state->transitions; trans != NULL; trans = trans->next) {
+            // there should be a single successor per transition
+            assert(trans->successors != NULL && trans->successors->next == NULL);
+            // there should be a label at state or transition level
+            BTree* label;
+            if (state->label != NULL) label = state->label;
+            else label = trans->label;
+            assert(label != NULL);
+            // there should be a priority at state or transition level
+            IntList* acc = state->accSig;
+            if (state->accSig == NULL) acc = trans->accSig;
+            // there should be exactly one acceptance set!
+            assert(acc != NULL && acc->next == NULL);
+
+            // adjust priority
+            int priority = adjustPriority(acc->i, maxPriority, winRes, data->noAccSets);
+            int target = trans->successors->i;
+
+            // tricky tricky
+            MTBDD lblbdd = evalLabel(label, data->aliases, variables);
+            MTBDD leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)target);
+            trans_bdd = mtbdd_ite(lblbdd, leaf, trans_bdd);
+        }
+
+        collect_inter(trans_bdd, uap_count, cap_count, halfway_bdds);
+
+        for (MTBDD ASDF : halfway_bdds) {
+            collect_targets(ASDF, targets);
+            for (uint64_t lval : targets) {
+                int priority = (int)(lval >> 32);
+                int target = (int)(lval & 0xffffffff);
 
                 int vfin = nextIndex++;
                 game.init_vertex(vfin, priority, 0);
                 game.e_start(vfin);
-                game.e_add(vfin, trans->successors->i);
+                game.e_add(vfin, target);
                 game.e_finish();
                 succie.push_back(vfin);
             }
@@ -242,6 +292,7 @@ main(int argc, char* argv[])
             for (int to : succie) game.e_add(vinter, to);
             game.e_finish();
             succie.clear();
+            targets.clear();
         }
 
         game.init_vertex(state->id, 0, 1, state->name ? state->name : "");
@@ -249,7 +300,11 @@ main(int argc, char* argv[])
         for (int to : inter) game.e_add(state->id, to);
         game.e_finish();
         inter.clear();
+        halfway_bdds.clear();
     }
+
+    mtbdd_refs_popptr(4);
+    sylvan_quit();
 
     int vstart = data->start->i;
 
@@ -290,9 +345,9 @@ main(int argc, char* argv[])
 
     if (game.winner[vstart] == 0) {
         std::cout << "REALIZABLE";
-        return 10;
+        exit(10);
     } else {
         std::cout << "UNREALIZABLE";
-        return 20;
+        exit(20);
     }
 }
