@@ -33,6 +33,8 @@
 
 #include <game.hpp>
 #include <oink.hpp>
+#include <solvers.hpp>
+#include <tools/cxxopts.hpp>
 #include <sylvan.h>
 #include <map>
 #include <set>
@@ -50,8 +52,6 @@ wctime()
     gettimeofday(&time, NULL);
     return time.tv_sec + 1E-6 * time.tv_usec;
 }
-
-static double t_start;
 
 /**
  * evalLabel converts a label on a transition to a MTBDD encoding the label
@@ -105,7 +105,7 @@ TASK_3(MTBDD, evalLabel, BTree*, label, AliasList*, aliases, uint32_t*, variable
  * ensure we have a "max, even" parity game, as this is what Oink expects.
  */
 static inline int
-adjustPriority(int p, bool maxPriority, short winRes, int noPriorities)
+adjustPriority(int p, bool maxPriority, bool controllerIsOdd, int noPriorities)
 {
     // To deal with max vs min, we subtract from noPriorities if
     // originally it was min (for this we need it to be even!)
@@ -115,8 +115,9 @@ adjustPriority(int p, bool maxPriority, short winRes, int noPriorities)
     }
     // We reserve priority 0, so do not use it.
     p += 2;
-    // If "winRes" is 1 (odd), automatically adjust the priority
-    return p - winRes;
+    // If "controllerParity" is 1 (odd), automatically adjust the priority
+    if (controllerIsOdd) p--;
+    return p;
 }
 
 
@@ -165,36 +166,11 @@ collect_targets(MTBDD trans, std::set<uint64_t> &res)
 
 
 /**
- * The main function
+ * Construct and solve the game explicitly
  */
-int
-main(int argc, char* argv[])
+pg::Game*
+constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 {
-    t_start = wctime();
-
-    // First initialize the HOA data structure
-    HoaData* data = (HoaData*)malloc(sizeof(HoaData));
-    defaultsHoa(data);
-
-    if (argc == 1) {
-        int ret = parseHoa(stdin, data);
-        if (ret != 0) return ret;
-    } else {
-        FILE* f = fopen(argv[1], "r");
-        int ret = parseHoa(f, data);
-        fclose(f);
-        if (ret != 0) return ret;
-    }
-
-    std::cerr << "finished reading file." << std::endl;
-
-    // First check if the automaton is a parity automaton
-    bool maxPriority = true;
-    short int winRes = 0;
-
-    int ret = isParityGFG(data, &maxPriority, &winRes);
-    if (ret != 0) return ret;
-
     // Set which APs are controllable in the bitset controllable
     pg::bitset controllable(data->noAPs);
     for (IntList* c = data->cntAPs; c != NULL; c = c->next) controllable[c->i] = 1;
@@ -211,21 +187,9 @@ main(int argc, char* argv[])
         if (controllable[i]) variables[i] = oidx++;
         else variables[i] = uidx++;
     }
-    assert(uidx == (data->noAPs - cap_count));
-    assert(oidx == data->noAPs);
-
-    // Initialize Lace
-    lace_init(1, 0); // initialize Lace, but sequentially
-    lace_startup(0, 0, 0); // no thread spawning
-    LACE_ME;
-
-    // And initialize Sylvan
-    sylvan_set_limits(128LL << 20, 1, 16); // should be enough (128 megabytes)
-    sylvan_init_package();
-    sylvan_init_mtbdd();
 
     // Now initialize a new parity game
-    pg::Game game(data->noStates * 10); // start with 10 the number of states
+    pg::Game *game = new pg::Game(data->noStates * 10); // start with 10 the number of states
     // notice that the number of vertices automatically grows when needed anyway
 
     int nextIndex = data->noStates; // index of the next vertex to make
@@ -246,6 +210,8 @@ main(int argc, char* argv[])
     mtbdd_refs_pushptr(&lblbdd);
     mtbdd_refs_pushptr(&leaf);
 
+    LACE_ME;
+
     // Loop over every state
     for (StateList* state = data->states; state != NULL; state = state->next) {
         trans_bdd = mtbdd_false;
@@ -259,18 +225,17 @@ main(int argc, char* argv[])
             else label = trans->label;
             assert(label != NULL);
             // there should be a priority at state or transition level
-            IntList* acc = state->accSig;
-            if (state->accSig == NULL) acc = trans->accSig;
-            // there should be exactly one acceptance set!
-            assert(acc != NULL && acc->next == NULL);
-
-            // adjust priority
-            int priority = adjustPriority(acc->i, maxPriority, winRes, data->noAccSets);
-            int target = trans->successors->i;
-
+            int priority = 0;
+            if (state->accSig == NULL) {
+                // there should be exactly one acceptance set!
+                IntList* acc = trans->accSig;
+                assert(acc != NULL && acc->next == NULL);
+                // adjust priority
+                priority = adjustPriority(acc->i, isMaxParity, controllerIsOdd, data->noAccSets);
+            }            
             // tricky tricky
             lblbdd = evalLabel(label, data->aliases, variables);
-            leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)target);
+            leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)(trans->successors->i));
             trans_bdd = mtbdd_ite(lblbdd, leaf, trans_bdd);
             lblbdd = leaf = mtbdd_false;
         }
@@ -286,88 +251,209 @@ main(int argc, char* argv[])
                 int priority = (int)(lval >> 32);
                 int target = (int)(lval & 0xffffffff);
 
-                int vfin = nextIndex++;
-                game.init_vertex(vfin, priority, 0);
-                game.e_start(vfin);
-                game.e_add(vfin, target);
-                game.e_finish();
-                succ_inter.push_back(vfin);
+                if (priority != 0) {
+                    int vfin = nextIndex++;
+                    game->init_vertex(vfin, priority, 0);
+                    game->e_start(vfin);
+                    game->e_add(vfin, target);
+                    game->e_finish();
+                    succ_inter.push_back(vfin);
+                } else {
+                    succ_inter.push_back(target);
+                }
             }
 
             int vinter = nextIndex++;
-            game.init_vertex(vinter, 0, 0);
-            game.e_start(vinter);
-            for (int to : succ_inter) game.e_add(vinter, to);
-            game.e_finish();
+            game->init_vertex(vinter, 0, 0);
+            game->e_start(vinter);
+            for (int to : succ_inter) game->e_add(vinter, to);
+            game->e_finish();
             succ_state.push_back(vinter);
 
             succ_inter.clear();
             targets.clear();
         }
 
-        game.init_vertex(state->id, 0, 1, state->name ? state->name : "");
-        game.e_start(state->id);
-        for (int to : succ_state) game.e_add(state->id, to);
-        game.e_finish();
+        // there should be a priority at state or transition level
+        int priority;
+        if (state->accSig != NULL) priority = adjustPriority(state->accSig->i, isMaxParity, controllerIsOdd, data->noAccSets);
+        else priority = 0;
+
+        game->init_vertex(state->id, priority, 1, state->name ? state->name : "");
+        game->e_start(state->id);
+        for (int to : succ_state) game->e_add(state->id, to);
+        game->e_finish();
 
         succ_state.clear();
         inter_bdds.clear();
     }
 
-    // we're done with Sylvan
-    mtbdd_refs_popptr(3);
-    sylvan_quit();
-
     // tell Oink we're done adding stuff, resize game to final size
-    game.v_resize(nextIndex);
+    game->v_resize(nextIndex);
 
-    // get the start vertex before we delete the HOA data
-    int vstart = data->start->i;
+    mtbdd_refs_popptr(3);
 
-    // free HOA allocated data structure
-    deleteHoa(data);
-    std::cerr << "finished constructing game." << std::endl;
+    return game;
+}
 
-    if (0) {
-        // in case we want to write the file to PGsolver file format...
-        game.write_pgsolver(std::cout);
-        // std::cerr << "initial vertex: " << vstart << std::endl;
-    }
 
-    // we sort now, so we can track the initial state
-    int *mapping = new int[game.vertexcount()];
-    game.sort(mapping);
-    for (int i=0; i<nextIndex; i++) {
-        if (mapping[i] == vstart) {
-            vstart = i;
-            break;
+cxxopts::ParseResult
+handleOptions(int &argc, char**& argv)
+{
+    try {
+        cxxopts::Options opts(argv[0], "HOA synthesis using Sylvan and Oink");
+        opts.custom_help("[OPTIONS...] [FILE]");
+        opts.add_options()
+            ("help", "Print help")
+            ("symbolic", "Generate a symbolic parity game")
+            ("print-game", "Just print the parity game")
+            ("v,verbose", "Be verbose")
+            ;
+        opts.add_options("Explicit solvers")
+            ("solvers", "List available solvers")
+            ;
+
+        // Add solvers
+        pg::Solvers solvers;
+        for (unsigned id=0; id<solvers.count(); id++) {
+            opts.add_options("Explicit solvers")(solvers.label(id), solvers.desc(id));
         }
+
+        // Parse command line
+        auto options = opts.parse(argc, argv);
+
+        if (options.count("help")) {
+            std::cout << opts.help() << std::endl;
+            exit(0);
+        }
+
+        if (options.count("solvers")) {
+            solvers.list(std::cout);
+            exit(0);
+        }
+
+        return options;
+    } catch (const cxxopts::OptionException& e) {
+        std::cout << "error parsing options: " << e.what() << std::endl;
+        exit(0);
     }
-    delete[] mapping;
+}
 
-    // OK, fire up the engine
-    pg::Oink engine(game, std::cerr);
-    engine.setTrace(0);
-    engine.setRenumber();
-    if (argc > 2) engine.setSolver(argv[2]);
-    else engine.setSolver("fpi");
-    engine.setWorkers(-1);
 
-    // and run the solver
-    double begin = wctime();
-    engine.run();
-    double end = wctime();
+/**
+ * The main function
+ */
+int
+main(int argc, char* argv[])
+{
+    auto options = handleOptions(argc, argv);
 
-    // report how long it all took
-    std::cerr << "total solving time: " << std::fixed << (end-begin) << " sec." << std::endl;
+    bool verbose = options["verbose"].count() > 0;
 
-    // finally, check if the initial vertex is won by controller or environment
-    if (game.winner[vstart] == 0) {
-        std::cout << "REALIZABLE";
-        exit(10);
+    // First initialize the HOA data structure
+    HoaData* data = (HoaData*)malloc(sizeof(HoaData));
+    defaultsHoa(data);
+
+    if (argc == 1) {
+        int ret = parseHoa(stdin, data);
+        if (ret != 0) return ret;
     } else {
-        std::cout << "UNREALIZABLE";
-        exit(20);
+        FILE* f = fopen(argv[1], "r");
+        if (f == NULL) {
+            std::cout << "file not found: " << argv[1] << std::endl;
+            return 0;
+        }
+        int ret = parseHoa(f, data);
+        fclose(f);
+        if (ret != 0) return ret;
+    }
+
+    if (verbose) std::cerr << "finished reading file." << std::endl;
+
+    // First check if the automaton is a parity automaton
+    bool isMaxParity = true;
+    short controllerParity = 0;
+    int ret = isParityGFG(data, &isMaxParity, &controllerParity);
+    if (ret != 0) return ret;
+    bool controllerIsOdd = controllerParity != 0;
+
+    // Initialize Lace
+    lace_init(1, 0); // initialize Lace, but sequentially
+    lace_startup(0, 0, 0); // no thread spawning
+
+    // And initialize Sylvan
+    sylvan_set_limits(128LL << 20, 1, 16); // should be enough (128 megabytes)
+    sylvan_init_package();
+    sylvan_init_mtbdd();
+
+    bool explicit_solver = true;
+    bool write_pg = options["print-game"].count() > 0;
+
+    if (explicit_solver) {
+        // Remember the start vertex
+        int vstart = data->start->i;
+
+        // Construct the game
+        pg::Game *game = constructGame(data, isMaxParity, controllerIsOdd);
+        game->set_label(vstart, "initial");
+
+        // free HOA allocated data structure
+        deleteHoa(data);
+        if (verbose) std::cerr << "finished constructing game." << std::endl;
+
+        // We don't need Sylvan anymore at this point
+        sylvan_quit();
+
+        if (write_pg) {
+            // in case we want to write the file to PGsolver file format...
+            game->write_pgsolver(std::cout);
+            // std::cerr << "initial vertex: " << vstart << std::endl;
+            exit(0);
+        }
+
+        // we sort now, so we can track the initial state
+        int *mapping = new int[game->vertexcount()];
+        game->sort(mapping);
+        for (int i=0; i<game->vertexcount(); i++) {
+            if (mapping[i] == vstart) {
+                vstart = i;
+                break;
+            }
+        }
+        delete[] mapping;
+
+        // OK, fire up the engine
+       
+        std::stringstream log;
+
+        std::string solver = "fpi";
+        pg::Solvers solvers;
+        for (unsigned id=0; id<solvers.count(); id++) {
+            if (options.count(solvers.label(id))) solver = solvers.label(id);
+        }
+ 
+        pg::Oink engine(*game, verbose ? std::cerr : log);
+        engine.setTrace(0);
+        engine.setRenumber();
+        engine.setSolver(solver);
+        engine.setWorkers(-1);
+
+        // and run the solver
+        double begin = wctime();
+        engine.run();
+        double end = wctime();
+
+        // report how long it all took
+        if (verbose) std::cerr << "total solving time: " << std::fixed << (end-begin) << " sec." << std::endl;
+
+        // finally, check if the initial vertex is won by controller or environment
+        if (game->winner[vstart] == 0) {
+            std::cout << "REALIZABLE";
+            exit(10);
+        } else {
+            std::cout << "UNREALIZABLE";
+            exit(20);
+        }
     }
 }
 
