@@ -365,7 +365,7 @@ constructGameNaive(HoaData *data, bool isMaxParity, bool controllerIsOdd)
  * Construct and solve the game explicitly
  */
 pg::Game*
-constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd, bool verbose)
+constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 {
     // Set which APs are controllable in the bitset controllable
     pg::bitset controllable(data->noAPs);
@@ -396,11 +396,6 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd, bool verbos
     int evenMax = 2 + 2*((data->noAccSets+1)/2); // should be enough...
     int priobits = 1;
     while ((1ULL<<(priobits)) <= (unsigned)evenMax) priobits++;
-
-    if (verbose) {
-        std::cerr << "bits for " << data->noStates << " states: " << statebits << std::endl;
-        std::cerr << "bits for " << evenMax << " priorities: " << priobits << std::endl;
-    }
 
     std::vector<int> succ_state;  // for current state, the successors
     std::vector<int> succ_inter;  // for current intermediate state, the successors
@@ -461,12 +456,6 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd, bool verbos
         for (MTBDD inter_bdd : inter_bdds) {
             MTBDD targets_bdd = collect_targets2(inter_bdd, targets, statebits, priobits);
 
-#ifndef NDEBUG
-            // test correct number...
-            assert((unsigned long)mtbdd_satcount(targets_bdd, statebits+priobits) == targets.size());
-            // std::cerr << "i count: " << mtbdd_satcount(targets_bdd, statebits+priobits) << " " << targets.size() << std::endl;
-#endif
-
             int vinter;
             auto it = inter_vertices.find(targets_bdd);
             if (it == inter_vertices.end()) {
@@ -504,29 +493,6 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd, bool verbos
                 succ_inter.clear();
             } else {
                 vinter = it->second;
-
-#ifndef NDEBUG
-                // std::cerr << "we found a match: MTBDD " << it->first << " already made: " << it->second << std::endl;
-                size_t a_count = 0, b_count = 0;
-                for (uint64_t lval : targets) {
-                    int priority = (int)(lval >> 32);
-                    int target = (int)(lval & 0xffffffff);
-                    // std::cerr << "expect: " << lval << " " << priority << " " << target << std::endl;
-                    a_count++;
-                }
-                bool good = true;
-                for (auto it = game->outs(vinter); *it != -1; it++) {
-                    int vfin = *it;
-                    int priority = game->priority(vfin);
-                    int t = *game->outs(vfin);
-                    uint64_t lval = (((uint64_t)priority)<<32)|(uint64_t)t;
-                    // std::cerr << "got: " << lval << " " << priority << " " << t << std::endl;
-                    b_count++;
-                    if (targets.find(lval) == targets.end()) good = false;
-                }
-                assert(a_count == b_count);
-                assert(good);
-#endif
             }
 
             succ_state.push_back(vinter);
@@ -555,6 +521,8 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd, bool verbos
 
     return game;
 }
+
+
 
 
 cxxopts::ParseResult
@@ -612,6 +580,7 @@ main(int argc, char* argv[])
     bool verbose = options["verbose"].count() > 0;
 
     // First initialize the HOA data structure
+    const double t_before_parsing = wctime();
     HoaData* data = (HoaData*)malloc(sizeof(HoaData));
     defaultsHoa(data);
 
@@ -629,7 +598,11 @@ main(int argc, char* argv[])
         if (ret != 0) return ret;
     }
 
-    if (verbose) std::cerr << "finished reading file." << std::endl;
+    const double t_after_parsing = wctime();
+    if (verbose) {
+        std::cerr << "finished parsing automaton in " << std::fixed << (t_after_parsing - t_before_parsing) << " sec." << std::endl;
+        std::cerr << "automaton has " << data->noStates << " states." << std::endl;
+    }
 
     // First check if the automaton is a parity automaton
     bool isMaxParity = true;
@@ -656,18 +629,19 @@ main(int argc, char* argv[])
         int vstart = data->start->i;
 
         // Construct the game
+        const double t_before_splitting = wctime();
         pg::Game *game;
         if (naive_splitting) {
             game = constructGameNaive(data, isMaxParity, controllerIsOdd);
         } else {
-            game = constructGame(data, isMaxParity, controllerIsOdd, verbose);
+            game = constructGame(data, isMaxParity, controllerIsOdd);
         }
-
         game->set_label(vstart, "initial");
+        const double t_after_splitting = wctime();
 
         // free HOA allocated data structure
         deleteHoa(data);
-        if (verbose) std::cerr << "finished constructing game." << std::endl;
+        if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec." << std::endl;
 
         // We don't need Sylvan anymore at this point
         sylvan_quit();
@@ -680,7 +654,7 @@ main(int argc, char* argv[])
         }
 
         if (verbose) {
-            std::cerr << "constructed game with " << game->vertexcount() << " vertices and " << game->edgecount() << " edges." << std::endl;
+            std::cerr << "constructed game has " << game->vertexcount() << " vertices and " << game->edgecount() << " edges." << std::endl;
         }
 
         // we sort now, so we can track the initial state
@@ -716,7 +690,7 @@ main(int argc, char* argv[])
         double end = wctime();
 
         // report how long it all took
-        if (verbose) std::cerr << "total solving time: " << std::fixed << (end-begin) << " sec." << std::endl;
+        if (verbose) std::cerr << "finished solving game in " << std::fixed << (end-begin) << " sec." << std::endl;
 
         // finally, check if the initial vertex is won by controller or environment
         if (game->winner[vstart] == 0) {
