@@ -99,6 +99,62 @@ TASK_3(MTBDD, evalLabel, BTree*, label, AliasList*, aliases, uint32_t*, variable
 
 
 
+/**
+ * Given a label and a valuation of some of the atomic propositions,
+ * we determine whether the label is true (1), false (-1), or its
+ * value is unknown (0). The valuation is expected as an unsigned
+ * integer whose i-th bit is 1 iff the i-th AP in apIds is set to 1
+ */
+static int
+evalLabelNaive(BTree* label, AliasList* aliases, int numAPs, int* apIds, uint64_t value) {
+    assert(label != NULL);
+    int left;
+    int right;
+    uint64_t mask;
+    switch (label->type) {
+        case NT_BOOL:
+            return label->id ? 1 : -1;  // 0 becomes -1 like this
+        case NT_AND:
+            left = evalLabelNaive(label->left, aliases, numAPs, apIds, value);
+            right = evalLabelNaive(label->right, aliases, numAPs, apIds, value);
+            if (left == -1 || right == -1) return -1;
+            if (left == 0 || right == 0) return 0;
+            // otherwise
+            return 1;
+        case NT_OR:
+            left = evalLabelNaive(label->left, aliases, numAPs, apIds, value);
+            right = evalLabelNaive(label->right, aliases, numAPs, apIds, value);
+            if (left == 1 || right == 1) return 1;
+            if (left == 0 || right == 0) return 0;
+            // otherwise
+            return -1;
+        case NT_NOT:
+            return -1 * evalLabelNaive(label->left, aliases, numAPs, apIds, value);
+        case NT_AP:
+            mask = 1;
+            for (int i = 0; i < numAPs; i++) {
+                if (label->id == apIds[i]) {
+                    return ((mask & value) == mask) ? 1 : -1;
+                }
+                mask = mask << 1;
+            }
+            return 0;
+        case NT_ALIAS:
+            for (AliasList* a = aliases; a != NULL; a = a->next) {
+                if (strcmp(a->alias, label->alias) == 0)
+                    return evalLabelNaive(a->labelExpr, aliases, numAPs, apIds, value);
+            }
+            break;
+        default:
+            assert(false);  // all cases should be covered above
+    }
+    return -2;
+}
+
+
+
+
+
 
 /**
  * This helper function ensures that the priority p is adjusted to
@@ -162,6 +218,102 @@ collect_targets(MTBDD trans, std::set<uint64_t> &res)
         collect_targets(mtbdd_getlow(trans), res);
     }
 }
+
+
+
+
+/**
+ * Construct and solve the game explicitly
+ */
+pg::Game*
+constructGameNaive(HoaData *data, bool isMaxParity, bool controllerIsOdd)
+{
+    // Set which APs are controllable in the bitset controllable
+    pg::bitset controllable(data->noAPs);
+    for (IntList* c = data->cntAPs; c != NULL; c = c->next) controllable[c->i] = 1;
+
+    // Count the number of controllable/uncontrollable APs
+    const int cap_count = controllable.count();
+    const int uap_count = data->noAPs - cap_count;
+    const uint64_t numValuations = (1ULL << uap_count);
+
+    int ucntAPs[uap_count];
+    int uidx = 0;
+    for (int i = 0; i < data->noAPs; i++) {
+        if (!controllable[i]) ucntAPs[uidx++] = i;
+    }
+
+    // Now initialize a new parity game
+    pg::Game *game = new pg::Game(data->noStates * 10); // start with 10 the number of states
+    // notice that the number of vertices automatically grows when needed anyway
+
+    int nextIndex = data->noStates; // index of the next vertex to make
+
+    std::vector<int> succ_state;  // for current state, the successors
+    std::vector<int> succ_inter;  // for current intermediate state, the successors
+
+    // Loop over every state
+    for (StateList* state = data->states; state != NULL; state = state->next) {
+        for (uint64_t value = 0; value < numValuations; value++) {
+            // for every valuation to the uncontrollable APs, we make an intermediate vertex
+            for (TransList* trans = state->transitions; trans != NULL; trans = trans->next) {
+                // there should be a single successor per transition
+                assert(trans->successors != NULL && trans->successors->next == NULL);
+                // there should be a label at state or transition level
+                BTree* label;
+                if (state->label != NULL) label = state->label;
+                else label = trans->label;
+                assert(label != NULL);
+                // we add a vertex + edges if the transition is compatible with the
+                // valuation we are currently considering
+                int evald = evalLabelNaive(label, data->aliases, uap_count, ucntAPs, value);
+                if (evald == -1) continue; // not compatible
+                // there should be a priority at state or transition level
+                if (state->accSig == NULL) {
+                    // there should be exactly one acceptance set!
+                    IntList* acc = trans->accSig;
+                    assert(acc != NULL && acc->next == NULL);
+                    // adjust priority
+                    int priority = adjustPriority(acc->i, isMaxParity, controllerIsOdd, data->noAccSets);
+
+                    int vfin = nextIndex++;
+                    game->init_vertex(vfin, priority, 0);
+                    game->e_start(vfin);
+                    game->e_add(vfin, trans->successors->i);
+                    game->e_finish();
+                    succ_inter.push_back(vfin);
+                } else {
+                    succ_inter.push_back(trans->successors->i);
+                }
+            }
+
+            int vinter = nextIndex++;
+            succ_state.push_back(vinter);
+            game->init_vertex(vinter, 0, 0);
+            game->e_start(vinter);
+            for (int to : succ_inter) game->e_add(vinter, to);
+            game->e_finish();
+            succ_inter.clear();
+        }
+
+        int priority;
+        if (state->accSig != NULL) priority = adjustPriority(state->accSig->i, isMaxParity, controllerIsOdd, data->noAccSets);
+        else priority = 0;
+    
+        game->init_vertex(state->id, priority, 1, state->name ? state->name : "");
+        game->e_start(state->id);
+        for (int to : succ_state) game->e_add(state->id, to);
+        game->e_finish();
+        succ_state.clear();
+    }
+
+    // tell Oink we're done adding stuff, resize game to final size
+    game->v_resize(nextIndex);
+
+    return game;
+}
+
+
 
 
 
@@ -306,6 +458,7 @@ handleOptions(int &argc, char**& argv)
         opts.add_options()
             ("help", "Print help")
             ("symbolic", "Generate a symbolic parity game")
+            ("naive", "Use the naive splitting procedure")
             ("print-game", "Just print the parity game")
             ("v,verbose", "Be verbose")
             ;
@@ -387,6 +540,7 @@ main(int argc, char* argv[])
     sylvan_init_mtbdd();
 
     bool explicit_solver = true;
+    bool naive_splitting = options["naive"].count() > 0;
     bool write_pg = options["print-game"].count() > 0;
 
     if (explicit_solver) {
@@ -394,7 +548,13 @@ main(int argc, char* argv[])
         int vstart = data->start->i;
 
         // Construct the game
-        pg::Game *game = constructGame(data, isMaxParity, controllerIsOdd);
+        pg::Game *game;
+        if (naive_splitting) {
+            game = constructGameNaive(data, isMaxParity, controllerIsOdd);
+        } else {
+            game = constructGame(data, isMaxParity, controllerIsOdd);
+        }
+
         game->set_label(vstart, "initial");
 
         // free HOA allocated data structure
