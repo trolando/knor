@@ -221,6 +221,50 @@ collect_targets(MTBDD trans, std::set<uint64_t> &res)
 
 
 
+/**
+ * Given some intermediary MTBDD root, collect all the MTBDD
+ * leafs, representing the target vertices of the full transition
+ * and the transition priority encoded in a single 64-bit value
+ */
+MTBDD
+collect_targets2(MTBDD trans, std::set<uint64_t> &res, const int statebits, const int priobits)
+{
+    if (mtbdd_isleaf(trans)) {
+        uint64_t leaf = mtbdd_getint64(trans);
+        res.insert(leaf);
+
+        uint32_t priority = (uint32_t)(leaf>>32);
+        uint32_t state = (uint32_t)(leaf & 0xffffffff);
+
+        // std::cerr << "encoding " << priority << " " << state << std::endl;
+
+        // create a cube
+        MTBDD cube = mtbdd_true;
+        for (int i=0; i<statebits; i++) {
+            if (state & 1) cube = mtbdd_makenode(statebits+priobits-i-1, mtbdd_false, cube);
+            else cube = mtbdd_makenode(statebits+priobits-i-1, cube, mtbdd_false);
+            state >>= 1;
+        }
+        for (int i=0; i<priobits; i++) {
+            if (priority & 1) cube = mtbdd_makenode(priobits-i-1, mtbdd_false, cube);
+            else cube = mtbdd_makenode(priobits-i-1, cube, mtbdd_false);
+            priority >>= 1;
+        }
+
+        return cube;
+    } else {
+        LACE_ME;
+        MTBDD left = collect_targets2(mtbdd_getlow(trans), res, statebits, priobits);
+        mtbdd_refs_push(left);
+        MTBDD right = collect_targets2(mtbdd_gethigh(trans), res, statebits, priobits);
+        mtbdd_refs_push(right);
+        MTBDD res = sylvan_or(left, right);
+        mtbdd_refs_pop(2);
+        return res;
+    }
+}
+
+
 
 /**
  * Construct and solve the game explicitly
@@ -321,7 +365,7 @@ constructGameNaive(HoaData *data, bool isMaxParity, bool controllerIsOdd)
  * Construct and solve the game explicitly
  */
 pg::Game*
-constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
+constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd, bool verbose)
 {
     // Set which APs are controllable in the bitset controllable
     pg::bitset controllable(data->noAPs);
@@ -346,6 +390,18 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 
     int nextIndex = data->noStates; // index of the next vertex to make
 
+    // Prepare number of statebits and priobits
+    int statebits = 1;
+    while ((1ULL<<(statebits)) <= (uint64_t)data->noStates) statebits++;
+    int evenMax = 2 + 2*((data->noAccSets+1)/2); // should be enough...
+    int priobits = 1;
+    while ((1ULL<<(priobits)) <= (unsigned)evenMax) priobits++;
+
+    if (verbose) {
+        std::cerr << "bits for " << data->noStates << " states: " << statebits << std::endl;
+        std::cerr << "bits for " << evenMax << " priorities: " << priobits << std::endl;
+    }
+
     std::vector<int> succ_state;  // for current state, the successors
     std::vector<int> succ_inter;  // for current intermediate state, the successors
 
@@ -355,6 +411,9 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
     std::set<MTBDD> inter_bdds;
     std::set<uint64_t> targets;
 
+    std::map<MTBDD, int> inter_vertices;
+    std::map<uint64_t, int> target_vertices;
+
     // these variables are used deeper in the for loops, however we can
     // push them to mtbdd refs here and avoid unnecessary pushing and popping
     MTBDD lblbdd = mtbdd_false;
@@ -363,6 +422,8 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
     mtbdd_refs_pushptr(&leaf);
 
     LACE_ME;
+
+    int ref_counter = 0;
 
     // Loop over every state
     for (StateList* state = data->states; state != NULL; state = state->next) {
@@ -398,31 +459,77 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 
         collect_inter(trans_bdd, uap_count, inter_bdds);
         for (MTBDD inter_bdd : inter_bdds) {
-            collect_targets(inter_bdd, targets);
-            for (uint64_t lval : targets) {
-                int priority = (int)(lval >> 32);
-                int target = (int)(lval & 0xffffffff);
+            MTBDD targets_bdd = collect_targets2(inter_bdd, targets, statebits, priobits);
 
-                if (priority != 0) {
-                    int vfin = nextIndex++;
-                    game->init_vertex(vfin, priority, 0);
-                    game->e_start(vfin);
-                    game->e_add(vfin, target);
-                    game->e_finish();
-                    succ_inter.push_back(vfin);
-                } else {
-                    succ_inter.push_back(target);
+#ifndef NDEBUG
+            // test correct number...
+            assert((unsigned long)mtbdd_satcount(targets_bdd, statebits+priobits) == targets.size());
+            // std::cerr << "i count: " << mtbdd_satcount(targets_bdd, statebits+priobits) << " " << targets.size() << std::endl;
+#endif
+
+            int vinter;
+            auto it = inter_vertices.find(targets_bdd);
+            if (it == inter_vertices.end()) {
+                for (uint64_t lval : targets) {
+                    int priority = (int)(lval >> 32);
+                    int target = (int)(lval & 0xffffffff);
+
+                    if (priority != 0) {
+                        int vfin;
+                        auto it = target_vertices.find(lval);
+                        if (it == target_vertices.end()) {
+                            vfin = nextIndex++;
+                            game->init_vertex(vfin, priority, 0);
+                            game->e_start(vfin);
+                            game->e_add(vfin, target);
+                            game->e_finish();
+                            target_vertices.insert(std::make_pair(lval, vfin));
+                        } else {
+                            vfin = it->second;
+                        }
+                        succ_inter.push_back(vfin);
+                    } else {
+                        succ_inter.push_back(target);
+                    }
                 }
+
+                vinter = nextIndex++;
+                game->init_vertex(vinter, 0, 0);
+                game->e_start(vinter);
+                for (int to : succ_inter) game->e_add(vinter, to);
+                game->e_finish();
+                inter_vertices.insert(std::make_pair(targets_bdd, vinter));
+                mtbdd_refs_push(targets_bdd);
+                ref_counter++;
+                succ_inter.clear();
+            } else {
+                vinter = it->second;
+
+#ifndef NDEBUG
+                // std::cerr << "we found a match: MTBDD " << it->first << " already made: " << it->second << std::endl;
+                size_t a_count = 0, b_count = 0;
+                for (uint64_t lval : targets) {
+                    int priority = (int)(lval >> 32);
+                    int target = (int)(lval & 0xffffffff);
+                    // std::cerr << "expect: " << lval << " " << priority << " " << target << std::endl;
+                    a_count++;
+                }
+                bool good = true;
+                for (auto it = game->outs(vinter); *it != -1; it++) {
+                    int vfin = *it;
+                    int priority = game->priority(vfin);
+                    int t = *game->outs(vfin);
+                    uint64_t lval = (((uint64_t)priority)<<32)|(uint64_t)t;
+                    // std::cerr << "got: " << lval << " " << priority << " " << t << std::endl;
+                    b_count++;
+                    if (targets.find(lval) == targets.end()) good = false;
+                }
+                assert(a_count == b_count);
+                assert(good);
+#endif
             }
 
-            int vinter = nextIndex++;
-            game->init_vertex(vinter, 0, 0);
-            game->e_start(vinter);
-            for (int to : succ_inter) game->e_add(vinter, to);
-            game->e_finish();
             succ_state.push_back(vinter);
-
-            succ_inter.clear();
             targets.clear();
         }
 
@@ -444,6 +551,7 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
     game->v_resize(nextIndex);
 
     mtbdd_refs_popptr(3);
+    mtbdd_refs_pop(ref_counter);
 
     return game;
 }
@@ -552,7 +660,7 @@ main(int argc, char* argv[])
         if (naive_splitting) {
             game = constructGameNaive(data, isMaxParity, controllerIsOdd);
         } else {
-            game = constructGame(data, isMaxParity, controllerIsOdd);
+            game = constructGame(data, isMaxParity, controllerIsOdd, verbose);
         }
 
         game->set_label(vstart, "initial");
