@@ -571,6 +571,10 @@ main(int argc, char* argv[])
             exit(0);
         }
 
+        if (verbose) {
+            std::cerr << "constructed game with " << game->vertexcount() << " vertices and " << game->edgecount() << " edges." << std::endl;
+        }
+
         // we sort now, so we can track the initial state
         int *mapping = new int[game->vertexcount()];
         game->sort(mapping);
