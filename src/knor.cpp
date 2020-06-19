@@ -533,7 +533,7 @@ handleOptions(int &argc, char**& argv)
         opts.custom_help("[OPTIONS...] [FILE]");
         opts.add_options()
             ("help", "Print help")
-            ("symbolic", "Generate a symbolic parity game")
+            //("symbolic", "Generate a symbolic parity game")
             ("naive", "Use the naive splitting procedure")
             ("print-game", "Just print the parity game")
             ("v,verbose", "Be verbose")
@@ -625,11 +625,10 @@ main(int argc, char* argv[])
     bool write_pg = options["print-game"].count() > 0;
 
     if (explicit_solver) {
+        const double t_before_splitting = wctime();
         // Remember the start vertex
         int vstart = data->start->i;
-
         // Construct the game
-        const double t_before_splitting = wctime();
         pg::Game *game;
         if (naive_splitting) {
             game = constructGameNaive(data, isMaxParity, controllerIsOdd);
@@ -658,6 +657,7 @@ main(int argc, char* argv[])
         }
 
         // we sort now, so we can track the initial state
+        double begin = wctime();
         int *mapping = new int[game->vertexcount()];
         game->sort(mapping);
         for (int i=0; i<game->vertexcount(); i++) {
@@ -685,7 +685,6 @@ main(int argc, char* argv[])
         engine.setWorkers(-1);
 
         // and run the solver
-        double begin = wctime();
         engine.run();
         double end = wctime();
 

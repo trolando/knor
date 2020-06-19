@@ -21,9 +21,13 @@ make
 
 Dependencies include `flex` and `bison` to generate the eHOA parser, and `boost` for Oink.
 
-Knor takes two parameters: `knor <filename> [solver]` where `<filename>` points at an eHOA file and the optional parameter `[solver]` selects a parity game solver implemented in Oink, e.g., `npp`, `fpi`, `fpj`, `zlk`, `psi`, etc.
+Use `knor --help` to get a list of parameters.
+The option `--naive` selects the naive splitting procedure, which is not recommended but possible for the purpose of comparing it with the BDD-based procedure.
+If you use `--print-game` then Knor will not solve the game and instead print the parity game to standard output.
+With `-v` or `--verbose`, Knor will write some information to standard error, such as the time it takes for each step of the process.
+Furthermore, you can select a solver for the parity game solving, e.g., `--npp`, `--fpi`, `--fpj` are recommended solvers.
 See further the documentation of [Oink](https://github.com/trolando/oink/).
-If invoked without parameters, Knor will attempt to read an eHOA file from `stdin`.
+If invoked without a filename, Knor will attempt to read an eHOA file from `stdin`.
 
 ## Extended HOA
 
@@ -43,11 +47,8 @@ For each state p, we do the following:
 4. create a vertex owned by player 0 for every unique (priority, target state) pair, with the given priority, and the target state as successor state
 5. create a vertex owned by player 0 for every MTBDD of step 3; from here, player 0 (controller) can choose any of the successor vertices created in step 4.
 6. create a vertex owned by player 1 corresponding to p; from here, player 1 (environment) can choose any of the successor vertices created in step 5.
-For each transition from p t
 
-All vertices have priority 0 except for full-valuation vertices which have the
-priority (i.e. acceptance set) of the automaton's transition + 2. (The cases
-for min and odd parity automata are similar.)
+All vertices have priority 0 except for full-valuation vertices which have the priority (i.e. acceptance set) of the automaton's transition + 2. (The cases for min and odd parity automata are similar.)
 
 ## StarExec support
 
