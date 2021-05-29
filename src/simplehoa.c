@@ -30,185 +30,20 @@
 
 #include "simplehoa.h"
 
-StateList* newStateNode(int id, char* name, BTree* label, IntList* accSig) {
-    StateList* list = malloc(sizeof(StateList));
-    list->id = id;
-    list->name = name;
-    list->label = label;
-    list->accSig = accSig;
-    list->transitions = NULL;
-    return list;
-}
-
-StateList* prependStateNode(StateList* node, StateList* newNode,
-                            TransList* transitions) {
-    newNode->next = node;
-    newNode->transitions = transitions;
-    return newNode;
-}
-
-TransList* prependTransNode(TransList* node , BTree* label,
-                            IntList* successors, IntList* accSig) {
-    TransList* newHead = malloc(sizeof(TransList));
-    newHead->label = label;
-    newHead->successors = successors;
-    newHead->accSig = accSig;
-    newHead->next = node;
-    return newHead;
-}
-
-IntList* newIntNode(int val) {
-    IntList* list = malloc(sizeof(IntList));
-    list->i = val;
-    list->next = NULL;
-    return list;
-}
-
-IntList* prependIntNode(IntList* node, int val) {
-    IntList* newHead = malloc(sizeof(IntList));
-    newHead->i = val;
-    newHead->next = node;
-    return newHead;
-}
-
-StringList* prependStrNode(StringList* node, char* str) {
-    StringList* newHead = malloc(sizeof(StringList));
-    newHead->str = str;
-    newHead->next = node;
-    return newHead;
-}
-
-AliasList* prependAliasNode(AliasList* node, char* alias, BTree* labelExpr) {
-    AliasList* newHead = malloc(sizeof(AliasList));
-    newHead->alias = alias;
-    newHead->next = node;
-    newHead->labelExpr = labelExpr;
-    newHead->next = node;
-    return newHead;
-}
-
-StringList* concatStrLists(StringList* list1, StringList* list2) {
-    if (list2 == NULL)
-        return list1;
-    if (list1 == NULL)
-        return list2;
-
-    StringList* cur = list1;
-    while (cur->next != NULL)
-        cur = cur->next;
-    cur->next = list2;
-    return list1;
-}
-
-IntList* concatIntLists(IntList* list1, IntList* list2) {
-    if (list2 == NULL)
-        return list1;
-    if (list1 == NULL)
-        return list2;
-
-    IntList* cur = list1;
-    while (cur->next != NULL)
-        cur = cur->next;
-    cur->next = list2;
-    return list1;
-}
-
-BTree* boolBTree(bool b) {
-    BTree* created = malloc(sizeof(BTree));
-    created->left = NULL;
-    created->right = NULL;
-    created->alias = NULL;
-    created->type = NT_BOOL;
-    created->id = b ? 1 : 0;
-    return created;
-}
-
-BTree* andBTree(BTree* u, BTree* v) {
-    BTree* created = malloc(sizeof(BTree));
-    created->left = u;
-    created->right = v;
-    created->alias = NULL;
-    created->type = NT_AND;
-    created->id = -1;
-    return created;
-}
-
-BTree* orBTree(BTree* u, BTree* v) {
-    BTree* created = malloc(sizeof(BTree));
-    created->left = u;
-    created->right = v;
-    created->alias = NULL;
-    created->type = NT_OR;
-    created->id = -1;
-    return created;
-}
-
-BTree* notBTree(BTree* u) {
-    BTree* created = malloc(sizeof(BTree));
-    created->left = u;
-    created->right = NULL;
-    created->alias = NULL;
-    created->type = NT_NOT;
-    created->id = -1;
-    return created;
-}
-
-BTree* aliasBTree(char* alias) {
-    BTree* created = malloc(sizeof(BTree));
-    created->left = NULL;
-    created->right = NULL;
-    created->alias = alias;
-    created->type = NT_ALIAS;
-    created->id = -1;
-    return created;
-}
-
-BTree* apBTree(int id) {
-    BTree* created = malloc(sizeof(BTree));
-    created->left = NULL;
-    created->right = NULL;
-    created->alias = NULL;
-    created->type = NT_AP;
-    created->id = id;
-    return created;
-}
-
-BTree* accidBTree(NodeType type, int id, bool negated) {
-    BTree* tree = malloc(sizeof(BTree));
-    tree->left = NULL;
-    tree->right = NULL;
-    tree->alias = NULL;
-    tree->type = NT_SET;
-    tree->id = id;
-
-    if (negated) {
-        BTree* original = tree;
-        tree = malloc(sizeof(BTree));
-        tree->left = original;
-        tree->right = NULL;
-        tree->alias = NULL;
-        tree->type = NT_NOT;
-        tree->id = -1;
-    }
-
-    BTree* created = malloc(sizeof(BTree));
-    created->left = tree;
-    created->right = NULL;
-    created->alias = NULL;
-    created->type = type;
-    created->id = -1;
-    return created;
-}
-
 void defaultsHoa(HoaData* data) {
-    data->noStates = -1;  // to say we have not gotten
-    data->noAPs = -1;     // a number for these parameters
+    data->noStates = -1; 
+    data->noAPs = -1;
+    data->noStart = -1;
+    data->noAliases = -1;
+    data->noANPs = -1;
+    data->noProps = -1;
+    data->noCntAPs = -1;
+    data->noAccSets = -1;
     data->start = NULL;
     data->version = NULL;
     data->aps = NULL;
     data->aliases = NULL;
-    // data->noAccSets  // these need no default as they will
-    // data->acc        // always be set by the parser
+    data->acc = NULL;
     data->accNameID = NULL;
     data->accNameParameters = NULL;
     data->toolName = NULL;
@@ -219,27 +54,7 @@ void defaultsHoa(HoaData* data) {
     data->cntAPs = NULL;
 }
 
-static void deleteStrList(StringList* list) {
-    StringList* cur = list;
-    while (cur != NULL) {
-        StringList* next = cur->next;
-        if (cur->str != NULL)
-            free(cur->str);
-        free(cur);
-        cur = next;
-    }
-}
-
-static void deleteIntList(IntList* list) {
-    IntList* cur = list;
-    while (cur != NULL) {
-        IntList* next = cur->next;
-        free(cur);
-        cur = next;
-    }
-}
-
-// No magic here: a DFS deleting in post-order
+// A DFS deleting in post-order
 static void deleteBTree(BTree* root) {
     if (root == NULL)
         return;
@@ -250,45 +65,46 @@ static void deleteBTree(BTree* root) {
     free(root);
 }
 
-static void deleteTransList(TransList* list) {
-    TransList* cur = list;
-    while (cur != NULL) {
-        TransList* next = cur->next;
-        deleteBTree(cur->label);
-        deleteIntList(cur->successors);
-        deleteIntList(cur->accSig);
-        free(cur);
-        cur = next;
-    }
+static void deleteStringList(char** list, int cnt) {
+    if (list == NULL) return;
+    for (int i = 0; i < cnt; i++)
+        if (list[i] != NULL)
+            free(list[i]);
+    free(list);
 }
 
-static void deleteStateList(StateList* list) {
-    StateList* cur = list;
-    while (cur != NULL) {
-        StateList* next = cur->next;
-        if (cur->name != NULL)
-            free(cur->name);
-        deleteBTree(cur->label);
-        deleteIntList(cur->accSig);
-        deleteTransList(cur->transitions);
-        free(cur);
-        cur = next;
+static void deleteTransList(Transition* list, int cnt) {
+    if (list == NULL) return;
+    for (int i = 0; i < cnt; i++) {
+        deleteBTree(list[i].label);
+        if (list[i].successors != NULL) free(list[i].successors);
+        if (list[i].accSig != NULL) free(list[i].accSig);
     }
+    free(list);
 }
 
-
-static void deleteAliases(AliasList* list) {
-    AliasList* cur = list;
-    while (cur != NULL) {
-        AliasList* next = cur->next;
-        free(cur->alias);
-        deleteBTree(cur->labelExpr);
-        free(cur);
-        cur = next;
+static void deleteStateList(State* list, int cnt) {
+    if (list == NULL) return;
+    for (int i = 0; i < cnt; i++) {
+        if (list[i].name != NULL) free(list[i].name);
+        deleteBTree(list[i].label);
+        if (list[i].accSig != NULL) free(list[i].accSig);
+        deleteTransList(list[i].transitions, list[i].noTrans);
     }
+    free(list);
 }
 
-void deleteHoa(HoaData* data) {
+static void deleteAliases(Alias* list, int cnt) {
+    if (list == NULL) return;
+    for (int i = 0; i < cnt; i++) {
+        assert(list[i].alias != NULL);
+        free(list[i].alias);
+        deleteBTree(list[i].labelExpr);
+    }
+    free(list);
+}
+
+void resetHoa(HoaData* data) {
     // Strings
     if (data->version != NULL) free(data->version);
     if (data->accNameID != NULL) free(data->accNameID);
@@ -296,20 +112,18 @@ void deleteHoa(HoaData* data) {
     if (data->toolVersion != NULL) free(data->toolVersion);
     if (data->name != NULL) free(data->name);
     // String lists
-    deleteStrList(data->aps);
-    deleteStrList(data->accNameParameters);
-    deleteStrList(data->properties);
-    // Int lists
-    deleteIntList(data->start);
-    deleteIntList(data->cntAPs);
+    deleteStringList(data->aps, data->noAPs);
+    deleteStringList(data->accNameParameters, data->noANPs);
+    deleteStringList(data->properties, data->noProps);
+    // int lists
+    if (data->start != NULL) free(data->start);
+    if (data->cntAPs != NULL) free(data->cntAPs);
     // BTrees
     deleteBTree(data->acc);
     // Aliases
-    deleteAliases(data->aliases);
+    deleteAliases(data->aliases, data->noAliases);
     // State lists
-    deleteStateList(data->states);
-    // free container
-    free(data);
+    deleteStateList(data->states, data->noStates);
 }
 
 // DFS printing in in/pre-order
@@ -371,20 +185,20 @@ void printHoa(const HoaData* data) {
     printf("No. of states: %d\n", data->noStates);
 
     printf("Start states: ");
-    for (IntList* it = data->start; it != NULL; it = it->next)
-        printf("%d, ", it->i);
+    for (int i = 0; i < data->noStart; i++)
+        printf("%d, ", data->start[i]);
     printf("\n");
 
     printf("No. of atomic propositions: %d\n", data->noAPs);
 
     printf("Atomic propositions: ");
-    for (StringList* it = data->aps; it != NULL; it = it->next)
-        printf("%s, ", it->str);
+    for (int i = 0; i < data->noAPs; i++)
+        printf("%s, ", data->aps[i]);
     printf("\n");
 
     printf("Controllable APs: ");
-    for (IntList* it = data->cntAPs; it != NULL; it = it->next)
-        printf("%d, ", it->i);
+    for (int i = 0; i < data->noCntAPs; i++)
+        printf("%d, ", data->cntAPs[i]);
     printf("\n");
 
     printf("No. of acceptance sets: %d\n", data->noAccSets);
@@ -396,16 +210,16 @@ void printHoa(const HoaData* data) {
     printf("\n");
 
     printf("Aliases: ");
-    for (AliasList* it = data->aliases; it != NULL; it = it->next) {
-        printf("%s = ", it->alias);
-        printBTree(it->labelExpr);
+    for (int i = 0; i < data->noAliases; i++) {
+        printf("%s = ", data->aliases[i].alias);
+        printBTree(data->aliases[i].labelExpr);
         printf(", ");
     }
     printf("\n");
 
     printf("Acceptance parameters: ");
-    for (StringList* it = data->accNameParameters; it != NULL; it = it->next)
-        printf("%s, ", it->str);
+    for (int i = 0; i < data->noANPs; i++)
+        printf("%s, ", data->accNameParameters[i]);
     printf("\n");
 
     if (data->toolName != NULL) {
@@ -416,45 +230,83 @@ void printHoa(const HoaData* data) {
     }
 
     printf("Properties: ");
-    for (StringList* it = data->properties; it != NULL; it = it->next)
-        printf("%s, ", it->str);
+    for (int i = 0; i < data->noProps; i++)
+        printf("%s, ", data->properties[i]);
     printf("\n");
  
-    for (StateList* it = data->states; it != NULL; it = it->next) {
-        printf("** State: %d", it->id);
-        if (it->name != NULL)
-            printf(" %s", it->name);
+    for (int i = 0; i < data->noStates; i++) {
+        printf("** State: %d", data->states[i].id);
+        if (data->states[i].name != NULL)
+            printf(" %s", data->states[i].name);
         printf(" **\n");
-        if (it->label != NULL) {
+        if (data->states[i].label != NULL) {
             printf("label = ");
-            printBTree(it->label);
+            printBTree(data->states[i].label);
             printf("\n");
         }
-        if (it->accSig != NULL) {
+        if (data->states[i].accSig != NULL) {
             printf("acc sets = ");
-            for (IntList* jt = it->accSig; jt != NULL; jt = jt->next)
-                printf("%d, ", jt->i);
+            for (int j = 0; j < data->states[i].noAccSig; j++)
+                printf("%d, ", data->states[i].accSig[j]);
             printf("\n");
         }
         printf("transitions:\n");
-        for (TransList* jt = it->transitions; jt != NULL; jt = jt->next) {
+        for (int j = 0; j < data->states[i].noTrans; j++) {
             printf("to ");
-            for (IntList* kt = jt->successors; kt != NULL; kt = kt->next)
-                printf("%d, ", kt->i); 
-            if (jt->label != NULL) {
+            for (int k = 0; k < data->states[i].transitions[j].noSucc; k++)
+                printf("%d, ", data->states[i].transitions[j].successors[k]);
+            if (data->states[i].transitions[j].label != NULL) {
                 printf(" with label = ");
-                printBTree(it->label);
+                printBTree(data->states[i].transitions[j].label);
             }
-            if (jt->accSig != NULL) {
+            if (data->states[i].transitions[j].accSig != NULL) {
                 printf(" acc sets = ");
-                for (IntList* kt = jt->accSig; kt != NULL; kt = kt->next)
-                    printf("%d, ", kt->i);
+                for (int k = 0; k < data->states[i].transitions[j].noAccSig; k++)
+                    printf("%d, ", data->states[i].transitions[j].accSig[k]);
             }
             printf("\n");
         }
     }
 
     printf("== END HOA FILE DATA ==\n");
+}
+
+static bool checkAccNode(BTree* acc, bool good, int priority) {
+    assert(acc != NULL);
+    BTree* node = acc;
+
+    // work with node only now
+    if (!good && node->type != NT_FIN) return false;
+    if (good && node->type != NT_INF) return false;
+    assert(node->left != NULL);
+    node = node->left;
+    if (node->type != NT_SET) return false;
+    if (node->id != priority) return false;
+    return true;
+}
+
+static bool checkAccName(BTree* acc, int lastPriority, bool isMaxParity,
+                         short resGoodPriority, int curPriority) {
+    assert(acc != NULL);
+    // is the current priority good?
+    bool good = curPriority % 2 == resGoodPriority;
+
+    // base case
+    if ((isMaxParity && curPriority == 0)
+        || (!isMaxParity && curPriority == lastPriority - 1))
+        return checkAccNode(acc, good, curPriority);
+
+    // otherwise we need to call the function recursively
+    if (good && acc->type != NT_OR) return false;
+    if (!good && acc->type != NT_AND) return false;
+    bool checkLeft = checkAccNode(acc->left, good, curPriority);
+    int nextPriority = isMaxParity ? curPriority - 1 : curPriority + 1;
+    bool checkRight = checkAccName(acc->right, lastPriority, isMaxParity,
+                                   resGoodPriority, nextPriority);
+    if (good)
+        return checkLeft || checkRight;
+    else
+        return checkLeft && checkRight;
 }
 
 int isParityGFG(const HoaData* data, bool* isMaxParity, short* resGoodPriority) {
@@ -466,21 +318,20 @@ int isParityGFG(const HoaData* data, bool* isMaxParity, short* resGoodPriority) 
     }
     bool foundOrd = false;
     bool foundRes = false;
-    for (StringList* param = data->accNameParameters; param != NULL;
-            param = param->next) {
-        if (strcmp(param->str, "max") == 0) {
+    for (int i = 0; i < data->noANPs; i++) {
+        if (strcmp(data->accNameParameters[i], "max") == 0) {
             (*isMaxParity) = true;
             foundOrd = true;
         }
-        if (strcmp(param->str, "min") == 0) {
+        if (strcmp(data->accNameParameters[i], "min") == 0) {
             (*isMaxParity) = false;
             foundOrd = true;
         }
-        if (strcmp(param->str, "even") == 0) {
+        if (strcmp(data->accNameParameters[i], "even") == 0) {
             (*resGoodPriority) = 0;
             foundRes = true;
         }
-        if (strcmp(param->str, "odd") == 0) {
+        if (strcmp(data->accNameParameters[i], "odd") == 0) {
             (*resGoodPriority) = 1;
             foundRes = true;
         }
@@ -493,16 +344,21 @@ int isParityGFG(const HoaData* data, bool* isMaxParity, short* resGoodPriority) 
         fprintf(stderr, "Expected \"even\" or \"odd\" in the acceptance name\n");
         return 102;
     }
+    if (!checkAccName(data->acc, data->noAccSets, *isMaxParity, *resGoodPriority,
+                      (*isMaxParity) ? data->noAccSets - 1 : 0)) {
+        fprintf(stderr, "Mismatch with canonical acceptance spec. for parity\n");
+        return 103;
+    }
     // (2) the automaton should be deterministic, complete, colored
     bool det = false;
     bool complete = false;
     bool colored = false;
-    for (StringList* prop = data->properties; prop != NULL; prop = prop->next) {
-        if (strcmp(prop->str, "deterministic") == 0)
+    for (int i = 0; i < data->noProps; i++) {
+        if (strcmp(data->properties[i], "deterministic") == 0)
             det = true;
-        if (strcmp(prop->str, "complete") == 0)
+        if (strcmp(data->properties[i], "complete") == 0)
             complete = true;
-        if (strcmp(prop->str, "colored") == 0)
+        if (strcmp(data->properties[i], "colored") == 0)
             colored = true;
     }
     if (!det) {
@@ -521,7 +377,7 @@ int isParityGFG(const HoaData* data, bool* isMaxParity, short* resGoodPriority) 
         return 202;
     }
     // (3) the automaton should have a unique start state
-    if (data->start == NULL || data->start->next != NULL) {
+    if (data->noStart != 1) {
         fprintf(stderr, "Expected a unique start state\n");
         return 300;
     }

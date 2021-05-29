@@ -32,20 +32,20 @@
 
 char* getString(char* s) {
     int newLen = strlen(s) - 1;
-    char* str = (char*)malloc(sizeof(char) * newLen);
+    char* str = (char*) malloc(sizeof(char) * newLen);
     strncpy(str, s + 1, newLen - 1);
     str[newLen - 1] = '\0';
     return str;
 }
 
 char* getAlias(char* s) {
-    char* str = (char*)malloc(sizeof(char) * strlen(s));
+    char* str = (char*) malloc(sizeof(char) * strlen(s));
     strcpy(str, s + 1);
     return str;
 }
 %}
 
-%option yylineno nounput noinput
+%option yylineno noinput nounput
 
 %x C_COMMENT
 

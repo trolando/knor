@@ -55,9 +55,10 @@ wctime()
 
 /**
  * evalLabel converts a label on a transition to a MTBDD encoding the label
+ * a label is essentially a boolean combination of atomic propositions, and aliases (aliases are rare)
  */
-#define evalLabel(a,b,c) CALL(evalLabel, a, b, c)
-TASK_3(MTBDD, evalLabel, BTree*, label, AliasList*, aliases, uint32_t*, variables)
+#define evalLabel(a,b,c,d) CALL(evalLabel, a, b, c, d)
+TASK_4(MTBDD, evalLabel, BTree*, label, Alias*, aliases, int, noAliases, uint32_t*, variables)
 {
     MTBDD left = mtbdd_false, right = mtbdd_false, result = mtbdd_false;
     mtbdd_refs_pushptr(&left);
@@ -67,26 +68,28 @@ TASK_3(MTBDD, evalLabel, BTree*, label, AliasList*, aliases, uint32_t*, variable
             result = label->id ? mtbdd_true : mtbdd_false;
             break;
         case NT_AND:
-            left = evalLabel(label->left, aliases, variables);
-            right = evalLabel(label->right, aliases, variables);
+            left = evalLabel(label->left, aliases, noAliases, variables);
+            right = evalLabel(label->right, aliases, noAliases, variables);
             result = sylvan_and(left, right);
             break;
         case NT_OR:
-            left = evalLabel(label->left, aliases, variables);
-            right = evalLabel(label->right, aliases, variables);
+            left = evalLabel(label->left, aliases, noAliases, variables);
+            right = evalLabel(label->right, aliases, noAliases, variables);
             result = sylvan_or(left, right);
             break;
         case NT_NOT:
-            left = evalLabel(label->left, aliases, variables);
+            left = evalLabel(label->left, aliases, noAliases, variables);
             result = sylvan_not(left);
             break;
         case NT_AP:
             result = mtbdd_ithvar(variables[label->id]);
             break;
         case NT_ALIAS:
-            for (AliasList* a = aliases; a != NULL; a = a->next) {
+            // apply the alias
+            for (int i=0; i<noAliases; i++) {
+                Alias *a = aliases+i;
                 if (strcmp(a->alias, label->alias) == 0) {
-                    return evalLabel(a->labelExpr, aliases, variables);
+                    return evalLabel(a->labelExpr, aliases, noAliases, variables);
                 }
             }
             break;
@@ -106,7 +109,7 @@ TASK_3(MTBDD, evalLabel, BTree*, label, AliasList*, aliases, uint32_t*, variable
  * integer whose i-th bit is 1 iff the i-th AP in apIds is set to 1
  */
 static int
-evalLabelNaive(BTree* label, AliasList* aliases, int numAPs, int* apIds, uint64_t value) {
+evalLabelNaive(BTree* label, Alias* aliases, int numAliases, int numAPs, int* apIds, uint64_t value) {
     assert(label != NULL);
     int left;
     int right;
@@ -115,21 +118,21 @@ evalLabelNaive(BTree* label, AliasList* aliases, int numAPs, int* apIds, uint64_
         case NT_BOOL:
             return label->id ? 1 : -1;  // 0 becomes -1 like this
         case NT_AND:
-            left = evalLabelNaive(label->left, aliases, numAPs, apIds, value);
-            right = evalLabelNaive(label->right, aliases, numAPs, apIds, value);
+            left = evalLabelNaive(label->left, aliases, numAliases, numAPs, apIds, value);
+            right = evalLabelNaive(label->right, aliases, numAliases, numAPs, apIds, value);
             if (left == -1 || right == -1) return -1;
             if (left == 0 || right == 0) return 0;
             // otherwise
             return 1;
         case NT_OR:
-            left = evalLabelNaive(label->left, aliases, numAPs, apIds, value);
-            right = evalLabelNaive(label->right, aliases, numAPs, apIds, value);
+            left = evalLabelNaive(label->left, aliases, numAliases, numAPs, apIds, value);
+            right = evalLabelNaive(label->right, aliases, numAliases, numAPs, apIds, value);
             if (left == 1 || right == 1) return 1;
             if (left == 0 || right == 0) return 0;
             // otherwise
             return -1;
         case NT_NOT:
-            return -1 * evalLabelNaive(label->left, aliases, numAPs, apIds, value);
+            return -1 * evalLabelNaive(label->left, aliases, numAliases, numAPs, apIds, value);
         case NT_AP:
             mask = 1;
             for (int i = 0; i < numAPs; i++) {
@@ -140,9 +143,11 @@ evalLabelNaive(BTree* label, AliasList* aliases, int numAPs, int* apIds, uint64_
             }
             return 0;
         case NT_ALIAS:
-            for (AliasList* a = aliases; a != NULL; a = a->next) {
-                if (strcmp(a->alias, label->alias) == 0)
-                    return evalLabelNaive(a->labelExpr, aliases, numAPs, apIds, value);
+            for (int i=0; i<numAliases; i++) {
+                Alias* a = aliases+i;
+                if (strcmp(a->alias, label->alias) == 0) {
+                    return evalLabelNaive(a->labelExpr, aliases, numAliases, numAPs, apIds, value);
+                }
             }
             break;
         default:
@@ -181,7 +186,12 @@ adjustPriority(int p, bool maxPriority, bool controllerIsOdd, int noPriorities)
 
 /**
  * Collect all intermediary MTBDD roots that become the vertices
- * where player 0 chooses the response in controllable APs
+ * where player 0 chooses the response in controllable APs.
+ *
+ * The input <trans> is the [partial] transition, essentially we just skip
+ * the first <uap_count> variables, assuming that those are the uncontrollable APs...
+ *
+ * This is also why u_ap before c_ap variables in the BDD!
  */
 void
 collect_inter(MTBDD trans, int uap_count, std::set<MTBDD> &res)
@@ -207,8 +217,10 @@ collect_inter(MTBDD trans, int uap_count, std::set<MTBDD> &res)
  * Given some intermediary MTBDD root, collect all the MTBDD
  * leafs, representing the target vertices of the full transition
  * and the transition priority encoded in a single 64-bit value
+ *
+ * The input is essentially the result of collect_inter, i.e., just the controllable APs
  */
-void
+/*void
 collect_targets(MTBDD trans, std::set<uint64_t> &res)
 {
     if (mtbdd_isleaf(trans)) {
@@ -217,14 +229,15 @@ collect_targets(MTBDD trans, std::set<uint64_t> &res)
         collect_targets(mtbdd_gethigh(trans), res);
         collect_targets(mtbdd_getlow(trans), res);
     }
-}
+}*/
 
 
 
 /**
- * Given some intermediary MTBDD root, collect all the MTBDD
- * leafs, representing the target vertices of the full transition
- * and the transition priority encoded in a single 64-bit value
+ * Given some intermediary MTBDD root, collect all the MTBDD leafs.
+ * It decodes the leaf <priority, state> and re-encodes the leaf as a BDD such that
+ * the first <priobits> BDD variables encode the priority and
+ * the next <statebits> BDD variables encode the target state
  */
 MTBDD
 collect_targets2(MTBDD trans, std::set<uint64_t> &res, const int statebits, const int priobits)
@@ -274,7 +287,9 @@ constructGameNaive(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 {
     // Set which APs are controllable in the bitset controllable
     pg::bitset controllable(data->noAPs);
-    for (IntList* c = data->cntAPs; c != NULL; c = c->next) controllable[c->i] = 1;
+    for (int i=0; i<data->noCntAPs; i++) {
+        controllable[data->cntAPs[i]] = 1;
+    }
 
     // Count the number of controllable/uncontrollable APs
     const int cap_count = controllable.count();
@@ -297,10 +312,12 @@ constructGameNaive(HoaData *data, bool isMaxParity, bool controllerIsOdd)
     std::vector<int> succ_inter;  // for current intermediate state, the successors
 
     // Loop over every state
-    for (StateList* state = data->states; state != NULL; state = state->next) {
+    for (int i=0; i<data->noStates; i++) {
+        auto state = data->states+i;
         for (uint64_t value = 0; value < numValuations; value++) {
             // for every valuation to the uncontrollable APs, we make an intermediate vertex
-            for (TransList* trans = state->transitions; trans != NULL; trans = trans->next) {
+            for (int j=0; j<state->noTrans; j++) {
+                auto trans = state->transitions+j;
                 // there should be a single successor per transition
                 assert(trans->successors != NULL && trans->successors->next == NULL);
                 // there should be a label at state or transition level
@@ -310,24 +327,23 @@ constructGameNaive(HoaData *data, bool isMaxParity, bool controllerIsOdd)
                 assert(label != NULL);
                 // we add a vertex + edges if the transition is compatible with the
                 // valuation we are currently considering
-                int evald = evalLabelNaive(label, data->aliases, uap_count, ucntAPs, value);
+                int evald = evalLabelNaive(label, data->aliases, data->noAliases, uap_count, ucntAPs, value);
                 if (evald == -1) continue; // not compatible
                 // there should be a priority at state or transition level
                 if (state->accSig == NULL) {
                     // there should be exactly one acceptance set!
-                    IntList* acc = trans->accSig;
-                    assert(acc != NULL && acc->next == NULL);
+                    assert(trans->noAccSig == 1);
                     // adjust priority
-                    int priority = adjustPriority(acc->i, isMaxParity, controllerIsOdd, data->noAccSets);
+                    int priority = adjustPriority(trans->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
 
                     int vfin = nextIndex++;
                     game->init_vertex(vfin, priority, 0);
                     game->e_start(vfin);
-                    game->e_add(vfin, trans->successors->i);
+                    game->e_add(vfin, trans->successors[0]);
                     game->e_finish();
                     succ_inter.push_back(vfin);
                 } else {
-                    succ_inter.push_back(trans->successors->i);
+                    succ_inter.push_back(trans->successors[0]);
                 }
             }
 
@@ -341,8 +357,11 @@ constructGameNaive(HoaData *data, bool isMaxParity, bool controllerIsOdd)
         }
 
         int priority;
-        if (state->accSig != NULL) priority = adjustPriority(state->accSig->i, isMaxParity, controllerIsOdd, data->noAccSets);
-        else priority = 0;
+        if (state->accSig != NULL) {
+            priority = adjustPriority(state->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
+        } else {
+            priority = 0;
+        }
     
         game->init_vertex(state->id, priority, 1, state->name ? state->name : "");
         game->e_start(state->id);
@@ -369,7 +388,9 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 {
     // Set which APs are controllable in the bitset controllable
     pg::bitset controllable(data->noAPs);
-    for (IntList* c = data->cntAPs; c != NULL; c = c->next) controllable[c->i] = 1;
+    for (int i=0; i<data->noCntAPs; i++) {
+        controllable[data->cntAPs[i]] = 1;
+    }
 
     // Count the number of controllable/uncontrollable APs
     const int cap_count = controllable.count();
@@ -421,10 +442,12 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
     int ref_counter = 0;
 
     // Loop over every state
-    for (StateList* state = data->states; state != NULL; state = state->next) {
+    for (int i=0; i<data->noStates; i++) {
+        auto state = data->states+i;
         trans_bdd = mtbdd_false;
 
-        for (TransList* trans = state->transitions; trans != NULL; trans = trans->next) {
+        for (int j=0; j<state->noTrans; j++) {
+            auto trans = state->transitions+j;
             // there should be a single successor per transition
             assert(trans->successors != NULL && trans->successors->next == NULL);
             // there should be a label at state or transition level
@@ -436,14 +459,14 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
             int priority = 0;
             if (state->accSig == NULL) {
                 // there should be exactly one acceptance set!
-                IntList* acc = trans->accSig;
-                assert(acc != NULL && acc->next == NULL);
+                assert(trans->noAccSig == 1);
                 // adjust priority
-                priority = adjustPriority(acc->i, isMaxParity, controllerIsOdd, data->noAccSets);
-            }            
+                priority = adjustPriority(trans->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
+            }
+            assert(trans->noSucc == 1);
             // tricky tricky
-            lblbdd = evalLabel(label, data->aliases, variables);
-            leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)(trans->successors->i));
+            lblbdd = evalLabel(label, data->aliases, data->noAliases, variables);
+            leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)(trans->successors[0]));
             trans_bdd = mtbdd_ite(lblbdd, leaf, trans_bdd);
             lblbdd = leaf = mtbdd_false;
         }
@@ -501,8 +524,11 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 
         // there should be a priority at state or transition level
         int priority;
-        if (state->accSig != NULL) priority = adjustPriority(state->accSig->i, isMaxParity, controllerIsOdd, data->noAccSets);
-        else priority = 0;
+        if (state->noAccSig != 0) {
+            priority = adjustPriority(state->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
+        } else {
+            priority = 0;
+        }
 
         game->init_vertex(state->id, priority, 1, state->name ? state->name : "");
         game->e_start(state->id);
@@ -521,6 +547,181 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 
     return game;
 }
+
+
+
+/**
+ * Construct and solve the symbolic game
+ */
+void
+constructSymGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
+{
+    // Set which APs are controllable in the bitset controllable
+    pg::bitset controllable(data->noAPs);
+    for (int i=0; i<data->noCntAPs; i++) {
+        controllable[data->cntAPs[i]] = 1;
+    }
+
+    // Count the number of controllable/uncontrollable APs
+    const int cap_count = controllable.count();
+    const int uap_count = data->noAPs - cap_count;
+
+    // Initialize the BDD variable indices
+    // Variable order uncontrollable < controllable
+    uint32_t variables[data->noAPs];
+    uint32_t uidx = 0, oidx = data->noAPs - controllable.count();
+    for (int i=0; i<data->noAPs; i++) {
+        if (controllable[i]) variables[i] = oidx++;
+        else variables[i] = uidx++;
+    }
+
+    // Now initialize a new parity game
+    pg::Game *game = new pg::Game(data->noStates * 10); // start with 10 the number of states
+    // notice that the number of vertices automatically grows when needed anyway
+
+    int nextIndex = data->noStates; // index of the next vertex to make
+
+    // Prepare number of statebits and priobits
+    int statebits = 1;
+    while ((1ULL<<(statebits)) <= (uint64_t)data->noStates) statebits++;
+    int evenMax = 2 + 2*((data->noAccSets+1)/2); // should be enough...
+    int priobits = 1;
+    while ((1ULL<<(priobits)) <= (unsigned)evenMax) priobits++;
+
+    // only if verbose: std::cout << "prio bits: " << priobits << " and state bits: " << statebits << std::endl;
+
+    std::vector<int> succ_state;  // for current state, the successors
+    std::vector<int> succ_inter;  // for current intermediate state, the successors
+
+    MTBDD trans_bdd = mtbdd_false;
+    mtbdd_refs_pushptr(&trans_bdd);
+
+    std::set<MTBDD> inter_bdds;
+    std::set<uint64_t> targets;
+
+    std::map<MTBDD, int> inter_vertices;
+    std::map<uint64_t, int> target_vertices;
+
+    // these variables are used deeper in the for loops, however we can
+    // push them to mtbdd refs here and avoid unnecessary pushing and popping
+    MTBDD lblbdd = mtbdd_false;
+    MTBDD leaf = mtbdd_false;
+    mtbdd_refs_pushptr(&lblbdd);
+    mtbdd_refs_pushptr(&leaf);
+
+    LACE_ME;
+
+    int ref_counter = 0;
+
+    // Loop over every state
+    for (int i=0; i<data->noStates; i++) {
+        auto state = data->states+i;
+        trans_bdd = mtbdd_false;
+
+        for (int j=0; j<state->noTrans; j++) {
+            auto trans = state->transitions+j;
+            // there should be a single successor per transition
+            assert(trans->successors != NULL && trans->successors->next == NULL);
+            // there should be a label at state or transition level
+            BTree* label;
+            if (state->label != NULL) label = state->label;
+            else label = trans->label;
+            assert(label != NULL);
+            // there should be a priority at state or transition level
+            int priority = 0;
+            if (state->accSig == NULL) {
+                // there should be exactly one acceptance set!
+                assert(trans->noAccSig == 1);
+                // adjust priority
+                priority = adjustPriority(trans->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
+            }
+            assert(trans->noSucc == 1);
+            // tricky tricky
+            lblbdd = evalLabel(label, data->aliases, data->noAliases, variables);
+            leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)(trans->successors[0]));
+            trans_bdd = mtbdd_ite(lblbdd, leaf, trans_bdd);
+            lblbdd = leaf = mtbdd_false;
+        }
+
+        std::cout << "size of inter bdd for state " << i << " is " << mtbdd_nodecount(trans_bdd) << std::endl;
+
+        // At this point, we have the transitions from the state all in a neat
+        // single BDD. Time to generate the split game fragment from the current
+        // state.
+
+        collect_inter(trans_bdd, uap_count, inter_bdds);
+        for (MTBDD inter_bdd : inter_bdds) {
+            MTBDD targets_bdd = collect_targets2(inter_bdd, targets, statebits, priobits);
+
+            int vinter;
+            auto it = inter_vertices.find(targets_bdd);
+            if (it == inter_vertices.end()) {
+                for (uint64_t lval : targets) {
+                    int priority = (int)(lval >> 32);
+                    int target = (int)(lval & 0xffffffff);
+
+                    if (priority != 0) {
+                        int vfin;
+                        auto it = target_vertices.find(lval);
+                        if (it == target_vertices.end()) {
+                            vfin = nextIndex++;
+                            game->init_vertex(vfin, priority, 0);
+                            game->e_start(vfin);
+                            game->e_add(vfin, target);
+                            game->e_finish();
+                            target_vertices.insert(std::make_pair(lval, vfin));
+                        } else {
+                            vfin = it->second;
+                        }
+                        succ_inter.push_back(vfin);
+                    } else {
+                        succ_inter.push_back(target);
+                    }
+                }
+
+                vinter = nextIndex++;
+                game->init_vertex(vinter, 0, 0);
+                game->e_start(vinter);
+                for (int to : succ_inter) game->e_add(vinter, to);
+                game->e_finish();
+                inter_vertices.insert(std::make_pair(targets_bdd, vinter));
+                mtbdd_refs_push(targets_bdd);
+                ref_counter++;
+                succ_inter.clear();
+            } else {
+                vinter = it->second;
+            }
+
+            succ_state.push_back(vinter);
+            targets.clear();
+        }
+
+        // there should be a priority at state or transition level
+        int priority;
+        if (state->noAccSig != 0) {
+            priority = adjustPriority(state->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
+        } else {
+            priority = 0;
+        }
+
+        game->init_vertex(state->id, priority, 1, state->name ? state->name : "");
+        game->e_start(state->id);
+        for (int to : succ_state) game->e_add(state->id, to);
+        game->e_finish();
+
+        succ_state.clear();
+        inter_bdds.clear();
+    }
+
+    // tell Oink we're done adding stuff, resize game to final size
+    game->v_resize(nextIndex);
+
+    mtbdd_refs_popptr(3);
+    mtbdd_refs_pop(ref_counter);
+
+    return game;
+}
+
 
 
 
@@ -627,7 +828,8 @@ main(int argc, char* argv[])
     if (explicit_solver) {
         const double t_before_splitting = wctime();
         // Remember the start vertex
-        int vstart = data->start->i;
+        int vstart = data->start[0];
+
         // Construct the game
         pg::Game *game;
         if (naive_splitting) {
@@ -639,11 +841,14 @@ main(int argc, char* argv[])
         const double t_after_splitting = wctime();
 
         // free HOA allocated data structure
-        deleteHoa(data);
+        resetHoa(data);
         if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec." << std::endl;
+
+        if (verbose) sylvan_stats_report(stdout);
 
         // We don't need Sylvan anymore at this point
         sylvan_quit();
+        lace_exit();
 
         if (write_pg) {
             // in case we want to write the file to PGsolver file format...
