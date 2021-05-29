@@ -45,7 +45,7 @@ char* getAlias(char* s) {
 }
 %}
 
-%option yylineno
+%option yylineno nounput noinput
 
 %x C_COMMENT
 
