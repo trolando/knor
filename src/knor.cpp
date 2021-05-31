@@ -591,9 +591,10 @@ typedef struct SymGame {
     int priobits;
     int cap_count;
     int uap_count;
-    MTBDD trans;       // transition relation of symbolic game
-    MTBDD* cap_bdds;   // contains the solution: controllable ap bdds
-    MTBDD* state_bdds; // contains the solution: state bit bdds
+    MTBDD trans;       // transition relation of symbolic game:        state -> uap -> cap -> priority -> next_state
+    MTBDD strategies;  // contains the solution: the strategies:       good_state -> uap -> cap
+    MTBDD* cap_bdds;   // contains the solution: controllable ap bdds: state -> uap -> B
+    MTBDD* state_bdds; // contains the solution: state bit bdds      : state -> uap -> B
 } SymGame;
 
 
@@ -789,6 +790,121 @@ TASK_2(MTBDD, and_reduce, MTBDD, str, uint32_t, priobits)
 }
 
 
+void
+strategy_to_pg(SymGame *game)
+{
+    LACE_ME;
+
+    MTBDD s_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&s_vars);
+    for (int i=0; i<game->statebits; i++) s_vars = mtbdd_set_add(s_vars, game->priobits+i);
+
+    const int offset = game->cap_count + game->uap_count + game->priobits + game->statebits;
+
+    MTBDD ns_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&ns_vars);
+    for (int i=0; i<(game->priobits + game->statebits); i++) ns_vars = mtbdd_set_add(ns_vars, offset + i);
+
+    MTBDD states = sylvan_project(game->strategies, s_vars);
+    long noStates = (long)sylvan_satcount(states, s_vars);
+    // std::cout << "there are " << noStates << " states" << std::endl;
+
+    pg::Game *pargame = new pg::Game(noStates);
+
+    std::map<int, int> mapper;
+    {
+        int idx=0;
+
+        uint8_t state_arr[game->statebits];
+        MTBDD lf = mtbdd_enum_all_first(states, s_vars, state_arr, NULL);
+        while (lf != mtbdd_false) {
+            // decode state
+            int state = 0;
+            for (int i=0; i<game->statebits; i++) {
+                state <<= 1;
+                if (state_arr[i]) state |= 1;
+            }
+
+            pargame->init_vertex(idx, 0, 1, std::to_string(state)); // controlled by the Odd
+            mapper[state] = idx++;
+
+            lf = mtbdd_enum_all_next(states, s_vars, state_arr, NULL);
+        }
+    }
+
+    // DO A THING
+    MTBDD full = sylvan_and(game->trans, game->strategies);
+    // We only care about priority 0 priostates
+    while (!mtbdd_isleaf(full) && mtbdd_getvar(full) < (unsigned) game->priobits) {
+        full = mtbdd_getlow(full);
+    }
+
+    int vidx = noStates;
+
+    std::vector<int> succ_state;  // for current state, the successors
+
+    uint8_t state_arr[game->statebits];
+    MTBDD lf = mtbdd_enum_all_first(full, s_vars, state_arr, NULL);
+    while (lf != mtbdd_false) {
+        // decode state
+        int _s = 0;
+        for (int i=0; i<game->statebits; i++) {
+            _s <<= 1;
+            if (state_arr[i]) _s |= 1;
+        }
+
+        int state = mapper.at(_s);
+
+        // std::cout << "strategies for state " << state << ": " << lf << std::endl;
+
+        MTBDD ns = sylvan_project(lf, ns_vars);
+        mtbdd_refs_pushptr(&ns);
+        
+        uint8_t ns_arr[game->priobits+game->statebits];
+        MTBDD lf2 = mtbdd_enum_all_first(ns, ns_vars, ns_arr, NULL);
+        while (lf2 != mtbdd_false) {
+            assert(lf2 == mtbdd_true);
+
+            // decode priostate
+            int pr = 0;
+            for (int i=0; i<game->priobits; i++) {
+                pr <<= 1;
+                if (ns_arr[i]) pr |= 1;
+            }
+            int to = 0;
+            for (int i=0; i<game->statebits; i++) {
+                to <<= 1;
+                if (ns_arr[game->priobits+i]) to |= 1;
+            }
+            to = mapper.at(to);
+
+            pargame->init_vertex(vidx, pr, 1);
+            pargame->e_start(vidx);
+            pargame->e_add(vidx, to);
+            pargame->e_finish();
+            succ_state.push_back(vidx);
+            vidx++;
+
+            // std::cout << "to (" << pr << ") " << to << std::endl;
+            
+            lf2 = mtbdd_enum_all_next(ns, ns_vars, ns_arr, NULL);
+        }
+
+        pargame->e_start(state);
+        for (int v : succ_state) pargame->e_add(state, v);
+        pargame->e_finish();
+        succ_state.clear();
+
+        lf = mtbdd_enum_all_next(full, s_vars, state_arr, NULL);
+    }
+
+
+    // tell Oink we're done adding stuff, resize game to final size
+    pargame->v_resize(vidx);
+    pargame->write_pgsolver(std::cout);
+}
+
+
 class AIGmaker {
 private:
     aiger *a;
@@ -803,8 +919,10 @@ private:
     int* var_to_lit; // translate BDD variable (uap/state) to AIGER literal
 
     std::map<MTBDD, int> mapping; // map MTBDD to AIGER literal
+    std::map<uint64_t, int> cache; // cache for ands
 
     int bdd_to_aig(MTBDD bdd);
+    int makeand(int rhs0, int rhs1);
 
 public:
     AIGmaker(HoaData *data, SymGame *game);
@@ -865,6 +983,34 @@ AIGmaker::~AIGmaker()
 
 
 int
+AIGmaker::makeand(int rhs0, int rhs1)
+{
+    if (rhs1 < rhs0) {
+        int tmp = rhs0;
+        rhs0 = rhs1;
+        rhs1 = tmp;
+    }
+
+    if (rhs0 == 0) return 0;
+    if (rhs0 == 1) return rhs1;
+
+    uint64_t cache_key = rhs1;
+    cache_key <<= 32;
+    cache_key |= rhs0;
+    auto c = cache.find(cache_key);
+    if (c != cache.end()) {
+        return c->second;
+    } else {
+        aiger_add_and(a, lit, rhs0, rhs1);
+        cache[cache_key] = lit;
+        lit += 2;
+        return lit-2;
+    }
+}
+
+
+
+int
 AIGmaker::bdd_to_aig(MTBDD bdd)
 {
     if (bdd == mtbdd_true) return aiger_true;
@@ -878,8 +1024,7 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
 
     auto it = mapping.find(bdd);
     if (it != mapping.end()) {
-        int lit = comp ? aiger_not(it->second) : it->second;
-        return lit;
+        return comp ? aiger_not(it->second) : it->second;
     }
 
     int the_lit = var_to_lit[mtbdd_getvar(bdd)];
@@ -896,11 +1041,9 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
             res = the_lit;
         } else {
             // AND(the_lit, ...)
-            res = lit;
-            lit += 2;
             int rhs0 = the_lit;
             int rhs1 = bdd_to_aig(high);
-            aiger_add_and(a, res, rhs0, rhs1);
+            res = makeand(rhs0, rhs1);
         }
     } else if (high == mtbdd_false) {
         // only low (value 0)
@@ -909,31 +1052,22 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
             res = aiger_not(the_lit);
         } else {
             // AND(not the_lit, ...)
-            res = lit;
-            lit += 2;
             int rhs0 = aiger_not(the_lit);
             int rhs1 = bdd_to_aig(low);
-            aiger_add_and(a, res, rhs0, rhs1);
+            res = makeand(rhs0, rhs1);
         }
     } else {
         // OR(low, high) == ~AND(~AND(the_lit, ...), ~AND(~the_lit, ...))
         int lowres = bdd_to_aig(low);
         int highres = bdd_to_aig(high);
-        aiger_add_and(a, lit, aiger_not(the_lit), lowres);
-        int rhs0 = lit;
-        lit += 2;
-        aiger_add_and(a, lit, the_lit, highres);
-        int rhs1 = lit;
-        lit += 2;
-        aiger_add_and(a, lit, rhs0, rhs1);
-        res = aiger_not(lit);
-        lit += 2;
+        int rhs0 = aiger_not(makeand(aiger_not(the_lit), lowres));
+        int rhs1 = aiger_not(makeand(the_lit, highres));
+        res = aiger_not(makeand(rhs0, rhs1));
     }
         
     mapping[bdd] = res;
 
-    if (comp) res = aiger_not(res);
-    return res;
+    return comp ? aiger_not(res) : res;
 }
 
 
@@ -1225,16 +1359,21 @@ solveSymGame(SymGame *game)
         // Just quick and dirty symbolic reachability ... this is not super efficient but it's OK
         while (old != visited) {
             old = visited;
-            visited = mtbdd_and_exists(visited, T, s_vars); // cross product
-            visited = sylvan_compose(visited, from_next);   // and rename
+            MTBDD next = mtbdd_and_exists(visited, T, s_vars); // cross product
+            mtbdd_refs_pushptr(&next);
+            next = sylvan_compose(next, from_next);   // and rename
+            visited = sylvan_or(visited, next);
+            mtbdd_refs_popptr(1);
         }
 
         strategies = sylvan_and(strategies, visited);
         mtbdd_refs_popptr(4);
     }
 
+    game->strategies = strategies;
+
     {
-        // compute cap bdds
+        // compute bdds for the controllable APs
         for (int i=0; i<game->cap_count; i++) {
             MTBDD cap = sylvan_ithvar(game->uap_count+game->priobits+game->statebits+i);
             mtbdd_refs_pushptr(&cap);
@@ -1287,6 +1426,7 @@ handleOptions(int &argc, char**& argv)
             ("sym", "Generate and solve a symbolic parity game")
             ("naive", "Use the naive splitting procedure")
             ("print-game", "Just print the parity game")
+            ("print-witness", "Print the witness parity game")
             ("v,verbose", "Be verbose")
             ;
         opts.add_options("Explicit solvers")
@@ -1496,7 +1636,18 @@ main(int argc, char* argv[])
 
         if (verbose) std::cerr << "finished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec." << std::endl;
 
+        if (verbose) sylvan_stats_report(stdout);
+
         if (res) {
+            /** 
+             * maybe print witness parity game, which should be fully won by even
+             */
+
+            if (options["print-witness"].count() > 0) {
+                strategy_to_pg(&sym);
+                exit(10);
+            }
+
             AIGmaker maker(data, &sym);
             for (int i=0; i<sym.cap_count; i++) {
                 maker.processCAP(i, sym.cap_bdds[i]);
@@ -1504,10 +1655,14 @@ main(int argc, char* argv[])
             for (int i=0; i<sym.statebits; i++) {
                 maker.processState(i, sym.state_bdds[i]);
             }
-            maker.write(stdout);
-        }
 
-        if (verbose) sylvan_stats_report(stdout);
+            std::cout << "REALIZABLE" << std::endl;
+            maker.write(stdout);
+            exit(10);
+        } else {
+            std::cout << "UNREALIZABLE" << std::endl;
+            exit(20);
+        }
 
         // free HOA allocated data structure
         resetHoa(data);
