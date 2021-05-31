@@ -1491,19 +1491,21 @@ main(int argc, char* argv[])
         for (int i=0; i<sym.statebits; i++) mtbdd_refs_pushptr(&sym.state_bdds[i]);
 
         const double t_before_solve = wctime();
-        solveSymGame(&sym);
+        bool res = solveSymGame(&sym);
         const double t_after_solve = wctime();
 
         if (verbose) std::cerr << "finished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec." << std::endl;
 
-        AIGmaker maker(data, &sym);
-        for (int i=0; i<sym.cap_count; i++) {
-            maker.processCAP(i, sym.cap_bdds[i]);
+        if (res) {
+            AIGmaker maker(data, &sym);
+            for (int i=0; i<sym.cap_count; i++) {
+                maker.processCAP(i, sym.cap_bdds[i]);
+            }
+            for (int i=0; i<sym.statebits; i++) {
+                maker.processState(i, sym.state_bdds[i]);
+            }
+            maker.write(stdout);
         }
-        for (int i=0; i<sym.statebits; i++) {
-            maker.processState(i, sym.state_bdds[i]);
-        }
-        maker.write(stdout);
 
         if (verbose) sylvan_stats_report(stdout);
 

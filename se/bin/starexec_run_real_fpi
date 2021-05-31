@@ -1,0 +1,3 @@
+#!/bin/bash
+./knor $1 --fpi 2>/dev/null
+
