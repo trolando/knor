@@ -83,6 +83,7 @@ typedef struct StateList {
     IntList* accSig;
     TransList* transitions;
     struct StateList* next;
+    struct StateList* last;
 } StateList;
 
 typedef struct AliasList {
@@ -197,15 +198,23 @@ static StateList* newStateNode(int id, char* name, BTree* label, IntList* accSig
     list->name = name;
     list->label = label;
     list->accSig = accSig;
+    list->next = NULL;
+    list->last = list;
     list->transitions = NULL;
     return list;
 }
 
-static StateList* prependStateNode(StateList* node, StateList* newNode,
+static StateList* appendStateNode(StateList* node, StateList* newNode,
                             TransList* transitions) {
-    newNode->next = node;
     newNode->transitions = transitions;
-    return newNode;
+    if (node == NULL) {
+        return newNode; // nothing to do
+    } else {
+        // find last in list, add it
+        node->last->next = newNode;
+        node->last = newNode;
+        return node;
+    }
 }
 
 static TransList* prependTransNode(TransList* node , BTree* label,
@@ -607,9 +616,9 @@ body: statespec_list
     ;
 
 statespec_list: /* empty */ { $$ = NULL; }
-              | state_name trans_list statespec_list
+              | statespec_list state_name trans_list
               {
-                $$ = prependStateNode($3, $1, $2);
+                $$ = appendStateNode($1, $2, $3);
               }
               ;
 
