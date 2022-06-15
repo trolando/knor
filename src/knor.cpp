@@ -32,6 +32,7 @@
 #include <map>
 #include <set>
 #include <sys/time.h> // for gettimeofday
+#include <deque>
 
 #include <game.hpp>
 #include <oink.hpp>
@@ -1185,6 +1186,9 @@ private:
     aiger *a;
     HoaData *data;
     SymGame *game;
+
+    bool isop = false; // use ISOP
+    bool verbose = false;
     
     int lit; // current next literal
 
@@ -1196,12 +1200,27 @@ private:
     std::map<MTBDD, int> mapping; // map MTBDD to AIGER literal
     std::map<uint64_t, int> cache; // cache for ands
 
-    int bdd_to_aig(MTBDD bdd);
     int makeand(int rhs0, int rhs1);
+    int bdd_to_aig(MTBDD bdd);           // use recursive encoding of BDD (shannon expanion)
+    int bdd_to_aig_isop(MTBDD bdd);
+    int bdd_to_aig_cover(ZDD bdd);       // use recursive encoding of ZDD cover (~shannon expansion)
+    int bdd_to_aig_cover_sop(ZDD cover); // use SOP encoding ("two level logic")
+    void simplify_and(std::deque<int> &gates);
+    void simplify_or(std::deque<int> &gates);
 
 public:
     AIGmaker(HoaData *data, SymGame *game);
     ~AIGmaker();
+
+    void setIsop()
+    {
+        this->isop = true;
+    }
+
+    void setVerbose()
+    {
+        this->verbose = true;
+    }
 
     void processCAP(int i, MTBDD bdd);
     void processState(int i, MTBDD bdd);
@@ -1256,7 +1275,6 @@ AIGmaker::~AIGmaker()
     delete[] var_to_lit;
 }
 
-
 int
 AIGmaker::makeand(int rhs0, int rhs1)
 {
@@ -1273,7 +1291,7 @@ AIGmaker::makeand(int rhs0, int rhs1)
     cache_key <<= 32;
     cache_key |= rhs0;
     auto c = cache.find(cache_key);
-    if (c != cache.end()) {
+    if (1 and c != cache.end()) {
         return c->second;
     } else {
         aiger_add_and(a, lit, rhs0, rhs1);
@@ -1283,6 +1301,168 @@ AIGmaker::makeand(int rhs0, int rhs1)
     }
 }
 
+void
+AIGmaker::simplify_and(std::deque<int> &gates)
+{
+    // for each pair of gates in gates, check the cache
+    for (auto first = gates.begin(); first != gates.end(); ++first) {
+        for (auto second = first + 1; second != gates.end(); ++second) {
+            int left = *first;
+            int right = *second;
+            if (left > right) std::swap(left, right);
+            uint64_t cache_key = right;
+            cache_key <<= 32;
+            cache_key |= left;
+            auto c = cache.find(cache_key);
+            if (c != cache.end()) {
+                //gates.erase(std::remove_if(gates.begin(), gates.end(), [=](int x){return x==left or x==right;}),
+                //        gates.end());
+                gates.erase(second);
+                gates.erase(first);
+                gates.push_back(c->second);
+                simplify_and(gates);
+                return;
+            }
+        }
+    }
+}
+
+void
+AIGmaker::simplify_or(std::deque<int> &gates)
+{
+    // for each pair of gates in gates, check the cache
+    for (auto first = gates.begin(); first != gates.end(); ++first) {
+        for (auto second = first + 1; second != gates.end(); ++second) {
+            int left = aiger_not(*first);
+            int right = aiger_not(*second);
+            if (left > right) std::swap(left, right);
+            uint64_t cache_key = right;
+            cache_key <<= 32;
+            cache_key |= left;
+            auto c = cache.find(cache_key);
+            if (c != cache.end()) {
+                gates.erase(second);
+                gates.erase(first);
+                gates.push_back(aiger_not(c->second));
+                simplify_or(gates);
+                return;
+            }
+        }
+    }
+}
+
+int
+AIGmaker::bdd_to_aig_isop(MTBDD bdd)
+{
+    if (verbose) {
+        std::cerr << "running isop for BDD with " << mtbdd_nodecount(bdd) << " nodes." << std::endl;
+    }
+    MTBDD bddres;
+    ZDD isop = zdd_isop(bdd, bdd, &bddres);
+    // no need to reference the result...
+    assert(bdd == bddres);
+    if (verbose) {
+        std::cerr << "isop has " << (long)zdd_pathcount(isop) << " terms and " << zdd_nodecount(&isop, 1) << " nodes." << std::endl;
+    }
+
+    if (isop == zdd_true) return aiger_true;
+    if (isop == zdd_false) return aiger_false;
+
+    return bdd_to_aig_cover(isop);
+}
+
+int
+AIGmaker::bdd_to_aig_cover_sop(ZDD cover)
+{
+    // a product could consist of all variables, and a -1 to denote
+    //  the end of the product
+    int product[game->statebits+game->priobits+game->uap_count+1] = { 0 };
+
+    // a queue that stores all products, which will need to be summed
+    std::deque<int> products;
+
+    ZDD res = zdd_cover_enum_first(cover, product);
+    while (res != zdd_false) {
+        //  containing subproducts in the form of gates
+        std::deque<int> gates;
+
+        for (int i=0; product[i] != -1; i++) {
+            int the_lit = var_to_lit[product[i]/2];
+            if (product[i]&1) the_lit = aiger_not(the_lit);
+            gates.push_back(the_lit);
+        }
+
+        // simplify_and(gates);
+
+        // while we still have subproducts we need to AND together
+        while (!gates.empty()) {
+            int last = gates.front();
+            gates.pop_front();
+            if (!gates.empty()) {
+                int last2 = gates.front();
+                gates.pop_front();
+                int new_gate = makeand(last, last2);
+                gates.push_back(new_gate);
+            } else {
+                products.push_back(last);
+            }
+        }
+        res = zdd_cover_enum_next(cover, product); // go to the next product
+    }
+
+    // products queue should now be full of complete products that need to be summed
+
+    // simplify_or(products);
+
+    while (!products.empty()) {
+        int product1 = products.front();
+        products.pop_front();
+        if (!products.empty()) {
+            int product2 = products.front();
+            products.pop_front();
+            int summed_product = aiger_not(makeand(aiger_not(product1), aiger_not(product2)));
+            products.push_back(summed_product);
+        } else { // product1 is the final sum of all products
+            return product1;
+        }
+    }
+
+    return aiger_false; // should be unreachable, tbh.
+}
+
+int
+AIGmaker::bdd_to_aig_cover(ZDD cover)
+{
+    if (cover == zdd_true) return aiger_true;
+    if (cover == zdd_false) return aiger_false;
+
+    auto it = mapping.find(cover);
+    if (it != mapping.end()) {
+        return it->second;
+    }
+
+    int the_var = zdd_getvar(cover);
+    int the_lit = var_to_lit[the_var/2];
+    if (the_var & 1) the_lit = aiger_not(the_lit);
+
+    ZDD low = zdd_getlow(cover);
+    ZDD high = zdd_gethigh(cover);
+
+    int res = the_lit;
+
+    if (high != zdd_true) {
+        auto x = bdd_to_aig_cover(high);
+        res = makeand(res, x);
+    }
+
+    if (low != zdd_false) {
+        auto x = bdd_to_aig_cover(low);
+        res = aiger_not(makeand(aiger_not(res), aiger_not(x)));
+    }
+
+    mapping[cover] = res;
+    return res;
+}
 
 int
 AIGmaker::bdd_to_aig(MTBDD bdd)
@@ -1344,18 +1524,17 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
     return comp ? aiger_not(res) : res;
 }
 
-
 void
 AIGmaker::processCAP(int i, MTBDD bdd)
 {
-    int res = bdd_to_aig(bdd);
+    int res = isop ? bdd_to_aig_isop(bdd) : bdd_to_aig(bdd);
     aiger_add_output(a, res, caps[i]); // simple, really
 }
 
 void
 AIGmaker::processState(int i, MTBDD bdd)
 {
-    int res = bdd_to_aig(bdd);
+    int res = isop ? bdd_to_aig_isop(bdd) : bdd_to_aig(bdd);
     aiger_add_latch(a, state_to_lit[i], res, "");
 }
 
@@ -1735,6 +1914,7 @@ handleOptions(int &argc, char**& argv)
             ("sym", "Generate and solve a symbolic parity game")
             ("naive", "Use the naive splitting procedure")
             ("explicit", "Use the explicit splitting procedure")
+            ("isop", "Generate AIG using ISOP instead of ITE")
             ("print-game", "Just print the parity game")
             ("print-witness", "Print the witness parity game")
             ("v,verbose", "Be verbose")
@@ -1856,6 +2036,7 @@ main(int argc, char* argv[])
     sylvan_set_limits(128LL << 20, 1, 16); // should be enough (128 megabytes)
     sylvan_init_package();
     sylvan_init_mtbdd();
+    sylvan_init_zdd();
     if (verbose) sylvan_gc_hook_pregc(TASK(gc_start));
     if (verbose) sylvan_gc_hook_postgc(TASK(gc_end));
 
@@ -1987,6 +2168,12 @@ main(int argc, char* argv[])
         }
 
         AIGmaker maker(data, sym);
+        if (verbose) {
+            maker.setVerbose();
+        }
+        if (options["isop"].count() > 0) {
+            maker.setIsop();
+        }
         for (int i=0; i<sym->cap_count; i++) {
             maker.processCAP(i, sym->cap_bdds[i]);
         }
