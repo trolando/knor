@@ -790,6 +790,198 @@ TASK_2(MTBDD, clarify, MTBDD, str, MTBDD, cap_vars)
 }
 
 
+pg::Game*
+symgame_to_pg(const SymGame &game)
+{
+    // Construct s_vars the set of state variables of the symbolic game
+    MTBDD s_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&s_vars);
+    for (int i=0; i<game.statebits; i++) s_vars = mtbdd_set_add(s_vars, game.priobits+i);
+
+    // Construct uap_vars the set of uncontrollable AP variables
+    MTBDD uap_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&uap_vars);
+    for (int i=0; i<game.uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, game.priobits+game.statebits+i);
+
+    // Construct cap_vars the set of controllable AP variables
+    MTBDD cap_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&cap_vars);
+    for (int i=0; i<game.cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, game.priobits+game.statebits+game.uap_count+i);
+
+    // Construct ns_vars the set of next prio-state variables 
+    MTBDD ns_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&ns_vars);
+    const int offset = game.cap_count + game.uap_count + game.priobits + game.statebits;
+    for (int i=0; i<(game.priobits + game.statebits); i++) ns_vars = mtbdd_set_add(ns_vars, offset + i);
+
+    // Compute the number of states from the strategy of the solved symbolic game (?)
+    MTBDD states = sylvan_project(game.trans, s_vars);
+    long noStates = (long)sylvan_satcount(states, s_vars);
+    // std::cout << "there are " << noStates << " states" << std::endl;
+
+    // mapper will store for each [decoded] state in the symbolic game, the parity game node id
+    std::map<int, int> mapper;
+
+    // Start constructing the parity game for given number of states
+    pg::Game *pargame = new pg::Game(noStates);
+
+    // First initialize a parity game vertex for every state in the symbolic game
+    {
+        int idx=0;
+
+        uint8_t state_arr[game.statebits];
+        MTBDD lf = mtbdd_enum_all_first(states, s_vars, state_arr, NULL);
+        while (lf != mtbdd_false) {
+            // decode state
+            int state = 0;
+            for (int i=0; i<game.statebits; i++) {
+                state <<= 1;
+                if (state_arr[i]) state |= 1;
+            }
+
+            pargame->init_vertex(idx, 0, 1, std::to_string(state)); // controlled by the Odd
+            mapper[state] = idx++;
+
+            lf = mtbdd_enum_all_next(states, s_vars, state_arr, NULL);
+        }
+    }
+
+    // Check that the transition relation of the symbolic game does not have priobits on source states
+    assert(mtbdd_getvar(game.trans) >= (unsigned) game.priobits);
+
+    // index of next parity game vertex (for the priority on the edge)
+    int vidx = noStates;
+
+    std::vector<int> succ_state;  // for current state, the successors
+
+    std::map<MTBDD, int> uap_to_vertex; // map after-uap to vertex
+    std::map<MTBDD, int> cap_to_vertex; // map after-cap (priority) to vertex
+
+    uint8_t state_arr[game.statebits];
+    MTBDD lf = mtbdd_enum_all_first(game.trans, s_vars, state_arr, NULL);
+    while (lf != mtbdd_false) {
+        // decode state
+        int _s = 0;
+        for (int i=0; i<game.statebits; i++) {
+            _s <<= 1;
+            if (state_arr[i]) _s |= 1;
+        }
+
+        // translate _s to state
+        int state = mapper.at(_s);
+
+        // find all "successors" of this state after the environment plays (uap)
+        std::set<MTBDD> after_uap;
+        {
+            uint8_t uap_arr[game.uap_count];
+            MTBDD lf2 = mtbdd_enum_first(lf, uap_vars, uap_arr, NULL);
+            while (lf2 != mtbdd_false) {
+                after_uap.insert(lf2);
+                lf2 = mtbdd_enum_next(lf, uap_vars, uap_arr, NULL);
+            }
+        }
+
+        // start adding edges!
+        pargame->e_start(state);
+
+        for (MTBDD uap_bdd : after_uap) {
+            // check if we have seen this symbolic state before
+            auto search = uap_to_vertex.find(uap_bdd);
+            if (search != uap_to_vertex.end()) {
+                // already exists
+                // add edge from <state> to <search->second>
+                pargame->e_add(state, search->second);
+            } else {
+                int uapv = vidx++;
+                pargame->init_vertex(uapv, 0, 0, std::to_string(uap_bdd)); // controlled by Even
+                uap_to_vertex[uap_bdd] = uapv;
+                // add edge from <state> to <uapv>
+                pargame->e_add(state, uapv);
+            }
+        }
+
+        // we're done adding edges!
+        pargame->e_finish();
+
+        lf = mtbdd_enum_all_next(game.trans, s_vars, state_arr, NULL);
+    }
+
+    // we now have all post-UAP in the uap_to_vertex map, so lets process them...
+
+    for (auto x = uap_to_vertex.begin(); x != uap_to_vertex.end(); x++) {
+        const MTBDD uap_bdd = x->first;
+        const int uap_v = x->second;
+
+        std::set<MTBDD> after_cap;
+        {
+            uint8_t cap_arr[game.cap_count];
+            MTBDD lf = mtbdd_enum_first(uap_bdd, cap_vars, cap_arr, NULL);
+            while (lf != mtbdd_false) {
+                after_cap.insert(lf);
+                lf = mtbdd_enum_next(uap_bdd, cap_vars, cap_arr, NULL);
+            }
+        }
+
+        pargame->e_start(uap_v);
+
+        for (MTBDD cap_bdd : after_cap) {
+            // only if not yet there
+            auto search2 = cap_to_vertex.find(cap_bdd);
+            if (search2 != cap_to_vertex.end()) {
+                pargame->e_add(uap_v, search2->second);
+            } else {
+                int capv = vidx++;
+
+                uint8_t ns_arr[game.priobits+game.statebits];
+                MTBDD lf2 = mtbdd_enum_all_first(cap_bdd, ns_vars, ns_arr, NULL);
+                assert(lf2 == mtbdd_true);
+
+                // decode priostate
+                int pr = 0;
+                for (int i=0; i<game.priobits; i++) {
+                    pr <<= 1;
+                    if (ns_arr[i]) pr |= 1;
+                }
+
+                pargame->init_vertex(capv, pr, 0, std::to_string(cap_bdd)); // controlled by any
+                cap_to_vertex[cap_bdd] = capv;
+                pargame->e_add(uap_v, capv);
+            }
+        }
+
+        pargame->e_finish();
+    }
+
+    // we now have all post-CAP in the cap_to_vertex map, so lets process them...
+
+    for (auto x = cap_to_vertex.begin(); x != cap_to_vertex.end(); x++) {
+        const MTBDD cap_bdd = x->first;
+        const int cap_v = x->second;
+
+        uint8_t ns_arr[game.priobits+game.statebits];
+        MTBDD lf2 = mtbdd_enum_all_first(cap_bdd, ns_vars, ns_arr, NULL);
+        assert(lf2 == mtbdd_true);
+
+        // decode target
+        int to = 0;
+        for (int i=0; i<game.statebits; i++) {
+            to <<= 1;
+            if (ns_arr[game.priobits+i]) to |= 1;
+        }
+        to = mapper.at(to);
+
+        pargame->e_start(cap_v);
+        pargame->e_add(cap_v, to);
+        pargame->e_finish();
+    }
+
+    // tell Oink we're done adding stuff, resize game to final size
+    pargame->v_resize(vidx);
+
+    return pargame;
+}
+
+
 void
 strategy_to_pg(SymGame *game)
 {
@@ -1618,6 +1810,13 @@ main(int argc, char* argv[])
         const double t_before_construct = wctime();
         auto sym = constructSymGame(data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
+
+        if (write_pg) {
+            // in case we want to write the file to PGsolver file format...
+            auto pg = symgame_to_pg(*sym);
+            pg->write_pgsolver(std::cout);
+            exit(0);
+        }
 
         if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_construct - t_before_construct) << " sec." << std::endl;
 
