@@ -159,9 +159,6 @@ evalLabelNaive(BTree* label, Alias* aliases, int numAliases, int numAPs, int* ap
 
 
 
-
-
-
 /**
  * This helper function ensures that the priority p is adjusted to
  * ensure we have a "max, even" parity game, as this is what Oink expects.
@@ -181,8 +178,6 @@ adjustPriority(int p, bool maxPriority, bool controllerIsOdd, int noPriorities)
     if (controllerIsOdd) p--;
     return p;
 }
-
-
 
 
 /**
@@ -686,6 +681,7 @@ constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerI
             // std::cout << "added transition from " << state->id << " with prio " << priority << " to " << trans->successors[0] << std::endl; 
         }
 
+        // encode source state and add to full transition relation
         int src = state->id;
         if (src == 0) src = vstart;
         else if (src == vstart) src = 0;
@@ -709,10 +705,12 @@ constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerI
 }
 
 
+/**
+ * Encode priority i.e. all states via priority <priority>
+ */
 MTBDD
 encodeprio(int priority, int priobits)
 {
-    // construct all states with priority pr
     MTBDD cube = mtbdd_true;
     for (int i=0; i<priobits; i++) {
         if (priority & 1) cube = mtbdd_makenode(priobits-i-1, mtbdd_false, cube);
@@ -723,6 +721,9 @@ encodeprio(int priority, int priobits)
 }
 
 
+/**
+ * Given a strategy, if there is choice, choose the zero edge
+ */
 TASK_2(MTBDD, clarify, MTBDD, str, MTBDD, cap_vars)
 {
     if (mtbdd_set_isempty(cap_vars)) return str;
@@ -757,31 +758,6 @@ TASK_2(MTBDD, clarify, MTBDD, str, MTBDD, cap_vars)
                 return mtbdd_makenode(next_cap, mtbdd_false, high);
             }
         }
-    }
-}
-
-
-
-TASK_2(MTBDD, and_reduce, MTBDD, str, uint32_t, priobits)
-{
-    // return str;
-    if (mtbdd_isleaf(str)) return str;
-
-    uint32_t var = mtbdd_getvar(str);
-    if (var >= priobits) return str;
-
-    if (mtbdd_getlow(str) == mtbdd_false) {
-        return CALL(and_reduce, mtbdd_gethigh(str), priobits);
-    } else if (mtbdd_gethigh(str) == mtbdd_false) {
-        return CALL(and_reduce, mtbdd_getlow(str), priobits);
-    } else {
-        MTBDD low = CALL(and_reduce, mtbdd_getlow(str), priobits);
-        mtbdd_refs_pushptr(&low);
-        MTBDD high = CALL(and_reduce, mtbdd_gethigh(str), priobits);
-        mtbdd_refs_pushptr(&high);
-        MTBDD res = CALL(sylvan_and, low, high, 0);
-        mtbdd_refs_popptr(2);
-        return res;
     }
 }
 
@@ -1497,10 +1473,11 @@ main(int argc, char* argv[])
     // Check if priorities are either all on state or all on transition, check state IDs for compatibility
     bool state_priorities = false;
 
+    bool is_bad = false;
     for (int i=0; i<data->noStates; i++) {
         if (i != data->states[i].id) {
-            std::cerr << "state " << i << " has an invalid id!" << std::endl;
-            return -1;
+            std::cerr << "state " << i << " has an invalid id "  << data->states[i].id << "!" << std::endl;
+            is_bad = true;
         }
         if (data->states[i].noAccSig != 0) {
             if (i == 0) {
@@ -1511,6 +1488,7 @@ main(int argc, char* argv[])
             }
         }
     }
+    if (is_bad) return -1;
 
     if (verbose) {
         if (state_priorities) std::cerr << "priorities are on states" << std::endl;
