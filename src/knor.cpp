@@ -577,25 +577,55 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 }
 
 
-typedef struct SymGame {
+class SymGame {
+public:
     int maxprio;
     int statebits;
     int priobits;
     int cap_count;
     int uap_count;
+
     MTBDD trans;       // transition relation of symbolic game:        state -> uap -> cap -> priority -> next_state
     MTBDD strategies;  // contains the solution: the strategies:       good_state -> uap -> cap
     MTBDD* cap_bdds;   // contains the solution: controllable ap bdds: state -> uap -> B
     MTBDD* state_bdds; // contains the solution: state bit bdds      : state -> uap -> B
-} SymGame;
+
+    SymGame(int statebits, int priobits, int uap_count, int cap_count, int maxprio) {
+        this->maxprio = maxprio;
+        this->uap_count = uap_count;
+        this->cap_count = cap_count;
+        this->statebits = statebits;
+        this->priobits = priobits;
+
+        trans = mtbdd_false;
+        strategies = mtbdd_false;
+        mtbdd_protect(&trans);
+        mtbdd_protect(&strategies);
+
+        cap_bdds = new MTBDD[cap_count];
+        for (int i=0; i<cap_count; i++) cap_bdds[i] = mtbdd_false;
+        for (int i=0; i<cap_count; i++) mtbdd_protect(&cap_bdds[i]);
+        state_bdds = new MTBDD[statebits];
+        for (int i=0; i<statebits; i++) state_bdds[i] = mtbdd_false;
+        for (int i=0; i<statebits; i++) mtbdd_protect(&state_bdds[i]);
+    }
+
+    virtual ~SymGame() {
+        for (int i=0; i<cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
+        for (int i=0; i<statebits; i++) mtbdd_unprotect(&state_bdds[i]);
+
+        delete[] cap_bdds;
+        delete[] state_bdds;
+    }
+};
 
 
 
 /**
  * Construct the symbolic game
  */
-void
-constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerIsOdd)
+SymGame*
+constructSymGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
 {
     int vstart = data->start[0];
 
@@ -612,10 +642,12 @@ constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerI
     // Prepare number of statebits and priobits
     int statebits = 1;
     while ((1ULL<<(statebits)) <= (uint64_t)data->noStates) statebits++;
+
     const int evenMax = 2 + 2*((data->noAccSets+1)/2); // should be enough...
     int priobits = 1;
     while ((1ULL<<(priobits)) <= (unsigned)evenMax) priobits++;
-    int maxprio = 0;
+
+    SymGame *res = new SymGame(statebits, priobits, uap_count, cap_count, 0);
 
     // first <priobits, statebits> will be state variables
 
@@ -631,16 +663,14 @@ constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerI
 
     // only if verbose: std::cout << "prio bits: " << priobits << " and state bits: " << statebits << std::endl;
 
-    MTBDD fulltrans = mtbdd_false; // no transitions yet
-    mtbdd_refs_pushptr(&fulltrans);
-    MTBDD trans_bdd = mtbdd_false;
-    mtbdd_refs_pushptr(&trans_bdd);
-
     // these variables are used deeper in the for loops, however we can
     // push them to mtbdd refs here and avoid unnecessary pushing and popping
+    MTBDD transbdd = mtbdd_false;
     MTBDD statebdd = mtbdd_false;
     MTBDD lblbdd = mtbdd_false;
     MTBDD leaf = mtbdd_false;
+
+    mtbdd_refs_pushptr(&transbdd);
     mtbdd_refs_pushptr(&statebdd);
     mtbdd_refs_pushptr(&lblbdd);
     mtbdd_refs_pushptr(&leaf);
@@ -648,8 +678,10 @@ constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerI
     // Loop over every state
     for (int i=0; i<data->noStates; i++) {
         auto state = data->states+i;
+
         for (int j=0; j<state->noTrans; j++) {
             auto trans = state->transitions+j;
+
             // there should be a single successor per transition
             assert(trans->noSucc == 1);
             // there should be a label at state or transition level
@@ -667,17 +699,20 @@ constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerI
                 assert(data->states[id].noAccSig == 1);
                 priority = adjustPriority(data->states[id].accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
             }
-            if (priority > maxprio) maxprio = priority;
-            // convert the label to a MTBDD
-            lblbdd = evalLabel(label, data, variables);
+            if (priority > res->maxprio) res->maxprio = priority;
             // swap with initial if needed
             int succ = trans->successors[0];
             if (succ == 0) succ = vstart;
             else if (succ == vstart) succ = 0;
+            // encode the label as a MTBDD
+            lblbdd = evalLabel(label, data, variables);
             // encode priostate (leaf) and update transition relation
             leaf = encode_priostate(succ, priority, statebits, priobits, statebits+priobits+data->noAPs);
-            trans_bdd = mtbdd_ite(lblbdd, leaf, trans_bdd);
-            lblbdd = leaf = mtbdd_false; // deref
+            // trans := lbl THEN leaf ELSE trans
+            transbdd = mtbdd_ite(lblbdd, leaf, transbdd);
+            // deref lblbdd and leaf
+            lblbdd = leaf = mtbdd_false;
+
             // std::cout << "added transition from " << state->id << " with prio " << priority << " to " << trans->successors[0] << std::endl; 
         }
 
@@ -686,22 +721,15 @@ constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerI
         if (src == 0) src = vstart;
         else if (src == vstart) src = 0;
         statebdd = encode_state(src, statebits, priobits, 0);
-        fulltrans = mtbdd_ite(statebdd, trans_bdd, fulltrans);
-        statebdd = trans_bdd = mtbdd_false; // deref
+        // update full trans with <statebdd> then <transbdd>
+        res->trans = mtbdd_ite(statebdd, transbdd, res->trans);
+        // deref statebdd and transbdd
+        statebdd = transbdd = mtbdd_false;
     }
 
-    mtbdd_refs_popptr(5);
+    mtbdd_refs_popptr(4);
 
-    res->maxprio = maxprio;
-    res->statebits = statebits;
-    res->priobits = priobits;
-    res->cap_count = cap_count;
-    res->uap_count = uap_count;
-    res->trans = fulltrans;
-    res->cap_bdds = new MTBDD[cap_count];
-    for (int i=0; i<cap_count; i++) res->cap_bdds[i] = mtbdd_false;
-    res->state_bdds = new MTBDD[statebits];
-    for (int i=0; i<statebits; i++) res->state_bdds[i] = mtbdd_false;
+    return res;
 }
 
 
@@ -1587,19 +1615,14 @@ main(int argc, char* argv[])
         }
     } else {
         // Construct the game
-        SymGame sym;
         const double t_before_construct = wctime();
-        constructSymGame(data, &sym, isMaxParity, controllerIsOdd);
+        auto sym = constructSymGame(data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
 
         if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_construct - t_before_construct) << " sec." << std::endl;
 
-        mtbdd_refs_pushptr(&sym.trans);
-        for (int i=0; i<sym.cap_count; i++) mtbdd_refs_pushptr(&sym.cap_bdds[i]);
-        for (int i=0; i<sym.statebits; i++) mtbdd_refs_pushptr(&sym.state_bdds[i]);
-
         const double t_before_solve = wctime();
-        bool res = solveSymGame(&sym);
+        bool res = solveSymGame(sym);
         const double t_after_solve = wctime();
 
         if (verbose) std::cerr << "finished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec." << std::endl;
@@ -1612,16 +1635,16 @@ main(int argc, char* argv[])
              */
 
             if (options["print-witness"].count() > 0) {
-                strategy_to_pg(&sym);
+                strategy_to_pg(sym);
                 exit(10);
             }
 
-            AIGmaker maker(data, &sym);
-            for (int i=0; i<sym.cap_count; i++) {
-                maker.processCAP(i, sym.cap_bdds[i]);
+            AIGmaker maker(data, sym);
+            for (int i=0; i<sym->cap_count; i++) {
+                maker.processCAP(i, sym->cap_bdds[i]);
             }
-            for (int i=0; i<sym.statebits; i++) {
-                maker.processState(i, sym.state_bdds[i]);
+            for (int i=0; i<sym->statebits; i++) {
+                maker.processState(i, sym->state_bdds[i]);
             }
 
             std::cout << "REALIZABLE" << std::endl;
