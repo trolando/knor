@@ -58,7 +58,7 @@ wctime()
  * evalLabel converts a label on a transition to a MTBDD encoding the label
  * a label is essentially a boolean combination of atomic propositions, and aliases (aliases are rare)
  */
-#define evalLabel(a,b,c) CALL(evalLabel,a,b,c)
+#define evalLabel(a,b,c) RUN(evalLabel,a,b,c)
 TASK_3(MTBDD, evalLabel, BTree*, label, HoaData*, data, uint32_t*, variables)
 {
     MTBDD left = mtbdd_false, right = mtbdd_false, result = mtbdd_false;
@@ -69,17 +69,17 @@ TASK_3(MTBDD, evalLabel, BTree*, label, HoaData*, data, uint32_t*, variables)
             result = label->id ? mtbdd_true : mtbdd_false;
             break;
         case NT_AND:
-            left = evalLabel(label->left, data, variables);
-            right = evalLabel(label->right, data, variables);
+            left = CALL(evalLabel, label->left, data, variables);
+            right = CALL(evalLabel, label->right, data, variables);
             result = sylvan_and(left, right);
             break;
         case NT_OR:
-            left = evalLabel(label->left, data, variables);
-            right = evalLabel(label->right, data, variables);
+            left = CALL(evalLabel, label->left, data, variables);
+            right = CALL(evalLabel, label->right, data, variables);
             result = sylvan_or(left, right);
             break;
         case NT_NOT:
-            left = evalLabel(label->left, data, variables);
+            left = CALL(evalLabel, label->left, data, variables);
             result = sylvan_not(left);
             break;
         case NT_AP:
@@ -90,7 +90,7 @@ TASK_3(MTBDD, evalLabel, BTree*, label, HoaData*, data, uint32_t*, variables)
             for (int i=0; i<data->noAliases; i++) {
                 Alias *a = data->aliases+i;
                 if (strcmp(a->alias, label->alias) == 0) {
-                    return evalLabel(a->labelExpr, data, variables);
+                    return CALL(evalLabel, a->labelExpr, data, variables);
                 }
             }
             break;
@@ -302,7 +302,6 @@ collect_targets2(MTBDD trans, std::set<uint64_t> &res, const int statebits, cons
 
         return cube;
     } else {
-        LACE_ME;
         MTBDD left = collect_targets2(mtbdd_getlow(trans), res, statebits, priobits);
         mtbdd_refs_push(left);
         MTBDD right = collect_targets2(mtbdd_gethigh(trans), res, statebits, priobits);
@@ -472,8 +471,6 @@ constructGame(HoaData *data, bool isMaxParity, bool controllerIsOdd)
     MTBDD leaf = mtbdd_false;
     mtbdd_refs_pushptr(&lblbdd);
     mtbdd_refs_pushptr(&leaf);
-
-    LACE_ME;
 
     int ref_counter = 0;
 
@@ -653,7 +650,6 @@ constructSymGame(HoaData *data, SymGame *res, bool isMaxParity, bool controllerI
     mtbdd_refs_pushptr(&lblbdd);
     mtbdd_refs_pushptr(&leaf);
 
-    LACE_ME;
     // Loop over every state
     for (int i=0; i<data->noStates; i++) {
         auto state = data->states+i;
@@ -793,8 +789,6 @@ TASK_2(MTBDD, and_reduce, MTBDD, str, uint32_t, priobits)
 void
 strategy_to_pg(SymGame *game)
 {
-    LACE_ME;
-
     MTBDD s_vars = mtbdd_set_empty();
     mtbdd_refs_pushptr(&s_vars);
     for (int i=0; i<game->statebits; i++) s_vars = mtbdd_set_add(s_vars, game->priobits+i);
@@ -1096,8 +1090,6 @@ AIGmaker::write(FILE* out)
 bool
 solveSymGame(SymGame *game)
 {
-    LACE_ME;
-
     const int offset = game->cap_count + game->uap_count + game->priobits + game->statebits;
 
     MTBDD s_vars = mtbdd_set_empty();
@@ -1336,7 +1328,7 @@ solveSymGame(SymGame *game)
     }
 
     // Select lowest strategy [heuristic]
-    strategies = CALL(clarify, strategies, cap_vars);
+    strategies = RUN(clarify, strategies, cap_vars);
 
     // Now remove all unreachable states according to the strategy  (slightly smaller controller)
     {
@@ -1526,8 +1518,7 @@ main(int argc, char* argv[])
     }
 
     // Initialize Lace
-    lace_init(1, 0); // initialize Lace, but sequentially
-    lace_startup(0, 0, 0); // no thread spawning
+    lace_start(1, 0); // initialize Lace, but sequentially
 
     // And initialize Sylvan
     sylvan_set_limits(128LL << 20, 1, 16); // should be enough (128 megabytes)
@@ -1561,7 +1552,7 @@ main(int argc, char* argv[])
 
         // We don't need Sylvan anymore at this point
         sylvan_quit();
-        lace_exit();
+        lace_stop();
 
         if (write_pg) {
             // in case we want to write the file to PGsolver file format...
