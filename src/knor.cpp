@@ -1552,7 +1552,6 @@ main(int argc, char* argv[])
 
         // We don't need Sylvan anymore at this point
         sylvan_quit();
-        lace_stop();
 
         if (write_pg) {
             // in case we want to write the file to PGsolver file format...
@@ -1658,5 +1657,7 @@ main(int argc, char* argv[])
         // free HOA allocated data structure
         resetHoa(data);
     }
+
+    lace_stop();
 }
 
