@@ -1615,6 +1615,18 @@ handleOptions(int &argc, char**& argv)
 }
 
 
+VOID_TASK_0(gc_start)
+{
+    std::cout << "starting garbage collection..." << std::endl;
+}
+
+
+VOID_TASK_0(gc_end)
+{
+    std::cout << "garbage collection finished." << std::endl;
+}
+
+
 /**
  * The main function
  */
@@ -1689,6 +1701,8 @@ main(int argc, char* argv[])
     sylvan_set_limits(128LL << 20, 1, 16); // should be enough (128 megabytes)
     sylvan_init_package();
     sylvan_init_mtbdd();
+    if (verbose) sylvan_gc_hook_pregc(TASK(gc_start));
+    if (verbose) sylvan_gc_hook_postgc(TASK(gc_end));
 
     bool explicit_solver = options["sym"].count() == 0;
     bool naive_splitting = options["naive"].count() > 0;
