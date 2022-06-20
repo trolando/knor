@@ -543,6 +543,7 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
 
             succ_state.push_back(vinter);
             targets.clear();
+            target_vertices.clear();
         }
 
         // there should be a priority at state or transition level
@@ -560,6 +561,7 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
 
         succ_state.clear();
         inter_bdds.clear();
+        inter_vertices.clear();
     }
 
     // tell Oink we're done adding stuff, resize game to final size
