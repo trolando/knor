@@ -1845,38 +1845,38 @@ main(int argc, char* argv[])
     bool explicit_splitting = options["explicit"].count() > 0;
     bool write_pg = options["print-game"].count() > 0;
 
-    if (explicit_solver) {
-        const double t_before_splitting = wctime();
+    SymGame *sym = nullptr;
+    bool realizable = false; // not known yet
 
+    if (explicit_solver) {
         // Remember the start vertex
         int vstart = data->start[0];
         std::map<int, MTBDD> vertex_to_bdd;
 
-        // Construct the game
-        SymGame *sym = nullptr;
+        // Construct the explicit game
         pg::Game *game = nullptr;
+        const double t_before_splitting = wctime();
         if (naive_splitting) {
             game = RUN(constructGameNaive, data, isMaxParity, controllerIsOdd);
         } else if (explicit_splitting) {
             game = RUN(constructGame, data, isMaxParity, controllerIsOdd);
         } else {
-            vstart = 0;
+            vstart = 0; // always set to 0 by constructSymGame
             sym = RUN(constructSymGame, data, isMaxParity, controllerIsOdd);
             game = sym->toExplicit(vertex_to_bdd);
         }
-        game->set_label(vstart, "initial");
         const double t_after_splitting = wctime();
 
-        if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec." << std::endl;
+        if (verbose) {
+            std::cerr << "finished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec." << std::endl;
+            std::cerr << "constructed game has " << game->vertexcount() << " vertices and " << game->edgecount() << " edges." << std::endl;
+        }
 
         if (write_pg) {
             // in case we want to write the file to PGsolver file format...
+            game->set_label(vstart, "initial");
             game->write_pgsolver(std::cout);
             exit(0);
-        }
-
-        if (verbose) {
-            std::cerr << "constructed game has " << game->vertexcount() << " vertices and " << game->edgecount() << " edges." << std::endl;
         }
 
         // we sort now, so we can track the initial state
@@ -1891,7 +1891,6 @@ main(int argc, char* argv[])
         }
 
         // OK, fire up the engine
-       
         std::stringstream log;
 
         std::string solver = "tl";
@@ -1913,14 +1912,15 @@ main(int argc, char* argv[])
         // report how long it all took
         if (verbose) std::cerr << "finished solving game in " << std::fixed << (end-begin) << " sec." << std::endl;
 
+        // undo the sorting
+        game->permute(mapping);
+        delete[] mapping;
+
+        realizable = game->winner[vstart] == 0;
+
         // finally, check if the initial vertex is won by controller or environment
-        if (game->winner[vstart] == 0) {
-            std::cout << "REALIZABLE" << std::endl;
-
+        if (realizable) {
             if (sym != nullptr) {
-                // first undo the sorting
-                game->permute(mapping);
-
                 // now get the strategy from Oink...
                 std::map<MTBDD, MTBDD> str;  // cap to priostate
                 for (int v=0; v<game->vertexcount(); v++) {
@@ -1934,32 +1934,13 @@ main(int argc, char* argv[])
 
                 if (!sym->applyStrategy(str)) {
                     std::cerr << "cannot apply strategy!" << std::endl;
-                    exit(10);
                 }
-
-                sym->postprocess(verbose);
-
-                AIGmaker maker(data, sym);
-                for (int i=0; i<sym->cap_count; i++) {
-                    maker.processCAP(i, sym->cap_bdds[i]);
-                }
-                for (int i=0; i<sym->statebits; i++) {
-                    maker.processState(i, sym->state_bdds[i]);
-                }
-
-                maker.write(stdout);
             }
-
-            exit(10);
-        } else {
-            std::cout << "UNREALIZABLE" << std::endl;
-            exit(20);
         }
-        delete[] mapping;
     } else {
         // Construct the game
         const double t_before_construct = wctime();
-        auto sym = RUN(constructSymGame, data, isMaxParity, controllerIsOdd);
+        sym = RUN(constructSymGame, data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
 
         if (write_pg) {
@@ -1973,44 +1954,39 @@ main(int argc, char* argv[])
         if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_construct - t_before_construct) << " sec." << std::endl;
 
         const double t_before_solve = wctime();
-        bool res = sym->solve();
+        realizable = sym->solve();
         const double t_after_solve = wctime();
 
         if (verbose) std::cerr << "finished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec." << std::endl;
+    }
 
-        if (verbose) sylvan_stats_report(stdout);
+    if (realizable) {
+        /**
+         * maybe print witness parity game, which should be fully won by even
+         */
 
         sym->postprocess(verbose);
 
-        if (res) {
-            /** 
-             * maybe print witness parity game, which should be fully won by even
-             */
-
-            if (options["print-witness"].count() > 0) {
-                auto pargame = sym->strategyToPG();
-                pargame->write_pgsolver(std::cout);
-                exit(10);
-            }
-
-            AIGmaker maker(data, sym);
-            for (int i=0; i<sym->cap_count; i++) {
-                maker.processCAP(i, sym->cap_bdds[i]);
-            }
-            for (int i=0; i<sym->statebits; i++) {
-                maker.processState(i, sym->state_bdds[i]);
-            }
-
-            std::cout << "REALIZABLE" << std::endl;
-            maker.write(stdout);
+        if (options["print-witness"].count() > 0) {
+            auto pargame = sym->strategyToPG();
+            pargame->write_pgsolver(std::cout);
             exit(10);
-        } else {
-            std::cout << "UNREALIZABLE" << std::endl;
-            exit(20);
         }
 
-        // free HOA allocated data structure
-        resetHoa(data);
+        AIGmaker maker(data, sym);
+        for (int i=0; i<sym->cap_count; i++) {
+            maker.processCAP(i, sym->cap_bdds[i]);
+        }
+        for (int i=0; i<sym->statebits; i++) {
+            maker.processState(i, sym->state_bdds[i]);
+        }
+
+        std::cout << "REALIZABLE" << std::endl;
+        maker.write(stdout);
+        exit(10);
+    } else {
+        std::cout << "UNREALIZABLE" << std::endl;
+        exit(20);
     }
 
     if (verbose) sylvan_stats_report(stdout);
