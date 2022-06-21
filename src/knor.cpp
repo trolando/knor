@@ -107,7 +107,6 @@ TASK_3(MTBDD, evalLabel, BTree*, label, HoaData*, data, uint32_t*, variables)
 }
 
 
-
 /**
  * Given a label and a valuation of some of the atomic propositions,
  * we determine whether the label is true (1), false (-1), or its
@@ -728,7 +727,7 @@ TASK_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool, cont
             if (succ == 0) succ = vstart;
             else if (succ == vstart) succ = 0;
             // encode the label as a MTBDD
-            lblbdd = RUN(evalLabel, label, data, variables);
+            lblbdd = CALL(evalLabel, label, data, variables);
             // encode priostate (leaf) and update transition relation
             leaf = encode_priostate(succ, priority, statebits, priobits, statebits+priobits+data->noAPs);
             // trans := lbl THEN leaf ELSE trans
@@ -771,9 +770,9 @@ TASK_2(MTBDD, clarify, MTBDD, str, MTBDD, cap_vars)
         if (var < next_cap) {
             // not at controllable variables yet!
             MTBDD low = CALL(clarify, mtbdd_getlow(str), cap_vars);
-            mtbdd_refs_pushptr(&low);
+            mtbdd_refs_push(low);
             MTBDD high = CALL(clarify, mtbdd_gethigh(str), cap_vars);
-            mtbdd_refs_popptr(1);
+            mtbdd_refs_pop(1);
             return mtbdd_makenode(var, low, high);
         } else if (next_cap < var) {
             // at controllable variables, and skipping one! (set to 0)
@@ -833,9 +832,11 @@ SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
     // Start constructing the parity game for given number of states (auto-grows)
     pg::Game *pargame = new pg::Game(noStates);
 
+    // index of next parity game vertex
+    int vidx = 0;
+
     // First initialize a parity game vertex for every state in the symbolic game
     {
-        int idx = 0;
 
         uint8_t state_arr[this->statebits];
         MTBDD lf = mtbdd_enum_all_first(states, s_vars, state_arr, NULL);
@@ -848,35 +849,30 @@ SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
             }
 
             // create vertex controlled by Odd
-            pargame->init_vertex(idx, 0, 1, std::to_string(state));
-            mapper[state] = idx++;
+            pargame->init_vertex(vidx, 0, 1, std::to_string(state));
+            mapper[state] = vidx++;
 
             lf = mtbdd_enum_all_next(states, s_vars, state_arr, NULL);
         }
 
-        assert(idx == noStates);
+        assert(vidx == noStates);
     }
 
-    // index of next parity game vertex (for the priority on the edge)
-    int vidx = noStates;
-
-    std::vector<int> succ_state;  // for current state, the successors
-
     std::map<MTBDD, int> uap_to_vertex; // map after-uap to vertex
-    std::map<MTBDD, int> cap_to_vertex; // map after-cap (priority) to vertex
+    std::map<MTBDD, int> cap_to_vertex; // map after-cap (priostate) to vertex
 
     uint8_t state_arr[this->statebits];
     MTBDD lf = mtbdd_enum_all_first(this->trans, s_vars, state_arr, NULL);
     while (lf != mtbdd_false) {
         // decode state
-        int _s = 0;
+        int state_i = 0;
         for (int i=0; i<this->statebits; i++) {
-            _s <<= 1;
-            if (state_arr[i]) _s |= 1;
+            state_i <<= 1;
+            if (state_arr[i]) state_i |= 1;
         }
 
-        // translate _s to state
-        int state_v = mapper.at(_s);
+        // translate state_i to state
+        int state_v = mapper.at(state_i);
 
         // find all "successors" of this state after the environment plays (uap)
         std::set<MTBDD> after_uap;
@@ -939,23 +935,23 @@ SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
             if (search2 != cap_to_vertex.end()) {
                 pargame->e_add(uap_v, search2->second);
             } else {
-                int capv = vidx++;
+                int cap_v = vidx++;
 
                 uint8_t ns_arr[this->priobits+this->statebits];
                 MTBDD lf2 = mtbdd_enum_all_first(cap_bdd, ns_vars, ns_arr, NULL);
                 assert(lf2 == mtbdd_true);
 
-                // decode priostate
+                // decode priority of priostate
                 int pr = 0;
                 for (int i=0; i<this->priobits; i++) {
                     pr <<= 1;
                     if (ns_arr[i]) pr |= 1;
                 }
 
-                pargame->init_vertex(capv, pr, 1, std::to_string(cap_bdd)); // controlled by any
-                cap_to_vertex[cap_bdd] = capv;
-                vertex_to_bdd[capv] = cap_bdd;
-                pargame->e_add(uap_v, capv);
+                pargame->init_vertex(cap_v, pr, 1, std::to_string(cap_bdd)); // controlled by any
+                cap_to_vertex[cap_bdd] = cap_v;
+                vertex_to_bdd[cap_v] = cap_bdd;
+                pargame->e_add(uap_v, cap_v);
             }
         }
 
@@ -987,6 +983,8 @@ SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
 
     // tell Oink we're done adding stuff, resize game to final size
     pargame->v_resize(vidx);
+
+    mtbdd_refs_popptr(4);
 
     return pargame;
 }
@@ -1169,9 +1167,12 @@ SymGame::strategyToPG()
         pargame->e_finish();
         succ_state.clear();
 
+        mtbdd_refs_popptr(1);
+
         lf = mtbdd_enum_all_next(full, s_vars, state_arr, NULL);
     }
 
+    mtbdd_refs_popptr(2);
 
     // tell Oink we're done adding stuff, resize game to final size
     pargame->v_resize(vidx);
@@ -1596,7 +1597,7 @@ SymGame::solve(bool verbose)
         strategies = mtbdd_getlow(strategies);
     }
 
-    mtbdd_refs_popptr(10+3*this->maxprio); // WHATEVER
+    mtbdd_refs_popptr(10+3+3*this->maxprio); // WHATEVER
 
     this->strategies = strategies;
 
@@ -1605,6 +1606,12 @@ SymGame::solve(bool verbose)
     delete[] lowereq;
 
     return true;
+}
+
+
+VOID_TASK_2(wrap_pp, SymGame*, game, bool, verbose)
+{
+    game->postprocess(verbose);
 }
 
 
@@ -1636,6 +1643,10 @@ SymGame::postprocess(bool verbose)
     // Select lowest strategy [heuristic]
     strategies = RUN(clarify, strategies, cap_vars);
 
+    if (verbose) {
+        std::cerr << "running symbolic reachability" << std::endl;
+    }
+
     // Now remove all unreachable states according to the strategy  (slightly smaller controller)
     {
         MTBDD vars = mtbdd_set_empty();
@@ -1660,10 +1671,10 @@ SymGame::postprocess(bool verbose)
         while (old != visited) {
             old = visited;
             MTBDD next = mtbdd_and_exists(visited, T, s_vars); // cross product
-            mtbdd_refs_pushptr(&next);
+            mtbdd_refs_push(next);
             next = sylvan_compose(next, from_next);   // and rename
             visited = sylvan_or(visited, next);
-            mtbdd_refs_popptr(1);
+            mtbdd_refs_pop(1);
         }
 
         assert(mtbdd_getvar(visited) >= (unsigned)this->priobits); // should not have priorities
@@ -1671,7 +1682,7 @@ SymGame::postprocess(bool verbose)
         // count the number of states
         long noStates = (long)sylvan_satcount(visited, s_vars);
         if (verbose) {
-            std::cout << "After reachability: " << noStates << " states." << std::endl;
+            std::cerr << "after reachability: " << noStates << " states." << std::endl;
         }
 
         strategies = sylvan_and(strategies, visited);
@@ -1891,12 +1902,6 @@ main(int argc, char* argv[])
         double begin = wctime();
         int *mapping = new int[game->vertexcount()];
         game->sort(mapping);
-        for (int i=0; i<game->vertexcount(); i++) {
-            if (mapping[i] == vstart) {
-                vstart = i;
-                break;
-            }
-        }
 
         // OK, fire up the engine
         std::stringstream log;
@@ -1973,7 +1978,7 @@ main(int argc, char* argv[])
          * maybe print witness parity game, which should be fully won by even
          */
 
-        sym->postprocess(verbose);
+        RUN(wrap_pp, sym, verbose);
 
         if (options["print-witness"].count() > 0) {
             auto pargame = sym->strategyToPG();
