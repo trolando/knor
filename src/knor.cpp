@@ -636,7 +636,7 @@ public:
     /**
      * Solve the symbolic parity game, return true if won
      */
-    bool solve();
+    bool solve(bool verbose);
 
     /**
      * After solving the game, compute BDDs for output and state
@@ -1364,9 +1364,13 @@ AIGmaker::write(FILE* out)
     aiger_write_to_file(a, aiger_ascii_mode, out);
 }
 
+TASK_2(bool, wrap_solve, SymGame*, game, bool, verbose)
+{
+    return game->solve(verbose);
+}
 
 bool
-SymGame::solve()
+SymGame::solve(bool verbose)
 {
     const int offset = this->cap_count + this->uap_count + this->priobits + this->statebits;
 
@@ -1434,6 +1438,10 @@ SymGame::solve()
 
     int pr = 0;
     while (pr <= this->maxprio) {
+        if (verbose) {
+            std::cerr << "priority " << pr << std::endl;
+        }
+
         MTBDD onestepeven = mtbdd_false;
         mtbdd_refs_pushptr(&onestepeven); // push onestepeven
 
@@ -1900,7 +1908,7 @@ main(int argc, char* argv[])
         }
  
         pg::Oink engine(*game, verbose ? std::cerr : log);
-        engine.setTrace(0);
+        engine.setTrace(verbose ? 1 : 0);
         engine.setRenumber();
         engine.setSolver(solver);
         engine.setWorkers(-1);
@@ -1954,7 +1962,7 @@ main(int argc, char* argv[])
         if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_construct - t_before_construct) << " sec." << std::endl;
 
         const double t_before_solve = wctime();
-        realizable = sym->solve();
+        realizable = RUN(wrap_solve, sym, verbose);
         const double t_after_solve = wctime();
 
         if (verbose) std::cerr << "finished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec." << std::endl;
