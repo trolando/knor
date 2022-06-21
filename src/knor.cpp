@@ -608,6 +608,8 @@ public:
     }
 
     virtual ~SymGame() {
+        mtbdd_unprotect(&trans);
+        mtbdd_unprotect(&strategies);
         for (int i=0; i<cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
         for (int i=0; i<statebits; i++) mtbdd_unprotect(&state_bdds[i]);
 
@@ -615,10 +617,31 @@ public:
         delete[] state_bdds;
     }
 
-    pg::Game *toExplicit();
+    /**
+     * Translate symbolic PG to explicit game in Oink, that can then be solved.
+     */
+    pg::Game *toExplicit(std::map<int, MTBDD>&);
+
+    /**
+     * Convert the strategy of a realizable parity game to an explicit parity game that
+     * should be won by player Even.
+     */
     pg::Game *strategyToPG();
 
+    /**
+     * Apply a strategy (computed via Oink)
+     */
+    bool applyStrategy(const std::map<MTBDD, MTBDD>&);
+
+    /**
+     * Solve the symbolic parity game, return true if won
+     */
     bool solve();
+
+    /**
+     * After solving the game, compute BDDs for output and state
+     */
+    void postprocess(bool verbose);
 };
 
 
@@ -712,8 +735,6 @@ TASK_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool, cont
             transbdd = mtbdd_ite(lblbdd, leaf, transbdd);
             // deref lblbdd and leaf
             lblbdd = leaf = mtbdd_false;
-
-            // std::cout << "added transition from " << state->id << " with prio " << priority << " to " << trans->successors[0] << std::endl; 
         }
 
         // encode source state and add to full transition relation
@@ -775,7 +796,7 @@ TASK_2(MTBDD, clarify, MTBDD, str, MTBDD, cap_vars)
 
 
 pg::Game*
-SymGame::toExplicit()
+SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
 {
     MTBDD s_vars = mtbdd_set_empty();
     MTBDD uap_vars = mtbdd_set_empty();
@@ -882,6 +903,7 @@ SymGame::toExplicit()
                 int uapv = vidx++;
                 pargame->init_vertex(uapv, 0, 0, std::to_string(uap_bdd)); // controlled by Even
                 uap_to_vertex[uap_bdd] = uapv;
+                vertex_to_bdd[uapv] = uap_bdd;
                 // add edge from <state> to <uapv>
                 pargame->e_add(state_v, uapv);
             }
@@ -930,8 +952,9 @@ SymGame::toExplicit()
                     if (ns_arr[i]) pr |= 1;
                 }
 
-                pargame->init_vertex(capv, pr, 0, std::to_string(cap_bdd)); // controlled by any
+                pargame->init_vertex(capv, pr, 1, std::to_string(cap_bdd)); // controlled by any
                 cap_to_vertex[cap_bdd] = capv;
+                vertex_to_bdd[capv] = cap_bdd;
                 pargame->e_add(uap_v, capv);
             }
         }
@@ -966,6 +989,81 @@ SymGame::toExplicit()
     pargame->v_resize(vidx);
 
     return pargame;
+}
+
+
+MTBDD select_str(MTBDD trans, MTBDD str)
+{
+    if (trans == str) {
+        return mtbdd_true;
+    } else if (mtbdd_isleaf(trans)) {
+        return mtbdd_false;
+    } else {
+        // state or uncontrollable ap
+        MTBDD low = mtbdd_false;
+        MTBDD high = mtbdd_false;
+        low = select_str(mtbdd_getlow(trans), str);
+        mtbdd_refs_push(low);
+        high = select_str(mtbdd_gethigh(trans), str);
+        mtbdd_refs_push(high);
+        MTBDD res = mtbdd_makenode(mtbdd_getvar(trans), low, high);
+        mtbdd_refs_pop(2);
+        return res;
+    }
+}
+
+
+/**
+ * Apply a strategy to the transition relation resulting in the strategy BDD
+ * Returns mtbdd_invalid if something is wrong.
+ */
+typedef const std::map<MTBDD,MTBDD> strmap;
+TASK_3(MTBDD, apply_str, MTBDD, trans, strmap*, str, int, first_cap)
+{
+    if (mtbdd_isleaf(trans)) {
+        return mtbdd_false; // no unsanctioned leaves!
+    } else {
+        uint32_t var = mtbdd_getvar(trans);
+        if (var < (unsigned)first_cap) {
+            // state or uncontrollable ap
+            MTBDD low = mtbdd_false;
+            MTBDD high = mtbdd_false;
+            low = CALL(apply_str, mtbdd_getlow(trans), str, first_cap);
+            mtbdd_refs_push(low);
+            high = CALL(apply_str, mtbdd_gethigh(trans), str, first_cap);
+            mtbdd_refs_push(high);
+            if (low == mtbdd_invalid || high == mtbdd_invalid) {
+                mtbdd_refs_pop(2);
+                return mtbdd_invalid;
+            } else {
+                MTBDD res = mtbdd_makenode(var, low, high);
+                mtbdd_refs_pop(2);
+                return res;
+            }
+        } else {
+            auto it = str->find(trans);
+                // FIXME HERE: should return the CAP resulting in it, not the thing!!!
+            if (it != str->end()) {
+                return select_str(it->first, it->second);
+            } else {
+                return mtbdd_false; // remove vertices without strategy
+            }
+        }
+    }
+}
+
+
+bool
+SymGame::applyStrategy(const std::map<MTBDD, MTBDD>& str)
+{
+    MTBDD strategy = RUN(apply_str, this->trans, &str, this->priobits+this->statebits+this->uap_count);
+    if (strategy == mtbdd_invalid) {
+        std::cout << "Unable to compute strategy" << std::endl;
+        return false;
+    }
+
+    this->strategies = strategy;
+    return true;
 }
 
 
@@ -1273,19 +1371,17 @@ SymGame::solve()
     const int offset = this->cap_count + this->uap_count + this->priobits + this->statebits;
 
     MTBDD s_vars = mtbdd_set_empty();
-    mtbdd_refs_pushptr(&s_vars);
-    for (int i=0; i<(this->priobits + this->statebits); i++) s_vars = mtbdd_set_add(s_vars, i);
-
     MTBDD uap_vars = mtbdd_set_empty();
-    mtbdd_refs_pushptr(&uap_vars);
-    for (int i=0; i<this->uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, this->priobits+this->statebits+i);
-
     MTBDD cap_vars = mtbdd_set_empty();
-    mtbdd_refs_pushptr(&cap_vars);
-    for (int i=0; i<this->cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, this->priobits+this->statebits+this->uap_count+i);
-
     MTBDD ns_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&s_vars);
+    mtbdd_refs_pushptr(&uap_vars);
+    mtbdd_refs_pushptr(&cap_vars);
     mtbdd_refs_pushptr(&ns_vars);
+
+    for (int i=0; i<(this->priobits + this->statebits); i++) s_vars = mtbdd_set_add(s_vars, i);
+    for (int i=0; i<this->uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, this->priobits+this->statebits+i);
+    for (int i=0; i<this->cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, this->priobits+this->statebits+this->uap_count+i);
     for (int i=0; i<(this->priobits + this->statebits); i++) ns_vars = mtbdd_set_add(ns_vars, offset + i);
 
     MTBDD odd = sylvan_ithvar(this->priobits-1); // deepest bit is the parity
@@ -1492,6 +1588,43 @@ SymGame::solve()
         strategies = mtbdd_getlow(strategies);
     }
 
+    mtbdd_refs_popptr(10+3*this->maxprio); // WHATEVER
+
+    this->strategies = strategies;
+
+    delete[] freeze;
+    delete[] priostates;
+    delete[] lowereq;
+
+    return true;
+}
+
+
+void
+SymGame::postprocess(bool verbose)
+{
+    const int offset = this->cap_count + this->uap_count + this->priobits + this->statebits;
+
+    MTBDD s_vars = mtbdd_set_empty();
+    MTBDD uap_vars = mtbdd_set_empty();
+    MTBDD cap_vars = mtbdd_set_empty();
+    MTBDD ns_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&s_vars);
+    mtbdd_refs_pushptr(&uap_vars);
+    mtbdd_refs_pushptr(&cap_vars);
+    mtbdd_refs_pushptr(&ns_vars);
+
+    for (int i=0; i<(this->priobits + this->statebits); i++) s_vars = mtbdd_set_add(s_vars, i);
+    for (int i=0; i<this->uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, this->priobits+this->statebits+i);
+    for (int i=0; i<this->cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, this->priobits+this->statebits+this->uap_count+i);
+    for (int i=0; i<(this->priobits + this->statebits); i++) ns_vars = mtbdd_set_add(ns_vars, offset + i);
+
+    MTBDD from_next = mtbdd_map_empty();
+    mtbdd_refs_pushptr(&from_next);
+    for (int i=0; i<(this->priobits + this->statebits); i++) {
+        from_next = mtbdd_map_add(from_next, offset+i, sylvan_ithvar(i));
+    }
+
     // Select lowest strategy [heuristic]
     strategies = RUN(clarify, strategies, cap_vars);
 
@@ -1504,10 +1637,12 @@ SymGame::solve()
         vars = mtbdd_set_addall(vars, cap_vars);
         vars = mtbdd_set_addall(vars, uap_vars);
 
+        // recover the priostates (strategies often only stores state > uap > cap)
+        // abstract from vars...
         MTBDD T = mtbdd_and_exists(strategies, this->trans, vars);
         mtbdd_refs_pushptr(&T);
 
-        MTBDD visited = initial;
+        MTBDD visited = encode_state(0, this->statebits, this->priobits, 0);
         mtbdd_refs_pushptr(&visited);
 
         MTBDD old = mtbdd_false;
@@ -1523,11 +1658,17 @@ SymGame::solve()
             mtbdd_refs_popptr(1);
         }
 
+        assert(mtbdd_getvar(visited) >= (unsigned)this->priobits); // should not have priorities
+
+        // count the number of states
+        long noStates = (long)sylvan_satcount(visited, s_vars);
+        if (verbose) {
+            std::cout << "After reachability: " << noStates << " states." << std::endl;
+        }
+
         strategies = sylvan_and(strategies, visited);
         mtbdd_refs_popptr(4);
     }
-
-    this->strategies = strategies;
 
     {
         // compute bdds for the controllable APs
@@ -1560,16 +1701,8 @@ SymGame::solve()
         mtbdd_refs_popptr(2); // full and su_vars
     }
 
-
-    mtbdd_refs_popptr(10+3*this->maxprio); // WHATEVER
-
-    delete[] freeze;
-    delete[] priostates;
-    delete[] lowereq;
-
-    return true;
+    mtbdd_refs_popptr(5);
 }
-
 
 
 cxxopts::ParseResult
@@ -1582,6 +1715,7 @@ handleOptions(int &argc, char**& argv)
             ("help", "Print help")
             ("sym", "Generate and solve a symbolic parity game")
             ("naive", "Use the naive splitting procedure")
+            ("explicit", "Use the explicit splitting procedure")
             ("print-game", "Just print the parity game")
             ("print-witness", "Print the witness parity game")
             ("v,verbose", "Be verbose")
@@ -1708,36 +1842,36 @@ main(int argc, char* argv[])
 
     bool explicit_solver = options["sym"].count() == 0;
     bool naive_splitting = options["naive"].count() > 0;
+    bool explicit_splitting = options["explicit"].count() > 0;
     bool write_pg = options["print-game"].count() > 0;
 
     if (explicit_solver) {
         const double t_before_splitting = wctime();
+
         // Remember the start vertex
         int vstart = data->start[0];
+        std::map<int, MTBDD> vertex_to_bdd;
 
         // Construct the game
-        pg::Game *game;
+        SymGame *sym = nullptr;
+        pg::Game *game = nullptr;
         if (naive_splitting) {
             game = RUN(constructGameNaive, data, isMaxParity, controllerIsOdd);
-        } else {
+        } else if (explicit_splitting) {
             game = RUN(constructGame, data, isMaxParity, controllerIsOdd);
+        } else {
+            vstart = 0;
+            sym = RUN(constructSymGame, data, isMaxParity, controllerIsOdd);
+            game = sym->toExplicit(vertex_to_bdd);
         }
         game->set_label(vstart, "initial");
         const double t_after_splitting = wctime();
 
-        // free HOA allocated data structure
-        resetHoa(data);
         if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec." << std::endl;
-
-        if (verbose) sylvan_stats_report(stdout);
-
-        // We don't need Sylvan anymore at this point
-        sylvan_quit();
 
         if (write_pg) {
             // in case we want to write the file to PGsolver file format...
             game->write_pgsolver(std::cout);
-            // std::cerr << "initial vertex: " << vstart << std::endl;
             exit(0);
         }
 
@@ -1755,13 +1889,12 @@ main(int argc, char* argv[])
                 break;
             }
         }
-        delete[] mapping;
 
         // OK, fire up the engine
        
         std::stringstream log;
 
-        std::string solver = "fpi";
+        std::string solver = "tl";
         pg::Solvers solvers;
         for (unsigned id=0; id<solvers.count(); id++) {
             if (options.count(solvers.label(id))) solver = solvers.label(id);
@@ -1782,12 +1915,47 @@ main(int argc, char* argv[])
 
         // finally, check if the initial vertex is won by controller or environment
         if (game->winner[vstart] == 0) {
-            std::cout << "REALIZABLE";
+            std::cout << "REALIZABLE" << std::endl;
+
+            if (sym != nullptr) {
+                // first undo the sorting
+                game->permute(mapping);
+
+                // now get the strategy from Oink...
+                std::map<MTBDD, MTBDD> str;  // cap to priostate
+                for (int v=0; v<game->vertexcount(); v++) {
+                    // good cap states are owned and won by 0
+                    if (game->owner(v) == 0 && game->winner[v] == 0) {
+                        auto a = vertex_to_bdd[v];
+                        auto b = vertex_to_bdd[game->strategy[v]];
+                        str[a] = b;
+                    }
+                }
+
+                if (!sym->applyStrategy(str)) {
+                    std::cerr << "cannot apply strategy!" << std::endl;
+                    exit(10);
+                }
+
+                sym->postprocess(verbose);
+
+                AIGmaker maker(data, sym);
+                for (int i=0; i<sym->cap_count; i++) {
+                    maker.processCAP(i, sym->cap_bdds[i]);
+                }
+                for (int i=0; i<sym->statebits; i++) {
+                    maker.processState(i, sym->state_bdds[i]);
+                }
+
+                maker.write(stdout);
+            }
+
             exit(10);
         } else {
-            std::cout << "UNREALIZABLE";
+            std::cout << "UNREALIZABLE" << std::endl;
             exit(20);
         }
+        delete[] mapping;
     } else {
         // Construct the game
         const double t_before_construct = wctime();
@@ -1796,7 +1964,8 @@ main(int argc, char* argv[])
 
         if (write_pg) {
             // in case we want to write the file to PGsolver file format...
-            auto pg = sym->toExplicit();
+            std::map<int, MTBDD> vertex_to_bdd;
+            auto pg = sym->toExplicit(vertex_to_bdd);
             pg->write_pgsolver(std::cout);
             exit(0);
         }
@@ -1810,6 +1979,8 @@ main(int argc, char* argv[])
         if (verbose) std::cerr << "finished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec." << std::endl;
 
         if (verbose) sylvan_stats_report(stdout);
+
+        sym->postprocess(verbose);
 
         if (res) {
             /** 
@@ -1841,6 +2012,14 @@ main(int argc, char* argv[])
         // free HOA allocated data structure
         resetHoa(data);
     }
+
+    if (verbose) sylvan_stats_report(stdout);
+
+    // We don't need Sylvan anymore at this point
+    sylvan_quit();
+
+    // free HOA allocated data structure
+    resetHoa(data);
 
     lace_stop();
 }
