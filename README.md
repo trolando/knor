@@ -6,9 +6,8 @@ Knor, a simple synthesis tool for HOA parity automata
 - parser for eHOA based on [HOA-TOOLS](https://github.com/gaperez64/hoa-tools/) by [Guillermo Perez](https://github.com/gaperez64/)
 - BDD-based splitting of the parity automaton into a parity game using [Sylvan](https://github.com/trolando/sylvan/)
 - solving the parity game using [Oink](https://github.com/trolando/oink/)
-
-Knor supports synthesizing the controller when using the internal symbolic parity game solver.
-When used with Oink, Knor currently only computes whether or not the controller is realizable.
+- solving the symbolic parity game using an internal solver based on [Sylvan](https://github.com/trolando/sylvan/)
+- synthesizing the controller based on the solution (using Oink or the symbolic solver)
 
 ## Usage
 
@@ -29,8 +28,7 @@ With `-v` or `--verbose`, Knor will write some information to standard error, su
 Furthermore, you can select a solver for the parity game solving, e.g., `--npp`, `--fpi`, `--fpj` are recommended solvers.
 See further the documentation of [Oink](https://github.com/trolando/oink/).
 If invoked without a filename, Knor will attempt to read an eHOA file from `stdin`.
-Using `--sym` runs a symbolic parity game solver that is tailor-made for Knor and also writes a Mealy controller to standard output.
-Future work includes using the parity game solution obtained by Oink to synthesize the controller.
+Using `--sym` runs a symbolic parity game solver that is tailor-made for Knor.
 
 ## Extended HOA
 
