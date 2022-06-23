@@ -1772,13 +1772,13 @@ handleOptions(int &argc, char**& argv)
 
 VOID_TASK_0(gc_start)
 {
-    std::cout << "starting garbage collection..." << std::endl;
+    std::cerr << "starting garbage collection..." << std::endl;
 }
 
 
 VOID_TASK_0(gc_end)
 {
-    std::cout << "garbage collection finished." << std::endl;
+    std::cerr << "garbage collection finished." << std::endl;
 }
 
 
