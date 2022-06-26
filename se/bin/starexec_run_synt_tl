@@ -1,0 +1,3 @@
+#!/bin/bash
+./knor $1 --tl --bisim 2>/dev/null
+

@@ -1074,6 +1074,7 @@ handleOptions(int &argc, char**& argv)
             ("explicit", "Use the explicit splitting procedure")
             ("isop", "Generate AIG using ISOP instead of ITE")
             ("bisim", "Apply bisimulation minimisation to the solution")
+            ("real", "Only check realiziability, don't synthesize")
             ("print-game", "Just print the parity game")
             ("print-witness", "Print the witness parity game")
             ("v,verbose", "Be verbose")
@@ -1311,6 +1312,16 @@ main(int argc, char* argv[])
         const double t_after_solve = wctime();
 
         if (verbose) std::cerr << "finished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec." << std::endl;
+    }
+
+    if (options["real"].count() > 0) {
+        if (realizable) {
+            std::cout << "REALIZABLE" << std::endl;
+            exit(10);
+        } else {
+            std::cout << "UNREALIZABLE" << std::endl;
+            exit(20);
+        }
     }
 
     if (realizable) {

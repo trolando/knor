@@ -1,3 +1,0 @@
-#!/bin/bash
-./knor $1 --fpj 2>/dev/null
-
