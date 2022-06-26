@@ -10,6 +10,7 @@
 #include <sys/mman.h>
 
 #include <knor.hpp>
+#include <bisim.hpp>
 
 using namespace sylvan;
 

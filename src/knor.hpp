@@ -5,63 +5,40 @@
 #include <sylvan.h>
 #include <oink.hpp>
 
+extern "C" {
+#include "simplehoa.h"
+}
+
 #pragma once
 
-class SymGame {
-public:
-    int maxprio;
+/**
+ * This helper function ensures that the priority p is adjusted to
+ * ensure we have a "max, even" parity game, as this is what Oink expects.
+ * @param controllerIsOdd if the controller is the odd player
+ * @param noPriorities how many priorities are in the game
+ * @param maxPriority if the game is a max game
+ */
+int adjustPriority(int p, bool maxPriority, bool controllerIsOdd, int noPriorities);
 
-    sylvan::MTBDD s_vars;
-    sylvan::MTBDD uap_vars;
-    sylvan::MTBDD cap_vars;
-    sylvan::MTBDD p_vars;
-    sylvan::MTBDD ns_vars;
-    sylvan::MTBDD pns_vars;
+/**
+ * Encode priority i.e. all states via priority <priority>
+ */
+sylvan::MTBDD encode_prio(int priority, int priobits);
 
-    int statebits;
-    int priobits;
-    int cap_count;
-    int uap_count;
+/**
+ * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
+ * High-significant bits come before low-significant bits in the BDD
+ */
+sylvan::MTBDD encode_state(uint32_t state, const int statebits, const int priobits, const int offset);
 
-    sylvan::MTBDD trans;       // transition relation of symbolic game:        state -> uap -> cap -> priority -> next_state
-    sylvan::MTBDD strategies;  // contains the solution: the strategies:       good_state -> uap -> cap
+/**
+* Encode a priostate as a BDD, using priobits > statebits
+* High-significant bits come before low-significant bits in the BDD
+*/
+sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, const int statebits, const int priobits, const int offset);
 
-    SymGame(int statebits, int priobits, int uap_count, int cap_count, int maxprio);
-    virtual ~SymGame() ;
-
-    /**
-     * Translate symbolic PG to explicit game in Oink, that can then be solved.
-     */
-    pg::Game *toExplicit(std::map<int, sylvan::MTBDD>&);
-
-    /**
-     * Convert the strategy of a realizable parity game to an explicit parity game that
-     * should be won by player Even.
-     */
-    pg::Game *strategyToPG();
-
-    /**
-     * Apply a strategy (computed via Oink)
-     */
-    bool applyStrategy(const std::map<sylvan::MTBDD, sylvan::MTBDD>&);
-
-    /**
-     * Solve the symbolic parity game, return true if won
-     */
-    bool solve(bool verbose);
-
-    /**
-     * After solving the game, compute BDDs for output and state
-     */
-    void postprocess(bool verbose);
-
-    void print_trans();
-    void print_strategies();
-};
-
-
-// Bisimulation minimisation
-
-TASK_DECL_1(sylvan::MTBDD, min_lts_strong, SymGame*);
-VOID_TASK_DECL_3(minimize, SymGame*, sylvan::MTBDD, bool);
-VOID_TASK_DECL_2(print_partition, SymGame*, sylvan::MTBDD)
+/**
+ * Convert a transition label (Btree) to a BDD encoding the label
+ * a label is essentially a boolean combination of atomic propositions and aliases
+ */
+TASK_DECL_3(sylvan::MTBDD, evalLabel, BTree* /*label*/, HoaData* /*data*/, uint32_t* /*variables*/);
