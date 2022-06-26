@@ -39,6 +39,7 @@
 #include <solvers.hpp>
 #include <tools/cxxopts.hpp>
 #include <sylvan.h>
+#include <knor.hpp>
 
 extern "C" {
 #include "simplehoa.h"
@@ -574,76 +575,55 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
 }
 
 
-class SymGame {
-public:
-    int maxprio;
-    int statebits;
-    int priobits;
-    int cap_count;
-    int uap_count;
+SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int maxprio)
+{
+    s_vars = mtbdd_set_empty();
+    uap_vars = mtbdd_set_empty();
+    cap_vars = mtbdd_set_empty();
+    p_vars = mtbdd_set_empty();
+    ns_vars = mtbdd_set_empty();
+    pns_vars = mtbdd_set_empty();
+    trans = mtbdd_false;
+    strategies = mtbdd_false;
 
-    MTBDD trans;       // transition relation of symbolic game:        state -> uap -> cap -> priority -> next_state
-    MTBDD strategies;  // contains the solution: the strategies:       good_state -> uap -> cap
-    MTBDD* cap_bdds;   // contains the solution: controllable ap bdds: state -> uap -> B
-    MTBDD* state_bdds; // contains the solution: state bit bdds      : state -> uap -> B
+    mtbdd_protect(&s_vars);
+    mtbdd_protect(&uap_vars);
+    mtbdd_protect(&cap_vars);
+    mtbdd_protect(&p_vars);
+    mtbdd_protect(&ns_vars);
+    mtbdd_protect(&pns_vars);
+    mtbdd_protect(&trans);
+    mtbdd_protect(&strategies);
 
-    SymGame(int statebits, int priobits, int uap_count, int cap_count, int maxprio) {
-        this->maxprio = maxprio;
-        this->uap_count = uap_count;
-        this->cap_count = cap_count;
-        this->statebits = statebits;
-        this->priobits = priobits;
+    // FIXME this should be done inside a Lace task (set_add, etc)
+    // or better, all those functions should be behind a RUN(...) ?
 
-        trans = mtbdd_false;
-        strategies = mtbdd_false;
-        mtbdd_protect(&trans);
-        mtbdd_protect(&strategies);
+    int var = priobits;
+    for (int i=0; i<statebits; i++) s_vars = mtbdd_set_add(s_vars, var++);
+    for (int i=0; i<uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, var++);
+    for (int i=0; i<cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, var++);
+    for (int i=0; i<priobits; i++) p_vars = mtbdd_set_add(p_vars, var++);
+    for (int i=0; i<statebits; i++) ns_vars = mtbdd_set_add(ns_vars, var++);
+    pns_vars = mtbdd_set_addall(p_vars, ns_vars);
 
-        cap_bdds = new MTBDD[cap_count];
-        for (int i=0; i<cap_count; i++) cap_bdds[i] = mtbdd_false;
-        for (int i=0; i<cap_count; i++) mtbdd_protect(&cap_bdds[i]);
-        state_bdds = new MTBDD[statebits];
-        for (int i=0; i<statebits; i++) state_bdds[i] = mtbdd_false;
-        for (int i=0; i<statebits; i++) mtbdd_protect(&state_bdds[i]);
-    }
+    this->maxprio = maxprio;
+    this->uap_count = uap_count;
+    this->cap_count = cap_count;
+    this->statebits = statebits;
+    this->priobits = priobits;
+}
 
-    virtual ~SymGame() {
-        mtbdd_unprotect(&trans);
-        mtbdd_unprotect(&strategies);
-        for (int i=0; i<cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
-        for (int i=0; i<statebits; i++) mtbdd_unprotect(&state_bdds[i]);
-
-        delete[] cap_bdds;
-        delete[] state_bdds;
-    }
-
-    /**
-     * Translate symbolic PG to explicit game in Oink, that can then be solved.
-     */
-    pg::Game *toExplicit(std::map<int, MTBDD>&);
-
-    /**
-     * Convert the strategy of a realizable parity game to an explicit parity game that
-     * should be won by player Even.
-     */
-    pg::Game *strategyToPG();
-
-    /**
-     * Apply a strategy (computed via Oink)
-     */
-    bool applyStrategy(const std::map<MTBDD, MTBDD>&);
-
-    /**
-     * Solve the symbolic parity game, return true if won
-     */
-    bool solve(bool verbose);
-
-    /**
-     * After solving the game, compute BDDs for output and state
-     */
-    void postprocess(bool verbose);
-};
-
+SymGame::~SymGame()
+{
+    mtbdd_unprotect(&s_vars);
+    mtbdd_unprotect(&uap_vars);
+    mtbdd_unprotect(&cap_vars);
+    mtbdd_unprotect(&p_vars);
+    mtbdd_unprotect(&ns_vars);
+    mtbdd_unprotect(&pns_vars);
+    mtbdd_unprotect(&trans);
+    mtbdd_unprotect(&strategies);
+}
 
 /**
  * Construct the symbolic game
@@ -798,30 +778,8 @@ TASK_2(MTBDD, clarify, MTBDD, str, MTBDD, cap_vars)
 pg::Game*
 SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
 {
-    MTBDD s_vars = mtbdd_set_empty();
-    MTBDD uap_vars = mtbdd_set_empty();
-    MTBDD cap_vars = mtbdd_set_empty();
-    MTBDD ns_vars = mtbdd_set_empty();
-    mtbdd_refs_pushptr(&s_vars);
-    mtbdd_refs_pushptr(&uap_vars);
-    mtbdd_refs_pushptr(&cap_vars);
-    mtbdd_refs_pushptr(&ns_vars);
-
-    // Construct s_vars the set of state variables of the symbolic game
-    for (int i=0; i<this->statebits; i++) s_vars = mtbdd_set_add(s_vars, this->priobits+i);
-
-    // Construct uap_vars the set of uncontrollable AP variables
-    for (int i=0; i<this->uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, this->priobits+this->statebits+i);
-
-    // Construct cap_vars the set of controllable AP variables
-    for (int i=0; i<this->cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, this->priobits+this->statebits+this->uap_count+i);
-
-    // Construct ns_vars the set of next prio-state variables 
-    const int offset = this->cap_count + this->uap_count + this->priobits + this->statebits;
-    for (int i=0; i<(this->priobits + this->statebits); i++) ns_vars = mtbdd_set_add(ns_vars, offset + i);
-
     // Check that the transition relation of the symbolic game does not have priobits on source states
-    assert(mtbdd_getvar(this->trans) >= (unsigned) this->priobits);
+    assert(mtbdd_getvar(this->trans) >= (unsigned) mtbdd_set_first(s_vars));
 
     // Compute the number of states with transitions
     MTBDD states = sylvan_project(this->trans, s_vars);
@@ -938,15 +896,15 @@ SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
             } else {
                 int cap_v = vidx++;
 
-                uint8_t ns_arr[this->priobits+this->statebits];
-                MTBDD lf2 = mtbdd_enum_all_first(cap_bdd, ns_vars, ns_arr, NULL);
+                uint8_t pns_arr[this->priobits+this->statebits];
+                MTBDD lf2 = mtbdd_enum_all_first(cap_bdd, pns_vars, pns_arr, NULL);
                 assert(lf2 == mtbdd_true);
 
                 // decode priority of priostate
                 int pr = 0;
                 for (int i=0; i<this->priobits; i++) {
                     pr <<= 1;
-                    if (ns_arr[i]) pr |= 1;
+                    if (pns_arr[i]) pr |= 1;
                 }
 
                 pargame->init_vertex(cap_v, pr, 1, std::to_string(cap_bdd)); // controlled by any
@@ -965,15 +923,15 @@ SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
         const MTBDD cap_bdd = x->first;
         const int cap_v = x->second;
 
-        uint8_t ns_arr[this->priobits+this->statebits];
-        MTBDD lf2 = mtbdd_enum_all_first(cap_bdd, ns_vars, ns_arr, NULL);
+        uint8_t pns_arr[this->priobits+this->statebits];
+        MTBDD lf2 = mtbdd_enum_all_first(cap_bdd, pns_vars, pns_arr, NULL);
         assert(lf2 == mtbdd_true);
 
         // decode target
         int to = 0;
         for (int i=0; i<this->statebits; i++) {
             to <<= 1;
-            if (ns_arr[this->priobits+i]) to |= 1;
+            if (pns_arr[this->priobits+i]) to |= 1;
         }
         to = mapper.at(to);
 
@@ -984,8 +942,6 @@ SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
 
     // tell Oink we're done adding stuff, resize game to final size
     pargame->v_resize(vidx);
-
-    mtbdd_refs_popptr(4);
 
     return pargame;
 }
@@ -1055,7 +1011,7 @@ TASK_3(MTBDD, apply_str, MTBDD, trans, strmap*, str, int, first_cap)
 bool
 SymGame::applyStrategy(const std::map<MTBDD, MTBDD>& str)
 {
-    MTBDD strategy = RUN(apply_str, this->trans, &str, this->priobits+this->statebits+this->uap_count);
+    MTBDD strategy = RUN(apply_str, this->trans, &str, mtbdd_set_first(cap_vars));
     if (strategy == mtbdd_invalid) {
         std::cout << "Unable to compute strategy" << std::endl;
         return false;
@@ -1069,16 +1025,6 @@ SymGame::applyStrategy(const std::map<MTBDD, MTBDD>& str)
 pg::Game*
 SymGame::strategyToPG()
 {
-    MTBDD s_vars = mtbdd_set_empty();
-    mtbdd_refs_pushptr(&s_vars);
-    for (int i=0; i<this->statebits; i++) s_vars = mtbdd_set_add(s_vars, this->priobits+i);
-
-    const int offset = this->cap_count + this->uap_count + this->priobits + this->statebits;
-
-    MTBDD ns_vars = mtbdd_set_empty();
-    mtbdd_refs_pushptr(&ns_vars);
-    for (int i=0; i<(this->priobits + this->statebits); i++) ns_vars = mtbdd_set_add(ns_vars, offset + i);
-
     MTBDD states = sylvan_project(this->strategies, s_vars);
     long noStates = (long)sylvan_satcount(states, s_vars);
 
@@ -1130,11 +1076,11 @@ SymGame::strategyToPG()
 
         // std::cout << "strategies for state " << state << ": " << lf << std::endl;
 
-        MTBDD ns = sylvan_project(lf, ns_vars);
-        mtbdd_refs_pushptr(&ns);
+        MTBDD pns = sylvan_project(lf, pns_vars);
+        mtbdd_refs_pushptr(&pns);
         
-        uint8_t ns_arr[this->priobits+this->statebits];
-        MTBDD lf2 = mtbdd_enum_all_first(ns, ns_vars, ns_arr, NULL);
+        uint8_t pns_arr[this->priobits+this->statebits];
+        MTBDD lf2 = mtbdd_enum_all_first(pns, pns_vars, pns_arr, NULL);
         while (lf2 != mtbdd_false) {
             assert(lf2 == mtbdd_true);
 
@@ -1142,12 +1088,12 @@ SymGame::strategyToPG()
             int pr = 0;
             for (int i=0; i<this->priobits; i++) {
                 pr <<= 1;
-                if (ns_arr[i]) pr |= 1;
+                if (pns_arr[i]) pr |= 1;
             }
             int to = 0;
             for (int i=0; i<this->statebits; i++) {
                 to <<= 1;
-                if (ns_arr[this->priobits+i]) to |= 1;
+                if (pns_arr[this->priobits+i]) to |= 1;
             }
             to = mapper.at(to);
 
@@ -1160,7 +1106,7 @@ SymGame::strategyToPG()
 
             // std::cout << "to (" << pr << ") " << to << std::endl;
             
-            lf2 = mtbdd_enum_all_next(ns, ns_vars, ns_arr, NULL);
+            lf2 = mtbdd_enum_all_next(pns, pns_vars, pns_arr, NULL);
         }
 
         pargame->e_start(state);
@@ -1180,374 +1126,6 @@ SymGame::strategyToPG()
     return pargame;
 }
 
-
-class AIGmaker {
-private:
-    aiger *a;
-    HoaData *data;
-    SymGame *game;
-
-    bool isop = false; // use ISOP
-    bool verbose = false;
-    
-    int lit; // current next literal
-
-    int* uap_to_lit; // the input literal for each uncontrolled AP
-    int* state_to_lit; // the latch literal for each state bit
-    char** caps; // labels for controlled APs
-    int* var_to_lit; // translate BDD variable (uap/state) to AIGER literal
-
-    std::map<MTBDD, int> mapping; // map MTBDD to AIGER literal
-    std::map<uint64_t, int> cache; // cache for ands
-
-    int makeand(int rhs0, int rhs1);
-    int bdd_to_aig(MTBDD bdd);           // use recursive encoding of BDD (shannon expanion)
-    int bdd_to_aig_isop(MTBDD bdd);
-    int bdd_to_aig_cover(ZDD bdd);       // use recursive encoding of ZDD cover (~shannon expansion)
-    int bdd_to_aig_cover_sop(ZDD cover); // use SOP encoding ("two level logic")
-    void simplify_and(std::deque<int> &gates);
-    void simplify_or(std::deque<int> &gates);
-
-public:
-    AIGmaker(HoaData *data, SymGame *game);
-    ~AIGmaker();
-
-    void setIsop()
-    {
-        this->isop = true;
-    }
-
-    void setVerbose()
-    {
-        this->verbose = true;
-    }
-
-    void processCAP(int i, MTBDD bdd);
-    void processState(int i, MTBDD bdd);
-    void write(FILE* out);
-};
-
-
-AIGmaker::AIGmaker(HoaData *data, SymGame *game) : data(data), game(game) {
-    a = aiger_init();
-    lit = 2;
-    uap_to_lit = new int[game->uap_count];
-    state_to_lit = new int[game->statebits];
-    caps = new char*[game->cap_count];
-    var_to_lit = new int[game->statebits+game->priobits+game->uap_count];
-
-    // Set which APs are controllable in the bitset controllable
-    pg::bitset controllable(data->noAPs);
-    for (int i=0; i<data->noCntAPs; i++) {
-        controllable[data->cntAPs[i]] = 1;
-    }
-
-    int uap_idx = 0;
-    int cap_idx = 0;
-    for (int i=0; i<data->noAPs; i++) {
-        if (!controllable[i]) {
-            uap_to_lit[uap_idx] = lit;
-            var_to_lit[game->priobits+game->statebits+uap_idx] = lit;
-            aiger_add_input(a, lit, data->aps[i]);
-            uap_idx++;
-            lit += 2;
-        } else {
-            caps[cap_idx++] = data->aps[i];
-        }
-    }
-
-    for (int i=0; i<game->priobits; i++) {
-        var_to_lit[i] = 0;
-    }
-
-    for (int i=0; i<game->statebits; i++) {
-        state_to_lit[i] = lit;
-        var_to_lit[game->priobits+i] = lit;
-        lit += 2;
-    }
-}
-
-AIGmaker::~AIGmaker()
-{
-    delete[] uap_to_lit;
-    delete[] state_to_lit;
-    delete[] caps;
-    delete[] var_to_lit;
-}
-
-int
-AIGmaker::makeand(int rhs0, int rhs1)
-{
-    if (rhs1 < rhs0) {
-        int tmp = rhs0;
-        rhs0 = rhs1;
-        rhs1 = tmp;
-    }
-
-    if (rhs0 == 0) return 0;
-    if (rhs0 == 1) return rhs1;
-
-    uint64_t cache_key = rhs1;
-    cache_key <<= 32;
-    cache_key |= rhs0;
-    auto c = cache.find(cache_key);
-    if (1 and c != cache.end()) {
-        return c->second;
-    } else {
-        aiger_add_and(a, lit, rhs0, rhs1);
-        cache[cache_key] = lit;
-        lit += 2;
-        return lit-2;
-    }
-}
-
-void
-AIGmaker::simplify_and(std::deque<int> &gates)
-{
-    // for each pair of gates in gates, check the cache
-    for (auto first = gates.begin(); first != gates.end(); ++first) {
-        for (auto second = first + 1; second != gates.end(); ++second) {
-            int left = *first;
-            int right = *second;
-            if (left > right) std::swap(left, right);
-            uint64_t cache_key = right;
-            cache_key <<= 32;
-            cache_key |= left;
-            auto c = cache.find(cache_key);
-            if (c != cache.end()) {
-                //gates.erase(std::remove_if(gates.begin(), gates.end(), [=](int x){return x==left or x==right;}),
-                //        gates.end());
-                gates.erase(second);
-                gates.erase(first);
-                gates.push_back(c->second);
-                simplify_and(gates);
-                return;
-            }
-        }
-    }
-}
-
-void
-AIGmaker::simplify_or(std::deque<int> &gates)
-{
-    // for each pair of gates in gates, check the cache
-    for (auto first = gates.begin(); first != gates.end(); ++first) {
-        for (auto second = first + 1; second != gates.end(); ++second) {
-            int left = aiger_not(*first);
-            int right = aiger_not(*second);
-            if (left > right) std::swap(left, right);
-            uint64_t cache_key = right;
-            cache_key <<= 32;
-            cache_key |= left;
-            auto c = cache.find(cache_key);
-            if (c != cache.end()) {
-                gates.erase(second);
-                gates.erase(first);
-                gates.push_back(aiger_not(c->second));
-                simplify_or(gates);
-                return;
-            }
-        }
-    }
-}
-
-int
-AIGmaker::bdd_to_aig_isop(MTBDD bdd)
-{
-    if (verbose) {
-        std::cerr << "running isop for BDD with " << mtbdd_nodecount(bdd) << " nodes." << std::endl;
-    }
-    MTBDD bddres;
-    ZDD isop = zdd_isop(bdd, bdd, &bddres);
-    // no need to reference the result...
-    assert(bdd == bddres);
-    if (verbose) {
-        std::cerr << "isop has " << (long)zdd_pathcount(isop) << " terms and " << zdd_nodecount(&isop, 1) << " nodes." << std::endl;
-    }
-
-    if (isop == zdd_true) return aiger_true;
-    if (isop == zdd_false) return aiger_false;
-
-    return bdd_to_aig_cover(isop);
-}
-
-int
-AIGmaker::bdd_to_aig_cover_sop(ZDD cover)
-{
-    // a product could consist of all variables, and a -1 to denote
-    //  the end of the product
-    int product[game->statebits+game->priobits+game->uap_count+1] = { 0 };
-
-    // a queue that stores all products, which will need to be summed
-    std::deque<int> products;
-
-    ZDD res = zdd_cover_enum_first(cover, product);
-    while (res != zdd_false) {
-        //  containing subproducts in the form of gates
-        std::deque<int> gates;
-
-        for (int i=0; product[i] != -1; i++) {
-            int the_lit = var_to_lit[product[i]/2];
-            if (product[i]&1) the_lit = aiger_not(the_lit);
-            gates.push_back(the_lit);
-        }
-
-        // simplify_and(gates);
-
-        // while we still have subproducts we need to AND together
-        while (!gates.empty()) {
-            int last = gates.front();
-            gates.pop_front();
-            if (!gates.empty()) {
-                int last2 = gates.front();
-                gates.pop_front();
-                int new_gate = makeand(last, last2);
-                gates.push_back(new_gate);
-            } else {
-                products.push_back(last);
-            }
-        }
-        res = zdd_cover_enum_next(cover, product); // go to the next product
-    }
-
-    // products queue should now be full of complete products that need to be summed
-
-    // simplify_or(products);
-
-    while (!products.empty()) {
-        int product1 = products.front();
-        products.pop_front();
-        if (!products.empty()) {
-            int product2 = products.front();
-            products.pop_front();
-            int summed_product = aiger_not(makeand(aiger_not(product1), aiger_not(product2)));
-            products.push_back(summed_product);
-        } else { // product1 is the final sum of all products
-            return product1;
-        }
-    }
-
-    return aiger_false; // should be unreachable, tbh.
-}
-
-int
-AIGmaker::bdd_to_aig_cover(ZDD cover)
-{
-    if (cover == zdd_true) return aiger_true;
-    if (cover == zdd_false) return aiger_false;
-
-    auto it = mapping.find(cover);
-    if (it != mapping.end()) {
-        return it->second;
-    }
-
-    int the_var = zdd_getvar(cover);
-    int the_lit = var_to_lit[the_var/2];
-    if (the_var & 1) the_lit = aiger_not(the_lit);
-
-    ZDD low = zdd_getlow(cover);
-    ZDD high = zdd_gethigh(cover);
-
-    int res = the_lit;
-
-    if (high != zdd_true) {
-        auto x = bdd_to_aig_cover(high);
-        res = makeand(res, x);
-    }
-
-    if (low != zdd_false) {
-        auto x = bdd_to_aig_cover(low);
-        res = aiger_not(makeand(aiger_not(res), aiger_not(x)));
-    }
-
-    mapping[cover] = res;
-    return res;
-}
-
-int
-AIGmaker::bdd_to_aig(MTBDD bdd)
-{
-    if (bdd == mtbdd_true) return aiger_true;
-    if (bdd == mtbdd_false) return aiger_false;
- 
-    bool comp = false;
-    if (bdd & sylvan_complement) {
-        bdd ^= sylvan_complement;
-        comp = true;
-    }
-
-    auto it = mapping.find(bdd);
-    if (it != mapping.end()) {
-        return comp ? aiger_not(it->second) : it->second;
-    }
-
-    int the_lit = var_to_lit[mtbdd_getvar(bdd)];
-
-    MTBDD low = mtbdd_getlow(bdd);
-    MTBDD high = mtbdd_gethigh(bdd);
-
-    int res;
-
-    if (low == mtbdd_false) {
-        // only high (value 1)
-        if (high == mtbdd_true) {
-            // actually this is the end, just the lit
-            res = the_lit;
-        } else {
-            // AND(the_lit, ...)
-            int rhs0 = the_lit;
-            int rhs1 = bdd_to_aig(high);
-            res = makeand(rhs0, rhs1);
-        }
-    } else if (high == mtbdd_false) {
-        // only low (value 0)
-        if (low == mtbdd_true) {
-            // actually this is the end, just the lit, negated
-            res = aiger_not(the_lit);
-        } else {
-            // AND(not the_lit, ...)
-            int rhs0 = aiger_not(the_lit);
-            int rhs1 = bdd_to_aig(low);
-            res = makeand(rhs0, rhs1);
-        }
-    } else {
-        // OR(low, high) == ~AND(~AND(the_lit, ...), ~AND(~the_lit, ...))
-        int lowres = bdd_to_aig(low);
-        int highres = bdd_to_aig(high);
-        int rhs0 = aiger_not(makeand(aiger_not(the_lit), lowres));
-        int rhs1 = aiger_not(makeand(the_lit, highres));
-        res = aiger_not(makeand(rhs0, rhs1));
-    }
-        
-    mapping[bdd] = res;
-
-    return comp ? aiger_not(res) : res;
-}
-
-void
-AIGmaker::processCAP(int i, MTBDD bdd)
-{
-    int res = isop ? bdd_to_aig_isop(bdd) : bdd_to_aig(bdd);
-    aiger_add_output(a, res, caps[i]); // simple, really
-}
-
-void
-AIGmaker::processState(int i, MTBDD bdd)
-{
-    int res = isop ? bdd_to_aig_isop(bdd) : bdd_to_aig(bdd);
-    aiger_add_latch(a, state_to_lit[i], res, "");
-}
-
-void
-AIGmaker::write(FILE* out)
-{
-    aiger_write_to_file(a, aiger_ascii_mode, out);
-}
-
-TASK_2(bool, wrap_solve, SymGame*, game, bool, verbose)
-{
-    return game->solve(verbose);
-}
 
 bool
 SymGame::solve(bool verbose)
@@ -1788,38 +1366,11 @@ SymGame::solve(bool verbose)
 }
 
 
-VOID_TASK_2(wrap_pp, SymGame*, game, bool, verbose)
-{
-    game->postprocess(verbose);
-}
-
-
 void
 SymGame::postprocess(bool verbose)
 {
-    const int offset = this->cap_count + this->uap_count + this->priobits + this->statebits;
-
-    MTBDD s_vars = mtbdd_set_empty();
-    MTBDD uap_vars = mtbdd_set_empty();
-    MTBDD cap_vars = mtbdd_set_empty();
-    MTBDD ns_vars = mtbdd_set_empty();
-    mtbdd_refs_pushptr(&s_vars);
-    mtbdd_refs_pushptr(&uap_vars);
-    mtbdd_refs_pushptr(&cap_vars);
-    mtbdd_refs_pushptr(&ns_vars);
-
-    for (int i=0; i<(this->priobits + this->statebits); i++) s_vars = mtbdd_set_add(s_vars, i);
-    for (int i=0; i<this->uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, this->priobits+this->statebits+i);
-    for (int i=0; i<this->cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, this->priobits+this->statebits+this->uap_count+i);
-    for (int i=0; i<(this->priobits + this->statebits); i++) ns_vars = mtbdd_set_add(ns_vars, offset + i);
-
-    MTBDD from_next = mtbdd_map_empty();
-    mtbdd_refs_pushptr(&from_next);
-    for (int i=0; i<(this->priobits + this->statebits); i++) {
-        from_next = mtbdd_map_add(from_next, offset+i, sylvan_ithvar(i));
-    }
-
-    // Select lowest strategy [heuristic]
+    // Select "lowest" strategy [heuristic]
+    // TODO it would be nicer if we could do bisimulation without this heuristic
     strategies = RUN(clarify, strategies, cap_vars);
 
     if (verbose) {
@@ -1828,17 +1379,34 @@ SymGame::postprocess(bool verbose)
 
     // Now remove all unreachable states according to the strategy  (slightly smaller controller)
     {
-        MTBDD vars = mtbdd_set_empty();
-        mtbdd_refs_pushptr(&vars);
-        for (int i=0; i<this->priobits; i++) vars = mtbdd_set_add(vars, i);
-        for (int i=0; i<this->priobits; i++) vars = mtbdd_set_add(vars, offset+i);
-        vars = mtbdd_set_addall(vars, cap_vars);
-        vars = mtbdd_set_addall(vars, uap_vars);
+        MTBDD ns_to_s = mtbdd_map_empty();
+        mtbdd_refs_pushptr(&ns_to_s);
 
-        // recover the priostates (strategies often only stores state > uap > cap)
-        // abstract from vars...
-        MTBDD T = mtbdd_and_exists(strategies, this->trans, vars);
+        {
+            MTBDD _s = s_vars;
+            MTBDD _n = ns_vars;
+            while (!mtbdd_set_isempty(_s)) {
+                int sv = mtbdd_set_first(_s);
+                int nv = mtbdd_set_first(_n);
+                _s = mtbdd_set_next(_s);
+                _n = mtbdd_set_next(_n);
+                ns_to_s = mtbdd_map_add(ns_to_s, nv, sylvan_ithvar(sv));
+            }
+        }
+
+        MTBDD T = mtbdd_false;
         mtbdd_refs_pushptr(&T);
+
+        {
+            // compute the strategy transition relation
+            // s > ns
+            MTBDD vars = p_vars;
+            mtbdd_refs_pushptr(&vars);
+            vars = mtbdd_set_addall(vars, cap_vars);
+            vars = mtbdd_set_addall(vars, uap_vars);
+            T = mtbdd_and_exists(strategies, this->trans, vars);
+            mtbdd_refs_popptr(1);
+        }
 
         MTBDD visited = encode_state(0, this->statebits, this->priobits, 0);
         mtbdd_refs_pushptr(&visited);
@@ -1851,7 +1419,7 @@ SymGame::postprocess(bool verbose)
             old = visited;
             MTBDD next = mtbdd_and_exists(visited, T, s_vars); // cross product
             mtbdd_refs_push(next);
-            next = sylvan_compose(next, from_next);   // and rename
+            next = sylvan_compose(next, ns_to_s);   // and rename
             visited = sylvan_or(visited, next);
             mtbdd_refs_pop(1);
         }
@@ -1865,43 +1433,599 @@ SymGame::postprocess(bool verbose)
         }
 
         strategies = sylvan_and(strategies, visited);
+        trans = sylvan_and(trans, strategies);
         mtbdd_refs_popptr(4);
+    }
+}
+
+
+void
+SymGame::print_trans()
+{
+    MTBDD vars = mtbdd_set_empty();
+    mtbdd_protect(&vars);
+    vars = mtbdd_set_addall(vars, this->s_vars);
+    vars = mtbdd_set_addall(vars, this->uap_vars);
+    vars = mtbdd_set_addall(vars, this->cap_vars);
+    vars = mtbdd_set_addall(vars, this->pns_vars);
+    uint8_t arr[mtbdd_set_count(vars)+1];
+    MTBDD lf = mtbdd_enum_all_first(this->trans, vars, arr, NULL);
+    while (lf != mtbdd_false) {
+        int idx=0;
+        // decode state
+        int state = 0;
+        for (int i=0; i<this->statebits; i++) {
+            state <<= 1;
+            if (arr[idx++]) state |= 1;
+        }
+        // decode uap
+        int uap = 0;
+        for (int i=0; i<this->uap_count; i++) {
+            uap <<= 1;
+            if (arr[idx++]) uap |= 1;
+        }
+        // decode cap
+        int cap = 0;
+        for (int i=0; i<this->cap_count; i++) {
+            cap <<= 1;
+            if (arr[idx++]) cap |= 1;
+        }
+        // decode prio
+        int prio = 0;
+        for (int i=0; i<this->priobits; i++) {
+            prio <<= 1;
+            if (arr[idx++]) prio |= 1;
+        }
+        // decode next state
+        int next_state = 0;
+        for (int i=0; i<this->statebits; i++) {
+            next_state <<= 1;
+            if (arr[idx++]) next_state |= 1;
+        }
+        assert(idx == mtbdd_set_count(vars));
+        std::cerr << "from " << state << " uap " << uap << ": " << cap << " --> (" << prio << ") " << next_state << std::endl;
+        lf = mtbdd_enum_all_next(this->trans, vars, arr, NULL);
+    }
+    mtbdd_unprotect(&vars);
+}
+
+
+void
+SymGame::print_strategies()
+{
+    // strategy: s > uap > cap
+    MTBDD vars = mtbdd_set_empty();
+    mtbdd_protect(&vars);
+    vars = mtbdd_set_addall(vars, this->s_vars);
+    vars = mtbdd_set_addall(vars, this->uap_vars);
+    vars = mtbdd_set_addall(vars, this->cap_vars);
+    uint8_t arr[mtbdd_set_count(vars)+1];
+    MTBDD lf = mtbdd_enum_all_first(this->strategies, vars, arr, NULL);
+    while (lf != mtbdd_false) {
+        int idx=0;
+        // decode state
+        int state = 0;
+        for (int i=0; i<this->statebits; i++) {
+            state <<= 1;
+            if (arr[idx++]) state |= 1;
+        }
+        // decode uap
+        int uap = 0;
+        for (int i=0; i<this->uap_count; i++) {
+            uap <<= 1;
+            if (arr[idx++]) uap |= 1;
+        }
+        // decode cap
+        int cap = 0;
+        for (int i=0; i<this->cap_count; i++) {
+            cap <<= 1;
+            if (arr[idx++]) cap |= 1;
+        }
+        assert(idx == mtbdd_set_count(vars));
+        std::cerr << "from " << state << " uap " << uap << ": " << cap << std::endl;
+        lf = mtbdd_enum_all_next(this->strategies, vars, arr, NULL);
+    }
+    mtbdd_unprotect(&vars);
+}
+
+
+TASK_2(bool, wrap_solve, SymGame*, game, bool, verbose)
+{
+    return game->solve(verbose);
+}
+
+
+VOID_TASK_2(wrap_pp, SymGame*, game, bool, verbose)
+{
+    game->postprocess(verbose);
+}
+
+
+
+
+class AIGmaker {
+private:
+    aiger *a;
+    HoaData *data;
+    SymGame *game;
+
+    bool isop = false; // use ISOP
+    bool verbose = false;
+    
+    int lit; // current next literal
+
+    int* uap_to_lit; // the input literal for each uncontrolled AP
+    int* state_to_lit; // the latch literal for each state bit
+    char** caps; // labels for controlled APs
+    std::map<uint32_t, int> var_to_lit; // translate BDD variable (uap/state) to AIGER literal
+
+    MTBDD* cap_bdds;   // contains the solution: controllable ap bdds: state -> uap -> B
+    MTBDD* state_bdds; // contains the solution: state bit bdds      : state -> uap -> B
+
+    std::map<MTBDD, int> mapping; // map MTBDD to AIGER literal
+    std::map<uint64_t, int> cache; // cache for ands
+
+    int makeand(int rhs0, int rhs1);
+    int bdd_to_aig(MTBDD bdd);           // use recursive encoding of BDD (shannon expanion)
+    int bdd_to_aig_isop(MTBDD bdd);
+    int bdd_to_aig_cover(ZDD bdd);       // use recursive encoding of ZDD cover (~shannon expansion)
+    int bdd_to_aig_cover_sop(ZDD cover); // use SOP encoding ("two level logic")
+    void simplify_and(std::deque<int> &gates);
+    void simplify_or(std::deque<int> &gates);
+
+    void processCAP(int i, MTBDD bdd);
+    void processState(int i, MTBDD bdd);
+
+public:
+    AIGmaker(HoaData *data, SymGame *game);
+    ~AIGmaker();
+
+    void setIsop()
+    {
+        this->isop = true;
+    }
+
+    void setVerbose()
+    {
+        this->verbose = true;
+    }
+
+    void process();
+    void write(FILE* out);
+};
+
+
+AIGmaker::AIGmaker(HoaData *data, SymGame *game) : data(data), game(game)
+{
+    a = aiger_init();
+    lit = 2;
+    uap_to_lit = new int[game->uap_count];
+    state_to_lit = new int[game->statebits];
+    caps = new char*[game->cap_count];
+
+    // Set which APs are controllable in the bitset controllable
+    pg::bitset controllable(data->noAPs);
+    for (int i=0; i<data->noCntAPs; i++) {
+        controllable[data->cntAPs[i]] = 1;
+    }
+
+    cap_bdds = new MTBDD[game->cap_count];
+    for (int i=0; i<game->cap_count; i++) {
+        cap_bdds[i] = mtbdd_false;
+        mtbdd_protect(&cap_bdds[i]);
+    }
+
+    state_bdds = new MTBDD[game->statebits];
+    for (int i=0; i<game->statebits; i++) {
+        state_bdds[i] = mtbdd_false;
+        mtbdd_protect(&state_bdds[i]);
+    }
+
+    int uap_idx = 0;
+    int cap_idx = 0;
+    for (int i=0; i<data->noAPs; i++) {
+        if (!controllable[i]) {
+            uap_to_lit[uap_idx] = lit;
+            aiger_add_input(a, lit, data->aps[i]);
+            uap_idx++;
+            lit += 2;
+        } else {
+            caps[cap_idx++] = data->aps[i];
+        }
+    }
+
+    for (int i=0; i<game->statebits; i++) {
+        state_to_lit[i] = lit;
+        lit += 2;
+    }
+
+    {
+        MTBDD _vars = game->s_vars;
+        for (int i=0; i<game->statebits; i++) {
+            uint32_t bddvar = mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+            var_to_lit[bddvar] = state_to_lit[i];
+            // std::cerr << "BDD variable " << bddvar << " is state " << i << " literal " << state_to_lit[i] << std::endl;
+        }
+        _vars = game->uap_vars;
+        for (int i=0; i<game->uap_count; i++) {
+            uint32_t bddvar = mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+            var_to_lit[bddvar] = uap_to_lit[i];
+            // std::cerr << "BDD variable " << bddvar << " is uAP " << i << " literal " << uap_to_lit[i] << std::endl;
+        }
     }
 
     {
         // compute bdds for the controllable APs
-        for (int i=0; i<this->cap_count; i++) {
-            MTBDD cap = sylvan_ithvar(this->uap_count+this->priobits+this->statebits+i);
-            mtbdd_refs_pushptr(&cap);
-            this->cap_bdds[i] = sylvan_and_exists(strategies, cap, cap_vars);
-            mtbdd_refs_popptr(1);
+        for (int i=0; i<game->cap_count; i++) {
+            MTBDD cap = sylvan_ithvar(mtbdd_set_first(game->cap_vars)+i);
+            mtbdd_protect(&cap);
+            // keep just s and u... get rid of other cap variables
+            this->cap_bdds[i] = sylvan_and_exists(game->strategies, cap, game->cap_vars);
+            mtbdd_unprotect(&cap);
         }
     }
 
     {
         // compute state bdds
-        MTBDD su_vars = mtbdd_set_empty();
-        mtbdd_refs_pushptr(&su_vars);
-        for (int i=0; i<this->priobits; i++) su_vars = mtbdd_set_add(su_vars, i);
-        for (int i=0; i<this->priobits; i++) su_vars = mtbdd_set_add(su_vars, offset+i);
-        su_vars = mtbdd_set_addall(su_vars, cap_vars);
+        MTBDD su_vars = mtbdd_set_addall(game->p_vars, game->cap_vars);
+        mtbdd_protect(&su_vars);
 
-        MTBDD full = mtbdd_and_exists(strategies, this->trans, su_vars);
-        mtbdd_refs_pushptr(&full);
+        // su_vars is priority and cap, which is to be removed...
+        // full is: s > u > ns
+        MTBDD full = mtbdd_and_exists(game->strategies, game->trans, su_vars);
+        mtbdd_protect(&full);
 
-        for (int i=0; i<this->statebits; i++) {
-            MTBDD ns = sylvan_ithvar(offset+this->priobits+i);
-            mtbdd_refs_pushptr(&ns);
-            this->state_bdds[i] = sylvan_and_exists(full, ns, ns_vars);
-            mtbdd_refs_popptr(1);
+        MTBDD ns = mtbdd_false;
+        mtbdd_protect(&ns);
+
+        for (int i=0; i<game->statebits; i++) {
+            ns = sylvan_ithvar(mtbdd_set_first(game->ns_vars) + i);
+            // don't care about the other next state variables... keep just s and u
+            this->state_bdds[i] = sylvan_and_exists(full, ns, game->ns_vars);
         }
 
-        mtbdd_refs_popptr(2); // full and su_vars
+        mtbdd_unprotect(&ns);
+        mtbdd_unprotect(&full);
+        mtbdd_unprotect(&su_vars);
     }
-
-    mtbdd_refs_popptr(5);
 }
 
+AIGmaker::~AIGmaker()
+{
+    delete[] uap_to_lit;
+    delete[] state_to_lit;
+    delete[] caps;
+
+    for (int i=0; i<game->cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
+    for (int i=0; i<game->statebits; i++) mtbdd_unprotect(&state_bdds[i]);
+
+    delete[] cap_bdds;
+    delete[] state_bdds;
+}
+
+int
+AIGmaker::makeand(int rhs0, int rhs1)
+{
+    if (rhs1 < rhs0) {
+        int tmp = rhs0;
+        rhs0 = rhs1;
+        rhs1 = tmp;
+    }
+
+    if (rhs0 == 0) return 0;
+    if (rhs0 == 1) return rhs1;
+
+    uint64_t cache_key = rhs1;
+    cache_key <<= 32;
+    cache_key |= rhs0;
+    auto c = cache.find(cache_key);
+    if (1 and c != cache.end()) {
+        return c->second;
+    } else {
+        aiger_add_and(a, lit, rhs0, rhs1);
+        cache[cache_key] = lit;
+        lit += 2;
+        return lit-2;
+    }
+}
+
+void
+AIGmaker::simplify_and(std::deque<int> &gates)
+{
+    // for each pair of gates in gates, check the cache
+    for (auto first = gates.begin(); first != gates.end(); ++first) {
+        for (auto second = first + 1; second != gates.end(); ++second) {
+            int left = *first;
+            int right = *second;
+            if (left > right) std::swap(left, right);
+            uint64_t cache_key = right;
+            cache_key <<= 32;
+            cache_key |= left;
+            auto c = cache.find(cache_key);
+            if (c != cache.end()) {
+                //gates.erase(std::remove_if(gates.begin(), gates.end(), [=](int x){return x==left or x==right;}),
+                //        gates.end());
+                gates.erase(second);
+                gates.erase(first);
+                gates.push_back(c->second);
+                simplify_and(gates);
+                return;
+            }
+        }
+    }
+}
+
+void
+AIGmaker::simplify_or(std::deque<int> &gates)
+{
+    // for each pair of gates in gates, check the cache
+    for (auto first = gates.begin(); first != gates.end(); ++first) {
+        for (auto second = first + 1; second != gates.end(); ++second) {
+            int left = aiger_not(*first);
+            int right = aiger_not(*second);
+            if (left > right) std::swap(left, right);
+            uint64_t cache_key = right;
+            cache_key <<= 32;
+            cache_key |= left;
+            auto c = cache.find(cache_key);
+            if (c != cache.end()) {
+                gates.erase(second);
+                gates.erase(first);
+                gates.push_back(aiger_not(c->second));
+                simplify_or(gates);
+                return;
+            }
+        }
+    }
+}
+
+int
+AIGmaker::bdd_to_aig_isop(MTBDD bdd)
+{
+    if (verbose) {
+        std::cerr << "running isop for BDD with " << mtbdd_nodecount(bdd) << " nodes." << std::endl;
+    }
+    MTBDD bddres;
+    ZDD isop = zdd_isop(bdd, bdd, &bddres);
+    zdd_protect(&isop);
+    // no need to reference the result...
+    assert(bdd == bddres);
+    assert(bdd == zdd_cover_to_bdd(isop));
+    if (verbose) {
+        std::cerr << "isop has " << (long)zdd_pathcount(isop) << " terms and " << zdd_nodecount(&isop, 1) << " nodes." << std::endl;
+    }
+
+    int res = bdd_to_aig_cover(isop);
+    zdd_unprotect(&isop);
+    return res;
+}
+
+int
+AIGmaker::bdd_to_aig_cover_sop(ZDD cover)
+{
+    if (cover == zdd_true) return aiger_true;
+    if (cover == zdd_false) return aiger_false;
+
+    // a product could consist of all variables, and a -1 to denote
+    //  the end of the product
+    int product[game->statebits+game->uap_count+1] = { 0 };
+
+    // a queue that stores all products, which will need to be summed
+    std::deque<int> products;
+
+    ZDD res = zdd_cover_enum_first(cover, product);
+    while (res != zdd_false) {
+        //  containing subproducts in the form of gates
+        std::deque<int> gates;
+
+        for (int i=0; product[i] != -1; i++) {
+            int the_lit = var_to_lit[product[i]/2];
+            if (product[i]&1) the_lit = aiger_not(the_lit);
+            gates.push_back(the_lit);
+        }
+
+        // simplify_and(gates);
+
+        // while we still have subproducts we need to AND together
+        while (!gates.empty()) {
+            int last = gates.front();
+            gates.pop_front();
+            if (!gates.empty()) {
+                int last2 = gates.front();
+                gates.pop_front();
+                int new_gate = makeand(last, last2);
+                gates.push_back(new_gate);
+            } else {
+                products.push_back(last);
+            }
+        }
+        res = zdd_cover_enum_next(cover, product); // go to the next product
+    }
+
+    // products queue should now be full of complete products that need to be summed
+
+    // simplify_or(products);
+
+    while (!products.empty()) {
+        int product1 = products.front();
+        products.pop_front();
+        if (!products.empty()) {
+            int product2 = products.front();
+            products.pop_front();
+            int summed_product = aiger_not(makeand(aiger_not(product1), aiger_not(product2)));
+            products.push_back(summed_product);
+        } else { // product1 is the final sum of all products
+            return product1;
+        }
+    }
+
+    return aiger_false; // should be unreachable, tbh.
+}
+
+int
+AIGmaker::bdd_to_aig_cover(ZDD cover)
+{
+    if (cover == zdd_true) return aiger_true;
+    if (cover == zdd_false) return aiger_false;
+
+    auto it = mapping.find(cover);
+    if (it != mapping.end()) {
+        return it->second;
+    }
+
+    int the_var = zdd_getvar(cover);
+    int the_lit = var_to_lit[the_var/2];
+    if (the_var & 1) the_lit = aiger_not(the_lit);
+
+    ZDD low = zdd_getlow(cover);
+    ZDD high = zdd_gethigh(cover);
+
+    int res = the_lit;
+
+    if (high != zdd_true) {
+        auto x = bdd_to_aig_cover(high);
+        res = makeand(res, x);
+    }
+
+    if (low != zdd_false) {
+        auto x = bdd_to_aig_cover(low);
+        res = aiger_not(makeand(aiger_not(res), aiger_not(x)));
+    }
+
+    mapping[cover] = res;
+    return res;
+}
+
+int
+AIGmaker::bdd_to_aig(MTBDD bdd)
+{
+    if (bdd == mtbdd_true) return aiger_true;
+    if (bdd == mtbdd_false) return aiger_false;
+ 
+    bool comp = false;
+    if (bdd & sylvan_complement) {
+        bdd ^= sylvan_complement;
+        comp = true;
+    }
+
+    auto it = mapping.find(bdd);
+    if (it != mapping.end()) {
+        return comp ? aiger_not(it->second) : it->second;
+    }
+
+    int the_lit = var_to_lit[mtbdd_getvar(bdd)];
+
+    MTBDD low = mtbdd_getlow(bdd);
+    MTBDD high = mtbdd_gethigh(bdd);
+
+    int res;
+
+    if (low == mtbdd_false) {
+        // only high (value 1)
+        if (high == mtbdd_true) {
+            // actually this is the end, just the lit
+            res = the_lit;
+        } else {
+            // AND(the_lit, ...)
+            int rhs0 = the_lit;
+            int rhs1 = bdd_to_aig(high);
+            res = makeand(rhs0, rhs1);
+        }
+    } else if (high == mtbdd_false) {
+        // only low (value 0)
+        if (low == mtbdd_true) {
+            // actually this is the end, just the lit, negated
+            res = aiger_not(the_lit);
+        } else {
+            // AND(not the_lit, ...)
+            int rhs0 = aiger_not(the_lit);
+            int rhs1 = bdd_to_aig(low);
+            res = makeand(rhs0, rhs1);
+        }
+    } else {
+        // OR(low, high) == ~AND(~AND(the_lit, ...), ~AND(~the_lit, ...))
+        int lowres = bdd_to_aig(low);
+        int highres = bdd_to_aig(high);
+        int rhs0 = aiger_not(makeand(aiger_not(the_lit), lowres));
+        int rhs1 = aiger_not(makeand(the_lit, highres));
+        res = aiger_not(makeand(rhs0, rhs1));
+    }
+        
+    mapping[bdd] = res;
+
+    return comp ? aiger_not(res) : res;
+}
+
+void
+AIGmaker::processCAP(int i, MTBDD bdd)
+{
+    int res = isop ? bdd_to_aig_isop(bdd) : bdd_to_aig(bdd);
+    aiger_add_output(a, res, caps[i]); // simple, really
+}
+
+void
+AIGmaker::processState(int i, MTBDD bdd)
+{
+    int res = isop ? bdd_to_aig_isop(bdd) : bdd_to_aig(bdd);
+    aiger_add_latch(a, state_to_lit[i], res, "");
+}
+
+void
+AIGmaker::process()
+{
+    // if ISOP, first convert all cap bdds etc to covers
+    if (isop) {
+        ZDD* cap_zdds = new ZDD[game->cap_count];
+        for (int i=0; i<game->cap_count; i++) {
+            cap_zdds[i] = zdd_false;
+            zdd_protect(&cap_zdds[i]);
+
+            MTBDD bddres;
+            cap_zdds[i] = zdd_isop(cap_bdds[i], cap_bdds[i], &bddres);
+            assert(bddres == cap_bdds[i]);
+            if (verbose) {
+                std::cerr << "isop has " << (long)zdd_pathcount(cap_zdds[i]) << " terms and " << zdd_nodecount(&cap_zdds[i], 1) << " nodes." << std::endl;
+            }
+        }
+
+        ZDD* state_zdds = new ZDD[game->statebits];
+        for (int i=0; i<game->statebits; i++) {
+            state_zdds[i] = zdd_false;
+            zdd_protect(&state_zdds[i]);
+
+            MTBDD bddres;
+            state_zdds[i] = zdd_isop(state_bdds[i], state_bdds[i], &bddres);
+            assert(bddres == state_bdds[i]);
+            if (verbose) {
+                std::cerr << "isop has " << (long)zdd_pathcount(state_zdds[i]) << " terms and " << zdd_nodecount(&state_zdds[i], 1) << " nodes." << std::endl;
+            }
+        }
+
+        for (int i=0; i<game->cap_count; i++) {
+            int res = bdd_to_aig_cover(cap_zdds[i]);
+            aiger_add_output(a, res, caps[i]); // simple, really
+        }
+        for (int i=0; i<game->statebits; i++) {
+            int res = bdd_to_aig_cover(state_zdds[i]);
+            aiger_add_latch(a, state_to_lit[i], res, "");
+        }
+    } else {
+        for (int i=0; i<game->cap_count; i++) {
+            processCAP(i, cap_bdds[i]);
+        }
+        for (int i=0; i<game->statebits; i++) {
+            processState(i, state_bdds[i]);
+        }
+    }
+}
+
+void
+AIGmaker::write(FILE* out)
+{
+    aiger_write_to_file(a, aiger_ascii_mode, out);
+}
 
 cxxopts::ParseResult
 handleOptions(int &argc, char**& argv)
@@ -1915,6 +2039,7 @@ handleOptions(int &argc, char**& argv)
             ("naive", "Use the naive splitting procedure")
             ("explicit", "Use the explicit splitting procedure")
             ("isop", "Generate AIG using ISOP instead of ITE")
+            ("bisim", "Apply bisimulation minimisation to the solution")
             ("print-game", "Just print the parity game")
             ("print-witness", "Print the witness parity game")
             ("v,verbose", "Be verbose")
@@ -2033,7 +2158,7 @@ main(int argc, char* argv[])
     lace_start(1, 0); // initialize Lace, but sequentially
 
     // And initialize Sylvan
-    sylvan_set_limits(128LL << 20, 1, 16); // should be enough (128 megabytes)
+    sylvan_set_limits(512LL << 20, 1, 14); // should be enough (512 megabytes)
     sylvan_init_package();
     sylvan_init_mtbdd();
     sylvan_init_zdd();
@@ -2155,17 +2280,46 @@ main(int argc, char* argv[])
     }
 
     if (realizable) {
+        if (verbose) {
+            // sym->print_trans();
+            // sym->print_strategies();
+        }
+
+        RUN(wrap_pp, sym, verbose);
+
+        if (verbose) {
+            // sym->print_trans();
+            // sym->print_strategies();
+        }
+
+        if (options["bisim"].count() > 0) {
+            MTBDD partition = RUN(min_lts_strong, sym);
+            mtbdd_protect(&partition);
+
+            if (verbose) {
+                // RUN(print_partition, sym, partition);
+            }
+
+            RUN(minimize, sym, partition, verbose);
+            mtbdd_unprotect(&partition);
+        }
+
+        if (verbose) {
+            // sym->print_trans();
+            // sym->print_strategies();
+        }
+
         /**
          * maybe print witness parity game, which should be fully won by even
          */
-
-        RUN(wrap_pp, sym, verbose);
 
         if (options["print-witness"].count() > 0) {
             auto pargame = sym->strategyToPG();
             pargame->write_pgsolver(std::cout);
             exit(10);
         }
+
+        // sylvan_gc();
 
         AIGmaker maker(data, sym);
         if (verbose) {
@@ -2174,13 +2328,7 @@ main(int argc, char* argv[])
         if (options["isop"].count() > 0) {
             maker.setIsop();
         }
-        for (int i=0; i<sym->cap_count; i++) {
-            maker.processCAP(i, sym->cap_bdds[i]);
-        }
-        for (int i=0; i<sym->statebits; i++) {
-            maker.processState(i, sym->state_bdds[i]);
-        }
-
+        maker.process();
         std::cout << "REALIZABLE" << std::endl;
         maker.write(stdout);
         exit(10);
