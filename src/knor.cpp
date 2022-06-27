@@ -14,15 +14,15 @@
 #include <oink.hpp>
 #include <solvers.hpp>
 #include <tools/cxxopts.hpp>
-#include <sylvan.h>
 #include <knor.hpp>
 #include <symgame.hpp>
 #include <bisim.hpp>
 #include <aigmaker.hpp>
 
 extern "C" {
-#include "simplehoa.h"
-#include "aiger.h"
+    #include <sylvan.h>
+    #include "simplehoa.h"
+    #include "aiger.h"
 }
 
 using namespace sylvan;
