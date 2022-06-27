@@ -29,8 +29,6 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     endif()
 endif()
 
-include_directories(src)
-
 find_package(FLEX)
 find_package(BISON)
 find_package(Boost REQUIRED filesystem iostreams regex system)
@@ -60,11 +58,18 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/sylvan/CMakeLists.txt" OR
 endif()
 
 add_subdirectory("oink")
-include_directories(oink/src)
-
 add_subdirectory("sylvan")
-include_directories(sylvan/src)
 
-add_executable(knor src/knor.cpp src/symgame.cpp src/bisim.cpp src/simplehoa.c src/aiger.c ${BISON_hoaparser_OUTPUTS} ${FLEX_hoalexer_OUTPUTS})
-target_link_libraries(knor PRIVATE oink sylvan)
-target_link_libraries(knor PUBLIC "-static")
+add_executable(knor
+    src/knor.cpp
+    src/symgame.cpp
+    src/bisim.cpp
+    src/aigmaker.cpp
+    src/simplehoa.c
+    src/aiger.c
+    ${BISON_hoaparser_OUTPUTS}
+    ${FLEX_hoalexer_OUTPUTS}
+    )
+target_link_libraries(knor PRIVATE oink sylvan "-static")
+target_include_directories(knor PRIVATE src)
+
