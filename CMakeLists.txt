@@ -66,4 +66,5 @@ add_subdirectory("sylvan")
 include_directories(sylvan/src)
 
 add_executable(knor src/knor.cpp src/symgame.cpp src/bisim.cpp src/simplehoa.c src/aiger.c ${BISON_hoaparser_OUTPUTS} ${FLEX_hoalexer_OUTPUTS})
-target_link_libraries(knor oink sylvan)
+target_link_libraries(knor PRIVATE oink sylvan)
+target_link_libraries(knor PUBLIC "-static")
