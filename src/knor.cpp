@@ -568,6 +568,7 @@ handleOptions(int &argc, char**& argv)
             ("isop", "Generate AIG using ISOP instead of ITE")
             ("bisim", "Apply bisimulation minimisation to the solution")
             ("real", "Only check realiziability, don't synthesize")
+            ("best", "Try all combinations of bisim and isop and write the smallest AIG")
             ("print-game", "Just print the parity game")
             ("print-witness", "Print the witness parity game")
             ("v,verbose", "Be verbose")
@@ -830,6 +831,52 @@ main(int argc, char* argv[])
             // sym->print_strategies();
         }
 
+        const bool best = options["best"].count() > 0;
+
+        if (best) {
+            AIGmaker var1(data, sym);
+            var1.process();
+            AIGmaker var2(data, sym);
+            var2.setIsop();
+            var2.process();
+
+            MTBDD partition = RUN(min_lts_strong, sym);
+            mtbdd_protect(&partition);
+
+            if (verbose) {
+                // RUN(print_partition, sym, partition);
+            }
+
+            RUN(minimize, sym, partition, verbose);
+            mtbdd_unprotect(&partition);
+    
+            AIGmaker var3(data, sym);
+            var3.process();
+            AIGmaker var4(data, sym);
+            var4.setIsop();
+            var4.process();
+
+            if (verbose) {
+                std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
+                std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
+                std::cerr << "bisim, ite: " << var3.getNumAnds() << std::endl;
+                std::cerr << "bisim, isop: " << var4.getNumAnds() << std::endl;
+            }
+
+            std::cout << "REALIZABLE" << std::endl;
+            auto smallest = std::min(std::min(var1.getNumAnds(), var2.getNumAnds()), std::min(var3.getNumAnds(), var4.getNumAnds()));
+            if (var1.getNumAnds() == smallest) {
+                var1.write(stdout);
+            } else if (var2.getNumAnds() == smallest) {
+                var2.write(stdout);
+            } else if (var3.getNumAnds() == smallest) {
+                var3.write(stdout);
+            } else if (var4.getNumAnds() == smallest) {
+                var4.write(stdout);
+            }
+            exit(10);
+        }
+
         if (options["bisim"].count() > 0) {
             MTBDD partition = RUN(min_lts_strong, sym);
             mtbdd_protect(&partition);
@@ -856,8 +903,6 @@ main(int argc, char* argv[])
             pargame->write_pgsolver(std::cout);
             exit(10);
         }
-
-        // sylvan_gc();
 
         AIGmaker maker(data, sym);
         if (verbose) {

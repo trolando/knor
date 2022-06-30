@@ -61,6 +61,11 @@ public:
         this->verbose = true;
     }
 
+    long getNumAnds()
+    {
+        return this->a->num_ands;
+    }
+
     void process();
     void write(FILE* out);
 };
