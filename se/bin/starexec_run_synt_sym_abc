@@ -1,0 +1,3 @@
+#!/bin/bash
+./knor $1 --sym --best --compress 2>/dev/null
+
