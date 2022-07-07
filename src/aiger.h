@@ -322,6 +322,11 @@ int aiger_write_comments_to_file (aiger *, FILE * file);
 unsigned aiger_strip_symbols_and_comments (aiger *);
 
 /*------------------------------------------------------------------------*/
+/* Remove comments.  The result is the number of comments removed.
+ */
+unsigned aiger_delete_comments (aiger *);
+
+/*------------------------------------------------------------------------*/
 /* If 'lit' is an input or a latch with a name, the symbolic name is
  * returned.   Note, that literals can be used for multiple outputs.
  * Therefore there is no way to associate a name with a literal itself.

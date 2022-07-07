@@ -10,6 +10,10 @@
 extern "C" {
     #include "aiger.h"
     #include "simplehoa.h"
+    #include "misc/util/abc_namespaces.h"
+    #include "base/main/abcapis.h"
+    #include "base/abc/abc.h"
+    #include "base/main/main.h"
 }
 
 #pragma once
@@ -47,6 +51,14 @@ private:
     void processCAP(int i, sylvan::MTBDD bdd);
     void processState(int i, sylvan::MTBDD bdd);
 
+    static const std::vector<std::string> compressCommands;
+    void executeAbcCommand(Abc_Frame_t* pAbc, const std::string command) const;
+    void executeCompressCommands(Abc_Frame_t* pAbc) const;
+    int getAbcNetworkSize(Abc_Frame_t* pAbc) const;
+    int getTmpFile(char* tmp_filename) const;
+    void writeToAbc(Abc_Frame_t* pAbc) const;
+    void readFromAbc(Abc_Frame_t* pAbc);
+
 public:
     AIGmaker(HoaData *data, SymGame *game);
     ~AIGmaker();
@@ -68,5 +80,8 @@ public:
 
     void process();
     void write(FILE* out);
+    void writeBinary(FILE* out);
+
+    void compress();
 };
 

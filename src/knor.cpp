@@ -371,7 +371,7 @@ TASK_3(pg::Game*, constructGameNaive, HoaData*, data, bool, isMaxParity, bool, c
         } else {
             priority = 0;
         }
-    
+
         game->init_vertex(state->id, priority, 1, state->name ? state->name : std::to_string(state->id));
         game->e_start(state->id);
         for (int to : succ_state) game->e_add(state->id, to);
@@ -571,6 +571,8 @@ handleOptions(int &argc, char**& argv)
             ("best", "Try all combinations of bisim and isop and write the smallest AIG")
             ("print-game", "Just print the parity game")
             ("print-witness", "Print the witness parity game")
+            ("b,write-binary", "Write binary AIGER file")
+            ("c,compress", "Compress using ABC")
             ("v,verbose", "Be verbose")
             ;
         opts.add_options("Explicit solvers")
@@ -746,7 +748,7 @@ main(int argc, char* argv[])
         for (unsigned id=0; id<solvers.count(); id++) {
             if (options.count(solvers.label(id))) solver = solvers.label(id);
         }
- 
+
         pg::Oink engine(*game, verbose ? std::cerr : log);
         engine.setTrace(verbose ? 1 : 0);
         engine.setRenumber();
@@ -849,7 +851,7 @@ main(int argc, char* argv[])
 
             RUN(minimize, sym, partition, verbose);
             mtbdd_unprotect(&partition);
-    
+
             AIGmaker var3(data, sym);
             var3.process();
             AIGmaker var4(data, sym);
@@ -863,16 +865,43 @@ main(int argc, char* argv[])
                 std::cerr << "bisim, isop: " << var4.getNumAnds() << std::endl;
             }
 
-            std::cout << "REALIZABLE" << std::endl;
-            auto smallest = std::min(std::min(var1.getNumAnds(), var2.getNumAnds()), std::min(var3.getNumAnds(), var4.getNumAnds()));
-            if (var1.getNumAnds() == smallest) {
-                var1.write(stdout);
-            } else if (var2.getNumAnds() == smallest) {
-                var2.write(stdout);
-            } else if (var3.getNumAnds() == smallest) {
-                var3.write(stdout);
-            } else if (var4.getNumAnds() == smallest) {
-                var4.write(stdout);
+            if (options["compress"].count() > 0) {
+                var1.compress();
+                var2.compress();
+                var3.compress();
+                var4.compress();
+            }
+
+            if (verbose) {
+                std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
+                std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
+                std::cerr << "bisim, ite: " << var3.getNumAnds() << std::endl;
+                std::cerr << "bisim, isop: " << var4.getNumAnds() << std::endl;
+            }
+
+            if (options.count("write-binary")) {
+                auto smallest = std::min(std::min(var1.getNumAnds(), var2.getNumAnds()), std::min(var3.getNumAnds(), var4.getNumAnds()));
+                if (var1.getNumAnds() == smallest) {
+                    var1.writeBinary(stdout);
+                } else if (var2.getNumAnds() == smallest) {
+                    var2.writeBinary(stdout);
+                } else if (var3.getNumAnds() == smallest) {
+                    var3.writeBinary(stdout);
+                } else if (var4.getNumAnds() == smallest) {
+                    var4.writeBinary(stdout);
+                }
+            } else {
+                std::cout << "REALIZABLE" << std::endl;
+                auto smallest = std::min(std::min(var1.getNumAnds(), var2.getNumAnds()), std::min(var3.getNumAnds(), var4.getNumAnds()));
+                if (var1.getNumAnds() == smallest) {
+                    var1.write(stdout);
+                } else if (var2.getNumAnds() == smallest) {
+                    var2.write(stdout);
+                } else if (var3.getNumAnds() == smallest) {
+                    var3.write(stdout);
+                } else if (var4.getNumAnds() == smallest) {
+                    var4.write(stdout);
+                }
             }
             exit(10);
         }
@@ -912,6 +941,11 @@ main(int argc, char* argv[])
             maker.setIsop();
         }
         maker.process();
+        if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
+        if (options["compress"].count() > 0) {
+            maker.compress();
+            if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
+        }
         std::cout << "REALIZABLE" << std::endl;
         maker.write(stdout);
         exit(10);

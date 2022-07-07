@@ -290,7 +290,7 @@ aiger_delete_symbols (aiger_private * private,
   DELETEN (symbols, size);
 }
 
-static unsigned
+unsigned
 aiger_delete_comments (aiger * public)
 {
   char **start = (char **) public->comments, ** end, ** p;
