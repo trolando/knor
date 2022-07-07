@@ -522,7 +522,7 @@ VOID_TASK_IMPL_3(minimize, SymGame*, sym, MTBDD, partition, bool, verbose)
     while (no_blocks > (1ULL << no_ns_vars)) no_ns_vars++;
 
     if (verbose) {
-        std::cerr << "state 0 is in block " << state_0_block << std::endl;
+        std::cerr << "state 0 is in block " << state_0_block << "; there are " << no_blocks << " blocks." << std::endl;
         std::cerr << "now using " << no_ns_vars << " state variable(s) instead of " << sym->statebits << "." << std::endl;
     }
 

@@ -941,11 +941,17 @@ main(int argc, char* argv[])
             maker.setIsop();
         }
         maker.process();
-        if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
         if (options["compress"].count() > 0) {
+            if (verbose) std::cerr << "size of AIG before compression: " << maker.getNumAnds() << " gates." << std::endl;
+            const double t_before = wctime();
             maker.compress();
+            const double t_after = wctime();
+            if (verbose) std::cerr << "size of AIG after compression: " << maker.getNumAnds() << " gates." << std::endl;
+            if (verbose) std::cerr << "compression took " << std::fixed << (t_after - t_before) << " sec." << std::endl;
+        } else {
             if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
         }
+
         std::cout << "REALIZABLE" << std::endl;
         maker.write(stdout);
         exit(10);
