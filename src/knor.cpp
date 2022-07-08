@@ -891,16 +891,28 @@ main(int argc, char* argv[])
                     var4.writeBinary(stdout);
                 }
             } else {
-                std::cout << "REALIZABLE" << std::endl;
                 auto smallest = std::min(std::min(var1.getNumAnds(), var2.getNumAnds()), std::min(var3.getNumAnds(), var4.getNumAnds()));
-                if (var1.getNumAnds() == smallest) {
-                    var1.write(stdout);
-                } else if (var2.getNumAnds() == smallest) {
-                    var2.write(stdout);
-                } else if (var3.getNumAnds() == smallest) {
-                    var3.write(stdout);
-                } else if (var4.getNumAnds() == smallest) {
-                    var4.write(stdout);
+                if (options["write-binary"].count() > 0) {
+                    if (var1.getNumAnds() == smallest) {
+                        var1.writeBinary(stdout);
+                    } else if (var2.getNumAnds() == smallest) {
+                        var2.writeBinary(stdout);
+                    } else if (var3.getNumAnds() == smallest) {
+                        var3.writeBinary(stdout);
+                    } else if (var4.getNumAnds() == smallest) {
+                        var4.writeBinary(stdout);
+                    }
+                } else {
+                    std::cout << "REALIZABLE" << std::endl;
+                    if (var1.getNumAnds() == smallest) {
+                        var1.write(stdout);
+                    } else if (var2.getNumAnds() == smallest) {
+                        var2.write(stdout);
+                    } else if (var3.getNumAnds() == smallest) {
+                        var3.write(stdout);
+                    } else if (var4.getNumAnds() == smallest) {
+                        var4.write(stdout);
+                    }
                 }
             }
             exit(10);
@@ -952,8 +964,12 @@ main(int argc, char* argv[])
             if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
         }
 
-        std::cout << "REALIZABLE" << std::endl;
-        maker.write(stdout);
+        if (options["write-binary"].count() > 0) {
+            maker.writeBinary(stdout);
+        } else {
+            std::cout << "REALIZABLE" << std::endl;
+            maker.write(stdout);
+        }
         exit(10);
     } else {
         std::cout << "UNREALIZABLE" << std::endl;
