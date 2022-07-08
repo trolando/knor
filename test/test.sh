@@ -16,7 +16,7 @@ for e in `ls -XrS ../examples/*hoa`; do
     for s in sym tl; do
         for o in "" "--onehot" "--bisim" "--isop" "--bisim --isop"; do
             echo "solving $f using solver $s and options $o"
-            ../build/knor $f --$s $o -v > $f-output-$s 2> $f-log
+            ../build/knor $f --$s $o -v -a > $f-output-$s 2> $f-log
             res=$?
             if [[ $res == 10 ]]; then
                 echo "preparing model checking..."
