@@ -26,11 +26,12 @@ private:
 
     bool isop = false; // use ISOP
     bool verbose = false;
+    bool onehot = false; // use onehot encoding
     
     int lit; // current next literal
 
     int* uap_to_lit; // the input literal for each uncontrolled AP
-    int* state_to_lit; // the latch literal for each state bit
+    std::map<int, int> state_to_lit; // the latch literal for each state bit / onehot state
     char** caps; // labels for controlled APs
     std::map<uint32_t, int> var_to_lit; // translate BDD variable (uap/state) to AIGER literal
 
@@ -48,8 +49,8 @@ private:
     void simplify_and(std::deque<int> &gates);
     void simplify_or(std::deque<int> &gates);
 
-    void processCAP(int i, sylvan::MTBDD bdd);
-    void processState(int i, sylvan::MTBDD bdd);
+    int make_and(std::deque<int> &gates);
+    int make_or(std::deque<int> &gates);
 
     static const std::vector<std::string> compressCommands;
     void executeAbcCommand(Abc_Frame_t* pAbc, const std::string command) const;
@@ -66,6 +67,11 @@ public:
     void setIsop()
     {
         this->isop = true;
+    }
+
+    void setOneHot()
+    {
+        this->onehot = true;
     }
 
     void setVerbose()

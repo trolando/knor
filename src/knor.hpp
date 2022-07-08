@@ -29,7 +29,7 @@ sylvan::MTBDD encode_prio(int priority, int priobits);
  * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
  * High-significant bits come before low-significant bits in the BDD
  */
-sylvan::MTBDD encode_state(uint32_t state, const int statebits, const int priobits, const int offset);
+sylvan::MTBDD encode_state(uint32_t state, const int statebits, const int s_first_var);
 
 /**
 * Encode a priostate as a BDD, using priobits > statebits

@@ -3,6 +3,8 @@
  *************************************************************************/
 
 #include <aigmaker.hpp>
+#include <knor.hpp>
+#include <set>
 
 #include <boost/filesystem/operations.hpp>
 #include <boost/filesystem/path.hpp>
@@ -12,114 +14,58 @@
 using namespace sylvan;
 
 
+static void
+collect_inter(MTBDD bdd, uint32_t firstvar, std::set<MTBDD> &res)
+{
+    // TODO needs caching (visited or not)
+    if (bdd == mtbdd_false) {
+        return;
+    }
+    else if (mtbdd_isleaf(bdd)) {
+        res.insert(bdd);
+    } else {
+        if (mtbdd_getvar(bdd) < firstvar) {
+            collect_inter(mtbdd_gethigh(bdd), firstvar, res);
+            collect_inter(mtbdd_getlow(bdd), firstvar, res);
+        } else {
+            res.insert(bdd);
+        }
+    }
+}
+
+
+TASK_3(MTBDD, collect_ending, MTBDD, bdd, uint32_t, firstvar, MTBDD, leaf)
+{
+    // TODO needs caching
+    if (bdd == leaf) {
+        return mtbdd_true;
+    } else if (mtbdd_isleaf(bdd)) {
+        return mtbdd_false;
+    } else if (mtbdd_getvar(bdd) >= firstvar) {
+        return mtbdd_false;
+    } else {
+        uint32_t var = mtbdd_getvar(bdd);
+        mtbdd_refs_spawn(SPAWN(collect_ending, mtbdd_gethigh(bdd), firstvar, leaf));
+        MTBDD low = mtbdd_refs_push(CALL(collect_ending, mtbdd_getlow(bdd), firstvar, leaf));
+        MTBDD high = mtbdd_refs_push(mtbdd_refs_sync(SYNC(collect_ending)));
+        MTBDD res = mtbdd_makenode(var, low, high);
+        mtbdd_refs_pop(2);
+        return res;
+    }
+}
+
+
 AIGmaker::AIGmaker(HoaData *data, SymGame *game) : data(data), game(game)
 {
-    a = aiger_init();
-    lit = 2;
-    uap_to_lit = new int[game->uap_count];
-    state_to_lit = new int[game->statebits];
-    caps = new char*[game->cap_count];
-
-    // Set which APs are controllable in the bitset controllable
-    pg::bitset controllable(data->noAPs);
-    for (int i=0; i<data->noCntAPs; i++) {
-        controllable[data->cntAPs[i]] = 1;
-    }
-
-    cap_bdds = new MTBDD[game->cap_count];
-    for (int i=0; i<game->cap_count; i++) {
-        cap_bdds[i] = mtbdd_false;
-        mtbdd_protect(&cap_bdds[i]);
-    }
-
-    state_bdds = new MTBDD[game->statebits];
-    for (int i=0; i<game->statebits; i++) {
-        state_bdds[i] = mtbdd_false;
-        mtbdd_protect(&state_bdds[i]);
-    }
-
-    int uap_idx = 0;
-    int cap_idx = 0;
-    for (int i=0; i<data->noAPs; i++) {
-        if (!controllable[i]) {
-            uap_to_lit[uap_idx] = lit;
-            aiger_add_input(a, lit, data->aps[i]);
-            uap_idx++;
-            lit += 2;
-        } else {
-            caps[cap_idx++] = data->aps[i];
-        }
-    }
-
-    for (int i=0; i<game->statebits; i++) {
-        state_to_lit[i] = lit;
-        lit += 2;
-    }
-
-    {
-        MTBDD _vars = game->s_vars;
-        for (int i=0; i<game->statebits; i++) {
-            uint32_t bddvar = mtbdd_set_first(_vars);
-            _vars = mtbdd_set_next(_vars);
-            var_to_lit[bddvar] = state_to_lit[i];
-            // std::cerr << "BDD variable " << bddvar << " is state " << i << " literal " << state_to_lit[i] << std::endl;
-        }
-        _vars = game->uap_vars;
-        for (int i=0; i<game->uap_count; i++) {
-            uint32_t bddvar = mtbdd_set_first(_vars);
-            _vars = mtbdd_set_next(_vars);
-            var_to_lit[bddvar] = uap_to_lit[i];
-            // std::cerr << "BDD variable " << bddvar << " is uAP " << i << " literal " << uap_to_lit[i] << std::endl;
-        }
-    }
-
-    {
-        // compute bdds for the controllable APs
-        for (int i=0; i<game->cap_count; i++) {
-            MTBDD cap = sylvan_ithvar(mtbdd_set_first(game->cap_vars)+i);
-            mtbdd_protect(&cap);
-            // keep just s and u... get rid of other cap variables
-            this->cap_bdds[i] = sylvan_and_exists(game->strategies, cap, game->cap_vars);
-            mtbdd_unprotect(&cap);
-        }
-    }
-
-    {
-        // compute state bdds
-        MTBDD su_vars = mtbdd_set_addall(game->p_vars, game->cap_vars);
-        mtbdd_protect(&su_vars);
-
-        // su_vars is priority and cap, which is to be removed...
-        // full is: s > u > ns
-        MTBDD full = mtbdd_and_exists(game->strategies, game->trans, su_vars);
-        mtbdd_protect(&full);
-
-        MTBDD ns = mtbdd_false;
-        mtbdd_protect(&ns);
-
-        for (int i=0; i<game->statebits; i++) {
-            ns = sylvan_ithvar(mtbdd_set_first(game->ns_vars) + i);
-            // don't care about the other next state variables... keep just s and u
-            this->state_bdds[i] = sylvan_and_exists(full, ns, game->ns_vars);
-        }
-
-        mtbdd_unprotect(&ns);
-        mtbdd_unprotect(&full);
-        mtbdd_unprotect(&su_vars);
-    }
+    a = NULL;
 }
 
 AIGmaker::~AIGmaker()
 {
-    delete[] uap_to_lit;
-    delete[] state_to_lit;
-    delete[] caps;
-
-    for (int i=0; i<game->cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
-    for (int i=0; i<game->statebits; i++) mtbdd_unprotect(&state_bdds[i]);
-
-    delete[] cap_bdds;
-    delete[] state_bdds;
+    if (a != NULL) {
+        delete[] uap_to_lit;
+        delete[] caps;
+    }
 }
 
 int
@@ -217,6 +163,42 @@ AIGmaker::bdd_to_aig_isop(MTBDD bdd)
     int res = bdd_to_aig_cover(isop);
     zdd_unprotect(&isop);
     return res;
+}
+
+int
+AIGmaker::make_and(std::deque<int> &gates)
+{
+    while (!gates.empty()) {
+        int last = gates.front();
+        gates.pop_front();
+        if (!gates.empty()) {
+            int last2 = gates.front();
+            gates.pop_front();
+            int new_gate = makeand(last, last2);
+            gates.push_back(new_gate);
+        } else {
+            return last;
+        }
+    }
+    return aiger_false;
+}
+
+int
+AIGmaker::make_or(std::deque<int> &gates)
+{
+    while (!gates.empty()) {
+        int last = gates.front();
+        gates.pop_front();
+        if (!gates.empty()) {
+            int last2 = gates.front();
+            gates.pop_front();
+            int new_gate = aiger_not(makeand(aiger_not(last), aiger_not(last2)));
+            gates.push_back(new_gate);
+        } else {
+            return last;
+        }
+    }
+    return aiger_false;
 }
 
 int
@@ -320,7 +302,7 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
 {
     if (bdd == mtbdd_true) return aiger_true;
     if (bdd == mtbdd_false) return aiger_false;
- 
+
     bool comp = false;
     if (bdd & sylvan_complement) {
         bdd ^= sylvan_complement;
@@ -369,72 +351,298 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
         int rhs1 = aiger_not(makeand(the_lit, highres));
         res = aiger_not(makeand(rhs0, rhs1));
     }
-        
+
     mapping[bdd] = res;
 
     return comp ? aiger_not(res) : res;
 }
 
 void
-AIGmaker::processCAP(int i, MTBDD bdd)
-{
-    int res = isop ? bdd_to_aig_isop(bdd) : bdd_to_aig(bdd);
-    aiger_add_output(a, res, caps[i]); // simple, really
-}
-
-void
-AIGmaker::processState(int i, MTBDD bdd)
-{
-    int res = isop ? bdd_to_aig_isop(bdd) : bdd_to_aig(bdd);
-    aiger_add_latch(a, state_to_lit[i], res, "");
-}
-
-void
 AIGmaker::process()
 {
-    // if ISOP, first convert all cap bdds etc to covers
-    if (isop) {
-        ZDD* cap_zdds = new ZDD[game->cap_count];
-        for (int i=0; i<game->cap_count; i++) {
-            cap_zdds[i] = zdd_false;
-            zdd_protect(&cap_zdds[i]);
+    a = aiger_init();
+    lit = 2;
 
-            MTBDD bddres;
-            cap_zdds[i] = zdd_isop(cap_bdds[i], cap_bdds[i], &bddres);
-            assert(bddres == cap_bdds[i]);
-            if (verbose) {
-                std::cerr << "isop has " << (long)zdd_pathcount(cap_zdds[i]) << " terms and " << zdd_nodecount(&cap_zdds[i], 1) << " nodes." << std::endl;
+    // Set which APs are controllable in the bitset controllable
+    pg::bitset controllable(data->noAPs);
+    for (int i=0; i<data->noCntAPs; i++) {
+        controllable[data->cntAPs[i]] = 1;
+    }
+
+    uap_to_lit = new int[game->uap_count];
+    caps = new char*[game->cap_count];
+
+    int uap_idx = 0;
+    int cap_idx = 0;
+    for (int i=0; i<data->noAPs; i++) {
+        if (!controllable[i]) {
+            uap_to_lit[uap_idx] = lit;
+            aiger_add_input(a, lit, data->aps[i]);
+            uap_idx++;
+            lit += 2;
+        } else {
+            caps[cap_idx++] = data->aps[i];
+        }
+    }
+
+    /* make var_to_lit for uncontrollable APs */
+    {
+        MTBDD _vars = game->uap_vars;
+        for (int i=0; i<game->uap_count; i++) {
+            uint32_t bddvar = mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+            var_to_lit[bddvar] = uap_to_lit[i];
+        }
+    }
+
+    if (onehot) {
+        MTBDD states = sylvan_project(game->trans, game->s_vars);
+        mtbdd_protect(&states);
+
+        /* prepare state_to_lit */
+        {
+            uint8_t state_arr[game->statebits];
+            MTBDD lf = mtbdd_enum_all_first(states, game->s_vars, state_arr, NULL);
+            while (lf != mtbdd_false) {
+                // decode state
+                int state = 0;
+                for (int i=0; i<game->statebits; i++) {
+                    state <<= 1;
+                    if (state_arr[i]) state |= 1;
+                }
+                // give the state a literal
+                // std::cerr << "state " << state << " gets latch literal " << lit << std::endl;
+                state_to_lit[state] = lit;
+                lit += 2;
+                // next state
+                lf = mtbdd_enum_all_next(states, game->s_vars, state_arr, NULL);
             }
         }
 
-        ZDD* state_zdds = new ZDD[game->statebits];
-        for (int i=0; i<game->statebits; i++) {
-            state_zdds[i] = zdd_false;
-            zdd_protect(&state_zdds[i]);
+        // do each controllable AP (output signals)
+        MTBDD cap_bdd = mtbdd_false;
+        mtbdd_protect(&cap_bdd);
 
-            MTBDD bddres;
-            state_zdds[i] = zdd_isop(state_bdds[i], state_bdds[i], &bddres);
-            assert(bddres == state_bdds[i]);
-            if (verbose) {
-                std::cerr << "isop has " << (long)zdd_pathcount(state_zdds[i]) << " terms and " << zdd_nodecount(&state_zdds[i], 1) << " nodes." << std::endl;
-            }
-        }
+        MTBDD s = mtbdd_false;
+        mtbdd_protect(&s);
 
         for (int i=0; i<game->cap_count; i++) {
-            int res = bdd_to_aig_cover(cap_zdds[i]);
-            aiger_add_output(a, res, caps[i]); // simple, really
+            cap_bdd = sylvan_ithvar(mtbdd_set_first(game->cap_vars)+i);
+            // keep just s and u... get rid of other cap variables
+            cap_bdd = sylvan_and_exists(game->strategies, cap_bdd, game->cap_vars);
+
+            // std::cerr << "for controllable ap " << i << std::endl;
+
+            // this gives source states and UAP for this cap
+            std::set<MTBDD> uaps;
+            collect_inter(cap_bdd, mtbdd_set_first(game->uap_vars), uaps);
+
+            std::deque<int> terms;
+
+            for (MTBDD uap : uaps) {
+                s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uap_vars), uap);
+
+                std::vector<int> source_states;
+                std::deque<int> source_gates;
+
+                uint8_t state_arr_2[game->statebits];
+                MTBDD lf2 = mtbdd_enum_all_first(s, game->s_vars, state_arr_2, NULL);
+                while (lf2 != mtbdd_false) {
+                    // decode state
+                    int from = 0;
+                    for (int i=0; i<game->statebits; i++) {
+                        from <<= 1;
+                        if (state_arr_2[i]) from |= 1;
+                    }
+                    source_states.push_back(from);
+                    // if state 0, take inverse
+                    source_gates.push_back(from == 0 ? aiger_not(state_to_lit[from]) : state_to_lit[from]);
+                    lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
+                }
+
+                for (int from : source_states) {
+                    //std::cerr << "source state " << from << " with UAP " << ((uap&sylvan_complement)?"~":"") << (uap&~sylvan_complement) << std::endl;
+                }
+
+                int aig_uap = bdd_to_aig(uap);
+                int aig_states = make_or(source_gates);
+                terms.push_back(makeand(aig_uap, aig_states));
+            }
+
+            int result = make_or(terms);
+            aiger_add_output(a, result, caps[i]); // simple, really
         }
-        for (int i=0; i<game->statebits; i++) {
-            int res = bdd_to_aig_cover(state_zdds[i]);
-            aiger_add_latch(a, state_to_lit[i], res, "");
+
+        MTBDD su_vars = mtbdd_set_addall(game->p_vars, game->cap_vars);
+        mtbdd_protect(&su_vars);
+
+        // full is: s > u > ns
+        MTBDD full = mtbdd_and_exists(game->strategies, game->trans, su_vars);
+        mtbdd_protect(&full);
+
+        // long noStates = (long)sylvan_satcount(states, game->s_vars);
+        // std::cerr << "number of states: " << noStates << std::endl;
+
+        uint8_t state_arr[game->statebits];
+        MTBDD lf = mtbdd_enum_all_first(states, game->s_vars, state_arr, NULL);
+        while (lf != mtbdd_false) {
+            // decode state
+            int state = 0;
+            for (int i=0; i<game->statebits; i++) {
+                state <<= 1;
+                if (state_arr[i]) state |= 1;
+            }
+
+            // encode state using NS vars
+            cap_bdd = encode_state(state, game->statebits, mtbdd_set_first(game->ns_vars));
+            // keep s > u of this state
+            cap_bdd = sylvan_and_exists(full, cap_bdd, game->ns_vars);
+
+            // std::cerr << "state " << state << /*" to has " << s <<*/ std::endl;
+
+            std::set<MTBDD> uaps;
+            collect_inter(cap_bdd, mtbdd_set_first(game->uap_vars), uaps);
+
+            std::deque<int> terms;
+            for (MTBDD uap : uaps) {
+                s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uap_vars), uap);
+
+                std::vector<int> source_states;
+                std::deque<int> source_gates;
+
+                uint8_t state_arr_2[game->statebits];
+                MTBDD lf2 = mtbdd_enum_all_first(s, game->s_vars, state_arr_2, NULL);
+                while (lf2 != mtbdd_false) {
+                    // decode state
+                    int from = 0;
+                    for (int i=0; i<game->statebits; i++) {
+                        from <<= 1;
+                        if (state_arr_2[i]) from |= 1;
+                    }
+                    source_states.push_back(from);
+                    // if state 0, take inverse
+                    source_gates.push_back(from == 0 ? aiger_not(state_to_lit[from]) : state_to_lit[from]);
+                    lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
+                }
+
+                for (int from : source_states) {
+                    // std::cerr << "source state " << from << " with UAP " << ((uap&sylvan_complement)?"~":"") << (uap&~sylvan_complement) << std::endl;
+                }
+
+                int aig_uap = bdd_to_aig(uap);
+                int aig_states = make_or(source_gates);
+                int result = makeand(aig_uap, aig_states);
+                terms.push_back(result);
+            }
+
+            int result = make_or(terms);
+            if (state == 0) result = aiger_not(result);
+            aiger_add_latch(a, state_to_lit[state], result, "");
+            lf = mtbdd_enum_all_next(states, game->s_vars, state_arr, NULL);
         }
+
+        mtbdd_unprotect(&states);
+        mtbdd_unprotect(&cap_bdd);
+        mtbdd_unprotect(&s);
+        mtbdd_unprotect(&full);
+        mtbdd_unprotect(&su_vars);
     } else {
-        for (int i=0; i<game->cap_count; i++) {
-            processCAP(i, cap_bdds[i]);
-        }
+        // NOT onehot
+
+        /* make state_to_lit for latches */
         for (int i=0; i<game->statebits; i++) {
-            processState(i, state_bdds[i]);
+            state_to_lit[i] = lit;
+            lit += 2;
         }
+
+        /* make var_to_lit for states */
+        MTBDD _vars = game->s_vars;
+        for (int i=0; i<game->statebits; i++) {
+            uint32_t bddvar = mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+            var_to_lit[bddvar] = state_to_lit[i];
+        }
+
+        // compute bdds for the controllable APs
+        cap_bdds = new MTBDD[game->cap_count];
+        for (int i=0; i<game->cap_count; i++) {
+            cap_bdds[i] = sylvan_ithvar(mtbdd_set_first(game->cap_vars)+i);
+            mtbdd_protect(&cap_bdds[i]);
+            // keep just s and u... get rid of other cap variables
+            cap_bdds[i] = sylvan_and_exists(game->strategies, cap_bdds[i], game->cap_vars);
+        }
+
+        // su_vars is priority and cap, which is to be removed...
+        MTBDD su_vars = mtbdd_set_addall(game->p_vars, game->cap_vars);
+        mtbdd_protect(&su_vars);
+
+        // full is: s > u > ns
+        MTBDD full = mtbdd_and_exists(game->strategies, game->trans, su_vars);
+        mtbdd_protect(&full);
+
+        // compute bdds for each state variable
+        state_bdds = new MTBDD[game->statebits];
+        for (int i=0; i<game->statebits; i++) {
+            state_bdds[i] = sylvan_ithvar(mtbdd_set_first(game->ns_vars) + i);
+            mtbdd_protect(&state_bdds[i]);
+            // keep just s and u... get rid of other cap variables
+            state_bdds[i] = sylvan_and_exists(full, state_bdds[i], game->ns_vars);
+        }
+
+        mtbdd_unprotect(&full);
+        mtbdd_unprotect(&su_vars);
+
+        // if ISOP, first convert all cap bdds etc to covers
+        if (isop) {
+            ZDD* cap_zdds = new ZDD[game->cap_count];
+            for (int i=0; i<game->cap_count; i++) {
+                cap_zdds[i] = zdd_false;
+                zdd_protect(&cap_zdds[i]);
+
+                MTBDD bddres;
+                cap_zdds[i] = zdd_isop(cap_bdds[i], cap_bdds[i], &bddres);
+                assert(bddres == cap_bdds[i]);
+                if (verbose) {
+                    std::cerr << "isop has " << (long)zdd_pathcount(cap_zdds[i]) << " terms and " << zdd_nodecount(&cap_zdds[i], 1) << " nodes." << std::endl;
+                }
+            }
+
+            ZDD* state_zdds = new ZDD[game->statebits];
+            for (int i=0; i<game->statebits; i++) {
+                state_zdds[i] = zdd_false;
+                zdd_protect(&state_zdds[i]);
+
+                MTBDD bddres;
+                state_zdds[i] = zdd_isop(state_bdds[i], state_bdds[i], &bddres);
+                assert(bddres == state_bdds[i]);
+                if (verbose) {
+                    std::cerr << "isop has " << (long)zdd_pathcount(state_zdds[i]) << " terms and " << zdd_nodecount(&state_zdds[i], 1) << " nodes." << std::endl;
+                }
+            }
+
+            for (int i=0; i<game->cap_count; i++) {
+                int res = bdd_to_aig_cover(cap_zdds[i]);
+                aiger_add_output(a, res, caps[i]); // simple, really
+            }
+            for (int i=0; i<game->statebits; i++) {
+                int res = bdd_to_aig_cover(state_zdds[i]);
+                aiger_add_latch(a, state_to_lit[i], res, "");
+            }
+        } else {
+            for (int i=0; i<game->cap_count; i++) {
+                int res = isop ? bdd_to_aig_isop(cap_bdds[i]) : bdd_to_aig(cap_bdds[i]);
+                aiger_add_output(a, res, caps[i]); // simple, really
+            }
+            for (int i=0; i<game->statebits; i++) {
+                int res = isop ? bdd_to_aig_isop(state_bdds[i]) : bdd_to_aig(state_bdds[i]);
+                aiger_add_latch(a, state_to_lit[i], res, "");
+            }
+        }
+
+        for (int i=0; i<game->cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
+        for (int i=0; i<game->statebits; i++) mtbdd_unprotect(&state_bdds[i]);
+        delete[] cap_bdds;
+        delete[] state_bdds;
     }
 }
 

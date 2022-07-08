@@ -219,12 +219,12 @@ encode_prio(int priority, int priobits)
  * High-significant bits come before low-significant bits in the BDD
  */
 MTBDD
-encode_state(uint32_t state, const int statebits, const int priobits, const int offset)
+encode_state(uint32_t state, const int statebits, const int s_first_var)
 {
     // create a cube
     MTBDD cube = mtbdd_true;
     for (int i=0; i<statebits; i++) {
-        const int bit = offset+statebits+priobits-i-1;
+        const int bit = s_first_var+statebits-i-1;
         if (state & 1) cube = mtbdd_makenode(bit, mtbdd_false, cube);
         else cube = mtbdd_makenode(bit, cube, mtbdd_false);
         state >>= 1;
@@ -567,6 +567,7 @@ handleOptions(int &argc, char**& argv)
             ("explicit", "Use the explicit splitting procedure")
             ("isop", "Generate AIG using ISOP instead of ITE")
             ("bisim", "Apply bisimulation minimisation to the solution")
+            ("onehot", "Use onehot encoding for the states")
             ("real", "Only check realiziability, don't synthesize")
             ("best", "Try all combinations of bisim and isop and write the smallest AIG")
             ("print-game", "Just print the parity game")
@@ -841,6 +842,9 @@ main(int argc, char* argv[])
             AIGmaker var2(data, sym);
             var2.setIsop();
             var2.process();
+            AIGmaker var3(data, sym);
+            var3.setOneHot();
+            var3.process();
 
             MTBDD partition = RUN(min_lts_strong, sym);
             mtbdd_protect(&partition);
@@ -852,67 +856,78 @@ main(int argc, char* argv[])
             RUN(minimize, sym, partition, verbose);
             mtbdd_unprotect(&partition);
 
-            AIGmaker var3(data, sym);
-            var3.process();
-            AIGmaker var4(data, sym);
-            var4.setIsop();
-            var4.process();
+            AIGmaker var1b(data, sym);
+            var1b.process();
+            AIGmaker var2b(data, sym);
+            var2b.setIsop();
+            var2b.process();
+            AIGmaker var3b(data, sym);
+            var3b.setOneHot();
+            var3b.process();
 
             if (verbose) {
                 std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
                 std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
-                std::cerr << "bisim, ite: " << var3.getNumAnds() << std::endl;
-                std::cerr << "bisim, isop: " << var4.getNumAnds() << std::endl;
+                std::cerr << "no bisim, oh: " << var3.getNumAnds() << std::endl;
+                std::cerr << "bisim, ite: " << var1b.getNumAnds() << std::endl;
+                std::cerr << "bisim, isop: " << var2b.getNumAnds() << std::endl;
+                std::cerr << "bisim, oh: " << var3b.getNumAnds() << std::endl;
             }
 
             if (options["compress"].count() > 0) {
                 var1.compress();
                 var2.compress();
                 var3.compress();
-                var4.compress();
+                var1b.compress();
+                var2b.compress();
+                var3b.compress();
+
+                if (verbose) {
+                    std::cerr << "AFTER COMPRESS:" << std::endl;
+                    std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
+                    std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
+                    std::cerr << "no bisim, oh: " << var3.getNumAnds() << std::endl;
+                    std::cerr << "bisim, ite: " << var1b.getNumAnds() << std::endl;
+                    std::cerr << "bisim, isop: " << var2b.getNumAnds() << std::endl;
+                    std::cerr << "bisim, oh: " << var3b.getNumAnds() << std::endl;
+                }
             }
 
-            if (verbose) {
-                std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
-                std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
-                std::cerr << "bisim, ite: " << var3.getNumAnds() << std::endl;
-                std::cerr << "bisim, isop: " << var4.getNumAnds() << std::endl;
-            }
+            auto smallest = var1.getNumAnds();
+            smallest = std::min(smallest, var2.getNumAnds());
+            smallest = std::min(smallest, var3.getNumAnds());
+            smallest = std::min(smallest, var1b.getNumAnds());
+            smallest = std::min(smallest, var2b.getNumAnds());
+            smallest = std::min(smallest, var3b.getNumAnds());
 
             if (options.count("write-binary")) {
-                auto smallest = std::min(std::min(var1.getNumAnds(), var2.getNumAnds()), std::min(var3.getNumAnds(), var4.getNumAnds()));
                 if (var1.getNumAnds() == smallest) {
                     var1.writeBinary(stdout);
                 } else if (var2.getNumAnds() == smallest) {
                     var2.writeBinary(stdout);
                 } else if (var3.getNumAnds() == smallest) {
                     var3.writeBinary(stdout);
-                } else if (var4.getNumAnds() == smallest) {
-                    var4.writeBinary(stdout);
+                } else if (var1b.getNumAnds() == smallest) {
+                    var1b.writeBinary(stdout);
+                } else if (var2b.getNumAnds() == smallest) {
+                    var2b.writeBinary(stdout);
+                } else if (var3b.getNumAnds() == smallest) {
+                    var3b.writeBinary(stdout);
                 }
             } else {
-                auto smallest = std::min(std::min(var1.getNumAnds(), var2.getNumAnds()), std::min(var3.getNumAnds(), var4.getNumAnds()));
-                if (options["write-binary"].count() > 0) {
-                    if (var1.getNumAnds() == smallest) {
-                        var1.writeBinary(stdout);
-                    } else if (var2.getNumAnds() == smallest) {
-                        var2.writeBinary(stdout);
-                    } else if (var3.getNumAnds() == smallest) {
-                        var3.writeBinary(stdout);
-                    } else if (var4.getNumAnds() == smallest) {
-                        var4.writeBinary(stdout);
-                    }
-                } else {
-                    std::cout << "REALIZABLE" << std::endl;
-                    if (var1.getNumAnds() == smallest) {
-                        var1.write(stdout);
-                    } else if (var2.getNumAnds() == smallest) {
-                        var2.write(stdout);
-                    } else if (var3.getNumAnds() == smallest) {
-                        var3.write(stdout);
-                    } else if (var4.getNumAnds() == smallest) {
-                        var4.write(stdout);
-                    }
+                std::cout << "REALIZABLE" << std::endl;
+                if (var1.getNumAnds() == smallest) {
+                    var1.write(stdout);
+                } else if (var2.getNumAnds() == smallest) {
+                    var2.write(stdout);
+                } else if (var3.getNumAnds() == smallest) {
+                    var3.write(stdout);
+                } else if (var1b.getNumAnds() == smallest) {
+                    var1b.write(stdout);
+                } else if (var2b.getNumAnds() == smallest) {
+                    var2b.write(stdout);
+                } else if (var3b.getNumAnds() == smallest) {
+                    var3b.write(stdout);
                 }
             }
             exit(10);
@@ -952,7 +967,14 @@ main(int argc, char* argv[])
         if (options["isop"].count() > 0) {
             maker.setIsop();
         }
+        if (options["onehot"].count() > 0) {
+            maker.setOneHot();
+        }
         maker.process();
+
+        /**
+         * maybe compress with ABC
+         */
         if (options["compress"].count() > 0) {
             if (verbose) std::cerr << "size of AIG before compression: " << maker.getNumAnds() << " gates." << std::endl;
             const double t_before = wctime();

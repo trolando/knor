@@ -195,7 +195,7 @@ TASK_IMPL_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool,
         int src = state->id;
         if (src == 0) src = vstart;
         else if (src == vstart) src = 0;
-        statebdd = encode_state(src, statebits, priobits, 0);
+        statebdd = encode_state(src, statebits, priobits);
         // update full trans with <statebdd> then <transbdd>
         res->trans = mtbdd_ite(statebdd, transbdd, res->trans);
         // deref statebdd and transbdd
@@ -882,7 +882,7 @@ SymGame::postprocess(bool verbose)
             mtbdd_refs_popptr(1);
         }
 
-        MTBDD visited = encode_state(0, this->statebits, this->priobits, 0);
+        MTBDD visited = encode_state(0, this->statebits, mtbdd_set_first(s_vars));
         mtbdd_refs_pushptr(&visited);
 
         MTBDD old = mtbdd_false;
