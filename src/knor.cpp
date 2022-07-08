@@ -562,18 +562,19 @@ handleOptions(int &argc, char**& argv)
         opts.custom_help("[OPTIONS...] [FILE]");
         opts.add_options()
             ("help", "Print help")
-            ("sym", "Generate and solve a symbolic parity game")
-            ("naive", "Use the naive splitting procedure")
-            ("explicit", "Use the explicit splitting procedure")
-            ("isop", "Generate AIG using ISOP instead of ITE")
+            ("sym", "Solve the parity game symbolically")
+            ("naive", "Use the naive splitting procedure (not recommended)")
+            ("explicit", "Use the explicit splitting procedure (not recommended)")
+            ("real", "Only check realiziability (no synthesis)")
             ("bisim", "Apply bisimulation minimisation to the solution")
             ("onehot", "Use onehot encoding for the states")
-            ("real", "Only check realiziability, don't synthesize")
+            ("isop", "Convert BDDs to AIG using ISOP (instead of Shannon expansion)")
+            ("compress", "Compress the AIG using ABC")
             ("best", "Try all combinations of bisim and isop and write the smallest AIG")
             ("print-game", "Just print the parity game")
             ("print-witness", "Print the witness parity game")
+            ("a,write-ascii", "Write ascii AIGER file")
             ("b,write-binary", "Write binary AIGER file")
-            ("c,compress", "Compress using ABC")
             ("v,verbose", "Be verbose")
             ;
         opts.add_options("Explicit solvers")
@@ -914,7 +915,7 @@ main(int argc, char* argv[])
                 } else if (var3b.getNumAnds() == smallest) {
                     var3b.writeBinary(stdout);
                 }
-            } else {
+            } else if (options["write-ascii"].count() > 0) {
                 std::cout << "REALIZABLE" << std::endl;
                 if (var1.getNumAnds() == smallest) {
                     var1.write(stdout);
@@ -988,7 +989,7 @@ main(int argc, char* argv[])
 
         if (options["write-binary"].count() > 0) {
             maker.writeBinary(stdout);
-        } else {
+        } else if (options["write-ascii"].count() > 0) {
             std::cout << "REALIZABLE" << std::endl;
             maker.write(stdout);
         }
