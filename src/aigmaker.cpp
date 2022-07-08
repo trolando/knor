@@ -464,7 +464,7 @@ AIGmaker::process()
                     //std::cerr << "source state " << from << " with UAP " << ((uap&sylvan_complement)?"~":"") << (uap&~sylvan_complement) << std::endl;
                 }
 
-                int aig_uap = bdd_to_aig(uap);
+                int aig_uap = isop ? bdd_to_aig_isop(uap) : bdd_to_aig(uap);
                 int aig_states = make_or(source_gates);
                 terms.push_back(makeand(aig_uap, aig_states));
             }
@@ -529,7 +529,7 @@ AIGmaker::process()
                     // std::cerr << "source state " << from << " with UAP " << ((uap&sylvan_complement)?"~":"") << (uap&~sylvan_complement) << std::endl;
                 }
 
-                int aig_uap = bdd_to_aig(uap);
+                int aig_uap = isop ? bdd_to_aig_isop(uap) : bdd_to_aig(uap);
                 int aig_states = make_or(source_gates);
                 int result = makeand(aig_uap, aig_states);
                 terms.push_back(result);
