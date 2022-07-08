@@ -4,10 +4,12 @@ Knor, a simple synthesis tool for HOA parity automata
 
 **Currently implemented features**:
 - parser for eHOA based on [HOA-TOOLS](https://github.com/gaperez64/hoa-tools/) by [Guillermo Perez](https://github.com/gaperez64/)
-- BDD-based splitting of the parity automaton into a parity game using [Sylvan](https://github.com/trolando/sylvan/)
-- solving the parity game using [Oink](https://github.com/trolando/oink/)
-- solving the symbolic parity game using an internal solver based on [Sylvan](https://github.com/trolando/sylvan/)
-- synthesizing the controller based on the solution (using Oink or the symbolic solver)
+- BDD-based splitting of the parity automaton into a symbolic parity game using [Sylvan](https://github.com/trolando/sylvan/)
+- solving the symbolic parity game explicitly using [Oink](https://github.com/trolando/oink/)
+- solving the symbolic parity game symbolically using an internal solver based on [Sylvan](https://github.com/trolando/sylvan/)
+- using symbolic bisimulation minimization to reduce the number of states, similar to [SigrefMC](https://github.com/trolando/sigrefmc/)
+- synthesizing the controller as AIG from the strategy BDD either using ITE, or ISOP, or one-hot encoding
+- post-synthesis compression using [ABC](https://github.com/berkeley-abc/abc)
 
 ## Usage
 
@@ -19,16 +21,37 @@ cmake ..
 make
 ```
 
-Dependencies include `flex` and `bison` to generate the eHOA parser, and `boost` for Oink.
+Dependencies include `flex` and `bison` to generate the eHOA parser, and `boost`.
 
 Use `knor --help` to get a list of parameters.
-The option `--naive` selects the naive splitting procedure, which is not recommended but possible for the purpose of comparing it with the BDD-based procedure.
-If you use `--print-game` then Knor will not solve the game and instead print the parity game to standard output.
 With `-v` or `--verbose`, Knor will write some information to standard error, such as the time it takes for each step of the process.
-Furthermore, you can select a solver for the parity game solving, e.g., `--npp`, `--fpi`, `--fpj` are recommended solvers.
-See further the documentation of [Oink](https://github.com/trolando/oink/).
 If invoked without a filename, Knor will attempt to read an eHOA file from `stdin`.
-Using `--sym` runs a symbolic parity game solver that is tailor-made for Knor.
+
+### Game construction
+- Use `--naive` for the (old) naive splitting procedure, which is not recommended but possible for the purpose of comparing it with the BDD-based procedure.
+- Use `--explicit` for the (also old) explicit parity game construction, also not recommended.
+- **Recommendation**: no option
+
+### Solving
+- You can select a solver for the parity game solving, e.g., `--npp`, `--fpi`, `--fpj` are recommended solvers.  
+  See further the documentation of [Oink](https://github.com/trolando/oink/).
+- Use `--sym` to run a symbolic parity game solver that is tailor-made for Knor.
+- Use `--print-game` to print the parity game to standard output instead of solving it.
+- **Recommendation**: `--sym` unless the game is an artificial hard game, then `--tl`
+
+### Synthesis
+- Use `--real` to not do synthesis, only realizability.
+- Use `--bisim` to minimize the state space using bisimulation minimization prior to synthesis.
+- Use `--onehot` to encode the states using one-hot encoding instead of logarithmic encoding.
+- Use `--isop` to use ZDD covers for the conversion to AIG.
+- Use `--best` to find the smallest result of combinations of `--bisim`, `--isop` and `--onehot`.
+- Use `--compress` to compress the AIG after construction using ABC.
+- **Recommendation**: `--bisim --onehot` to get a fast result, or `--best --compress` to get the best result; `--bisim --onehot --compress` gives decent results too.
+
+### Output
+- Use `-a` to write the result to ascii AIGER format.
+- Use `-b` to write the result to binary AIGER format.
+- **Recommendation**: use `-a` for the SYNTCOMP competition and `-b` for smaller output size.
 
 ## Extended HOA
 
