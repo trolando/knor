@@ -522,8 +522,9 @@ VOID_TASK_IMPL_3(minimize, SymGame*, sym, MTBDD, partition, bool, verbose)
     while (no_blocks > (1ULL << no_ns_vars)) no_ns_vars++;
 
     if (verbose) {
-        std::cerr << "state 0 is in block " << state_0_block << "; there are " << no_blocks << " blocks." << std::endl;
-        std::cerr << "now using " << no_ns_vars << " state variable(s) instead of " << sym->statebits << "." << std::endl;
+        std::cerr << "after bisimulation minimisation: " << no_blocks << " blocks." << std::endl;
+        // std::cerr << "state 0 is in block " << state_0_block << "; there are " << no_blocks << " blocks." << std::endl;
+        // std::cerr << "now using " << no_ns_vars << " state variable(s) instead of " << sym->statebits << "." << std::endl;
     }
 
     MTBDD block_s_vars = mtbdd_set_empty();
@@ -562,20 +563,20 @@ VOID_TASK_IMPL_3(minimize, SymGame*, sym, MTBDD, partition, bool, verbose)
 
     // run on next state (only trans)
     CACHE_APPLY_PARTITION = cache_next_opid();
-    if (verbose) std::cerr << "applying partition to next states of transition relation" << std::endl;
+    // if (verbose) std::cerr << "applying partition to next states of transition relation" << std::endl;
     sym->trans = CALL(apply_partition, sym->trans, partition, sym->ns_vars, block_ns_vars);
     // sym->print_trans();
     
     // change partition to s -> B
-    if (verbose) std::cerr << "preparing partition on current states" << std::endl;
+    // if (verbose) std::cerr << "preparing partition on current states" << std::endl;
     partition = mtbdd_compose(partition, ns_to_s_map);
 
     // run on state (trans and strategies)
     CACHE_APPLY_PARTITION = cache_next_opid();
-    if (verbose) std::cerr << "applying partition to current states of transition relation" << std::endl;
+    // if (verbose) std::cerr << "applying partition to current states of transition relation" << std::endl;
     sym->trans = CALL(apply_partition, sym->trans, partition, sym->s_vars, block_s_vars);
     // sym->print_trans();
-    if (verbose) std::cerr << "applying partition to states of strategies" << std::endl;
+    // if (verbose) std::cerr << "applying partition to states of strategies" << std::endl;
     sym->strategies = CALL(apply_partition, sym->strategies, partition, sym->s_vars, block_s_vars);
     // sym->print_strategies();
 

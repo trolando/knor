@@ -35,9 +35,6 @@ private:
     char** caps; // labels for controlled APs
     std::map<uint32_t, int> var_to_lit; // translate BDD variable (uap/state) to AIGER literal
 
-    sylvan::MTBDD* cap_bdds;   // contains the solution: controllable ap bdds: state -> uap -> B
-    sylvan::MTBDD* state_bdds; // contains the solution: state bit bdds      : state -> uap -> B
-
     std::map<sylvan::MTBDD, int> mapping; // map MTBDD to AIGER literal
     std::map<uint64_t, int> cache; // cache for ands
 

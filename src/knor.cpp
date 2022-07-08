@@ -651,7 +651,7 @@ main(int argc, char* argv[])
 
     const double t_after_parsing = wctime();
     if (verbose) {
-        std::cerr << "finished parsing automaton in " << std::fixed << (t_after_parsing - t_before_parsing) << " sec." << std::endl;
+        std::cerr << "\033[1;37mfinished parsing automaton in " << std::fixed << (t_after_parsing - t_before_parsing) << " sec.\033[m" << std::endl;
         std::cerr << "automaton has " << data->noStates << " states." << std::endl;
     }
 
@@ -726,7 +726,7 @@ main(int argc, char* argv[])
         const double t_after_splitting = wctime();
 
         if (verbose) {
-            std::cerr << "finished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec." << std::endl;
+            std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
             std::cerr << "constructed game has " << game->vertexcount() << " vertices and " << game->edgecount() << " edges." << std::endl;
         }
 
@@ -762,7 +762,9 @@ main(int argc, char* argv[])
         double end = wctime();
 
         // report how long it all took
-        if (verbose) std::cerr << "finished solving game in " << std::fixed << (end-begin) << " sec." << std::endl;
+        if (verbose) {
+            std::cerr << "\033[1;37mfinished solving game in " << std::fixed << (end - begin) << " sec.\033[m" << std::endl;
+        }
 
         // undo the sorting
         game->permute(mapping);
@@ -803,13 +805,17 @@ main(int argc, char* argv[])
             exit(0);
         }
 
-        if (verbose) std::cerr << "finished constructing game in " << std::fixed << (t_after_construct - t_before_construct) << " sec." << std::endl;
+        if (verbose) {
+            std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_construct - t_before_construct) << " sec.\033[m" << std::endl;
+        }
 
         const double t_before_solve = wctime();
         realizable = RUN(wrap_solve, sym, verbose);
         const double t_after_solve = wctime();
 
-        if (verbose) std::cerr << "finished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec." << std::endl;
+        if (verbose) {
+            std::cerr << "\033[1;37mfinished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec.\033[m" << std::endl;
+        }
     }
 
     if (options["real"].count() > 0) {
@@ -828,7 +834,13 @@ main(int argc, char* argv[])
             // sym->print_strategies();
         }
 
+        const double t_before = wctime();
         RUN(wrap_pp, sym, verbose);
+        const double t_after = wctime();
+
+        if (verbose) {
+            std::cerr << "\033[1;37mfinished post processing in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+        }
 
         if (verbose) {
             // sym->print_trans();
@@ -847,15 +859,13 @@ main(int argc, char* argv[])
             var3.setOneHot();
             var3.process();
 
+            const double t_before = wctime();
             MTBDD partition = RUN(min_lts_strong, sym);
             mtbdd_protect(&partition);
-
-            if (verbose) {
-                // RUN(print_partition, sym, partition);
-            }
-
             RUN(minimize, sym, partition, verbose);
             mtbdd_unprotect(&partition);
+            const double t_after = wctime();
+            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
 
             AIGmaker var1b(data, sym);
             var1b.process();
@@ -884,7 +894,7 @@ main(int argc, char* argv[])
                 var3b.compress();
 
                 if (verbose) {
-                    std::cerr << "AFTER COMPRESS:" << std::endl;
+                    std::cerr << "sizes after compressing with ABC:" << std::endl;
                     std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
                     std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
                     std::cerr << "no bisim, oh: " << var3.getNumAnds() << std::endl;
@@ -935,15 +945,16 @@ main(int argc, char* argv[])
         }
 
         if (options["bisim"].count() > 0) {
+            const double t_before = wctime();
             MTBDD partition = RUN(min_lts_strong, sym);
             mtbdd_protect(&partition);
-
             if (verbose) {
                 // RUN(print_partition, sym, partition);
             }
-
             RUN(minimize, sym, partition, verbose);
             mtbdd_unprotect(&partition);
+            const double t_after = wctime();
+            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
 
         if (verbose) {
@@ -982,7 +993,7 @@ main(int argc, char* argv[])
             maker.compress();
             const double t_after = wctime();
             if (verbose) std::cerr << "size of AIG after compression: " << maker.getNumAnds() << " gates." << std::endl;
-            if (verbose) std::cerr << "compression took " << std::fixed << (t_after - t_before) << " sec." << std::endl;
+            if (verbose) std::cerr << "\033[1;37mfinished compression in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         } else {
             if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
         }

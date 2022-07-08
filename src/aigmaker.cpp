@@ -148,7 +148,7 @@ int
 AIGmaker::bdd_to_aig_isop(MTBDD bdd)
 {
     if (verbose) {
-        std::cerr << "running isop for BDD with " << mtbdd_nodecount(bdd) << " nodes." << std::endl;
+        // std::cerr << "running isop for BDD with " << mtbdd_nodecount(bdd) << " nodes." << std::endl;
     }
     MTBDD bddres;
     ZDD isop = zdd_isop(bdd, bdd, &bddres);
@@ -157,7 +157,7 @@ AIGmaker::bdd_to_aig_isop(MTBDD bdd)
     assert(bdd == bddres);
     assert(bdd == zdd_cover_to_bdd(isop));
     if (verbose) {
-        std::cerr << "isop has " << (long)zdd_pathcount(isop) << " terms and " << zdd_nodecount(&isop, 1) << " nodes." << std::endl;
+        // std::cerr << "isop has " << (long)zdd_pathcount(isop) << " terms and " << zdd_nodecount(&isop, 1) << " nodes." << std::endl;
     }
 
     int res = bdd_to_aig_cover(isop);
@@ -562,6 +562,9 @@ AIGmaker::process()
             _vars = mtbdd_set_next(_vars);
             var_to_lit[bddvar] = state_to_lit[i];
         }
+
+        MTBDD* cap_bdds;   // contains the solution: controllable ap bdds: state -> uap -> B
+        MTBDD* state_bdds; // contains the solution: state bit bdds      : state -> uap -> B
 
         // compute bdds for the controllable APs
         cap_bdds = new MTBDD[game->cap_count];

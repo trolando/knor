@@ -671,7 +671,8 @@ SymGame::solve(bool verbose)
     int pr = 0;
     while (pr <= this->maxprio) {
         if (verbose) {
-            std::cerr << "priority " << pr << std::endl;
+            // too much
+            // std::cerr << "priority " << pr << std::endl;
         }
 
         MTBDD onestepeven = mtbdd_false;
@@ -847,10 +848,6 @@ SymGame::postprocess(bool verbose)
     // TODO it would be nicer if we could do bisimulation without this heuristic
     strategies = RUN(clarify, strategies, cap_vars);
 
-    if (verbose) {
-        std::cerr << "running symbolic reachability" << std::endl;
-    }
-
     // Now remove all unreachable states according to the strategy  (slightly smaller controller)
     {
         MTBDD ns_to_s = mtbdd_map_empty();
@@ -901,8 +898,8 @@ SymGame::postprocess(bool verbose)
         assert(mtbdd_getvar(visited) >= (unsigned)this->priobits); // should not have priorities
 
         // count the number of states
-        long noStates = (long)sylvan_satcount(visited, s_vars);
         if (verbose) {
+            long noStates = (long)sylvan_satcount(visited, s_vars);
             std::cerr << "after reachability: " << noStates << " states." << std::endl;
         }
 
