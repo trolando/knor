@@ -1,18 +1,8 @@
 #!/bin/bash
-
-DIR=`dirname $0`
-
-# build Release version of knor
-cd $DIR
-rm -rf build_se knor.tar.gz
-cmake -B build_se -DCMAKE_BUILD_TYPE=Release .
-cmake --build build_se --target knor --config Release -j 4
-
-# make archive
-cp build_se/knor se/bin
-cd se
+DIR=`dirname $0`/se
+cd ${DIR}
+rm -rf source ../knor.tar.gz
+mkdir source
+cp -r ../sylvan ../abc ../oink ../src ../CMakeLists.txt source
 tar zcfv ../knor.tar.gz *
-cd ..
-
-# cleanup
-rm -rf se/bin/knor build_se
+rm -rf source
