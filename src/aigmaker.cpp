@@ -6,11 +6,6 @@
 #include <knor.hpp>
 #include <set>
 
-#include <boost/filesystem/operations.hpp>
-#include <boost/filesystem/path.hpp>
-#include <boost/iostreams/device/file_descriptor.hpp>
-#include <boost/iostreams/stream.hpp>
-
 using namespace sylvan;
 
 
@@ -744,9 +739,7 @@ int AIGmaker::getAbcNetworkSize(Abc_Frame_t* pAbc) const {
 }
 
 int AIGmaker::getTmpFile(char* tmp_filename) const {
-    boost::filesystem::path tmpfile_template_path = boost::filesystem::temp_directory_path() / "knor.XXXXXX";
-    std::string tmpfile_template = tmpfile_template_path.string();
-    std::strcpy(tmp_filename, tmpfile_template.c_str());
+    std::strcpy(tmp_filename, "knor.XXXXXX");
     int fd = mkstemp(tmp_filename);
     if (fd == -1) {
         throw std::runtime_error("Could not create temporary file: " + std::string(tmp_filename));
