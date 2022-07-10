@@ -676,7 +676,8 @@ const std::vector<std::string> AIGmaker::compressCommands ({
     "resub -K 12 -N 2 -l",
     "balance -l",
     "rewrite -z -l",
-    "balance -l"
+    "balance -l",
+    "dc2"
 });
 
 // commands taken from 'alias compress2' from 'abc.rc' file
@@ -711,7 +712,7 @@ AIGmaker::compress()
         old_num_nodes = new_num_nodes;
         new_num_nodes = getAbcNetworkSize(pAbc);
         // std::cerr << "nodes after compress run: " << new_num_nodes << std::endl;
-        if ((old_num_nodes-new_num_nodes)<old_num_nodes/20) break; // 5% improvement or better pls
+        if ((old_num_nodes-new_num_nodes)<old_num_nodes/40) break; // 2.5% improvement or better pls
     }
 
     readFromAbc(pAbc);
@@ -734,10 +735,11 @@ AIGmaker::drewrite()
         executeAbcCommand(pAbc, "drw");
         executeAbcCommand(pAbc, "balance");
         executeAbcCommand(pAbc, "drf");
+        executeAbcCommand(pAbc, "dc2");
         old_num_nodes = new_num_nodes;
         new_num_nodes = getAbcNetworkSize(pAbc);
         // std::cerr << "nodes after compress run: " << new_num_nodes << std::endl;
-        if ((old_num_nodes-new_num_nodes)<old_num_nodes/50) break; // 2% improvement or better pls
+        if ((old_num_nodes-new_num_nodes)<old_num_nodes/100) break; // 1% improvement or better pls
     }
 
     readFromAbc(pAbc);

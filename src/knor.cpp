@@ -895,7 +895,7 @@ main(int argc, char* argv[])
                 var3b.drewrite();
 
                 if (verbose) {
-                    std::cerr << "sizes after drewrite with ABC:" << std::endl;
+                    std::cerr << "sizes after drw+drf with ABC:" << std::endl;
                     std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
                     std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
                     std::cerr << "no bisim, oh: " << var3.getNumAnds() << std::endl;
@@ -1008,12 +1008,12 @@ main(int argc, char* argv[])
          * maybe compress with ABC
          */
         if (options["drewrite"].count() > 0) {
-            if (verbose) std::cerr << "size of AIG before drewrite: " << maker.getNumAnds() << " gates." << std::endl;
+            if (verbose) std::cerr << "size of AIG before drw+drf: " << maker.getNumAnds() << " gates." << std::endl;
             const double t_before = wctime();
             maker.drewrite();
             const double t_after = wctime();
-            if (verbose) std::cerr << "size of AIG after drewrite: " << maker.getNumAnds() << " gates." << std::endl;
-            if (verbose) std::cerr << "\033[1;37mfinished drewrite in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+            if (verbose) std::cerr << "size of AIG after drw+drf: " << maker.getNumAnds() << " gates." << std::endl;
+            if (verbose) std::cerr << "\033[1;37mfinished drw+drf in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         } else {
             if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
         }
