@@ -5,6 +5,7 @@
 #include <aigmaker.hpp>
 #include <knor.hpp>
 #include <set>
+#include <cstring> // for strcpy
 
 using namespace sylvan;
 
