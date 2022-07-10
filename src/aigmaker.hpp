@@ -85,6 +85,7 @@ public:
     void writeAscii(FILE* out);
     void writeBinary(FILE* out);
 
+    void drewrite();
     void compress();
 };
 

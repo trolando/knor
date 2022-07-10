@@ -719,17 +719,42 @@ AIGmaker::compress()
     Abc_Stop();
 }
 
+void
+AIGmaker::drewrite()
+{
+    Abc_Start();
+    Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
+
+    writeToAbc(pAbc);
+
+    // compress until convergence
+    int new_num_nodes = getAbcNetworkSize(pAbc);
+    int old_num_nodes = new_num_nodes + 1;
+    while (new_num_nodes > 0 && new_num_nodes < old_num_nodes) {
+        executeAbcCommand(pAbc, "drw");
+        executeAbcCommand(pAbc, "balance");
+        executeAbcCommand(pAbc, "drf");
+        old_num_nodes = new_num_nodes;
+        new_num_nodes = getAbcNetworkSize(pAbc);
+        // std::cerr << "nodes after compress run: " << new_num_nodes << std::endl;
+        if ((old_num_nodes-new_num_nodes)<old_num_nodes/50) break; // 2% improvement or better pls
+    }
+
+    readFromAbc(pAbc);
+
+    Abc_Stop();
+}
+
 void AIGmaker::executeAbcCommand(Abc_Frame_t* pAbc, const std::string command) const {
     if (Cmd_CommandExecute( pAbc, command.c_str())) {
         throw std::runtime_error("Cannot execute ABC command: " + command);
     }
+    if (verbose) std::cerr << "after " << command << ": " << getAbcNetworkSize(pAbc) << std::endl;
 }
 
 void AIGmaker::executeCompressCommands(Abc_Frame_t* pAbc) const {
     for (const auto& command : compressCommands) {
-        // std::cerr << "executing " << command << std::endl;
         executeAbcCommand(pAbc, command);
-        // std::cerr << "nodes after compress run: " << getAbcNetworkSize(pAbc) << std::endl;
     }
 }
 

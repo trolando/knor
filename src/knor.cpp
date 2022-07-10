@@ -570,6 +570,7 @@ handleOptions(int &argc, char**& argv)
             ("onehot", "Use onehot encoding for the states")
             ("isop", "Convert BDDs to AIG using ISOP (instead of Shannon expansion)")
             ("compress", "Compress the AIG using ABC")
+            ("drewrite", "Compress the AIG using ABCs commands drw and drf")
             ("best", "Try all combinations of bisim and isop and write the smallest AIG")
             ("print-game", "Just print the parity game")
             ("print-witness", "Print the witness parity game")
@@ -885,6 +886,25 @@ main(int argc, char* argv[])
                 std::cerr << "bisim, oh: " << var3b.getNumAnds() << std::endl;
             }
 
+            if (options["drewrite"].count() > 0) {
+                var1.drewrite();
+                var2.drewrite();
+                var3.drewrite();
+                var1b.drewrite();
+                var2b.drewrite();
+                var3b.drewrite();
+
+                if (verbose) {
+                    std::cerr << "sizes after drewrite with ABC:" << std::endl;
+                    std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
+                    std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
+                    std::cerr << "no bisim, oh: " << var3.getNumAnds() << std::endl;
+                    std::cerr << "bisim, ite: " << var1b.getNumAnds() << std::endl;
+                    std::cerr << "bisim, isop: " << var2b.getNumAnds() << std::endl;
+                    std::cerr << "bisim, oh: " << var3b.getNumAnds() << std::endl;
+                }
+            }
+
             if (options["compress"].count() > 0) {
                 var1.compress();
                 var2.compress();
@@ -987,6 +1007,17 @@ main(int argc, char* argv[])
         /**
          * maybe compress with ABC
          */
+        if (options["drewrite"].count() > 0) {
+            if (verbose) std::cerr << "size of AIG before drewrite: " << maker.getNumAnds() << " gates." << std::endl;
+            const double t_before = wctime();
+            maker.drewrite();
+            const double t_after = wctime();
+            if (verbose) std::cerr << "size of AIG after drewrite: " << maker.getNumAnds() << " gates." << std::endl;
+            if (verbose) std::cerr << "\033[1;37mfinished drewrite in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+        } else {
+            if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
+        }
+
         if (options["compress"].count() > 0) {
             if (verbose) std::cerr << "size of AIG before compression: " << maker.getNumAnds() << " gates." << std::endl;
             const double t_before = wctime();
