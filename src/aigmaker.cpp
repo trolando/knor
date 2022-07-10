@@ -645,7 +645,7 @@ AIGmaker::process()
 }
 
 void
-AIGmaker::write(FILE* out)
+AIGmaker::writeAscii(FILE* out)
 {
     aiger_write_to_file(a, aiger_ascii_mode, out);
 }

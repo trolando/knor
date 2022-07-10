@@ -82,7 +82,7 @@ public:
     }
 
     void process();
-    void write(FILE* out);
+    void writeAscii(FILE* out);
     void writeBinary(FILE* out);
 
     void compress();

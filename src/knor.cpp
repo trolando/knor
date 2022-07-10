@@ -928,17 +928,17 @@ main(int argc, char* argv[])
             } else if (options["write-ascii"].count() > 0) {
                 std::cout << "REALIZABLE" << std::endl;
                 if (var1.getNumAnds() == smallest) {
-                    var1.write(stdout);
+                    var1.writeAscii(stdout);
                 } else if (var2.getNumAnds() == smallest) {
-                    var2.write(stdout);
+                    var2.writeAscii(stdout);
                 } else if (var3.getNumAnds() == smallest) {
-                    var3.write(stdout);
+                    var3.writeAscii(stdout);
                 } else if (var1b.getNumAnds() == smallest) {
-                    var1b.write(stdout);
+                    var1b.writeAscii(stdout);
                 } else if (var2b.getNumAnds() == smallest) {
-                    var2b.write(stdout);
+                    var2b.writeAscii(stdout);
                 } else if (var3b.getNumAnds() == smallest) {
-                    var3b.write(stdout);
+                    var3b.writeAscii(stdout);
                 }
             }
             exit(10);
@@ -1002,7 +1002,7 @@ main(int argc, char* argv[])
             maker.writeBinary(stdout);
         } else if (options["write-ascii"].count() > 0) {
             std::cout << "REALIZABLE" << std::endl;
-            maker.write(stdout);
+            maker.writeAscii(stdout);
         }
         exit(10);
     } else {
