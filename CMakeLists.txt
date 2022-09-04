@@ -1,69 +1,46 @@
-cmake_minimum_required(VERSION 3.0)
-project(knor VERSION 1.0.0 LANGUAGES C CXX)
+cmake_minimum_required(VERSION 3.14)
 
-set(PROJECT_DESCRIPTION "Knor, a simple synthesis tool for HOA parity automata")
-set(PROJECT_URL "https://github.com/trolando/knor")
+project(knor
+    VERSION 1.0.0
+    DESCRIPTION "Knor, a synthesis tool for HOA parity automata using BDDs"
+    HOMEPAGE_URL "https://github.com/trolando/knor"
+    LANGUAGES C CXX
+)
 
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_FLAGS "-Wall -Wextra")
-set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
+# Dependencies
+include(FetchContent)
+FetchContent_Declare(
+    sylvan
+    GIT_REPOSITORY https://github.com/trolando/sylvan.git
+    GIT_TAG        v1.7.1
+)
+FetchContent_Declare(
+    oink
+    GIT_REPOSITORY https://github.com/trolando/oink.git
+    GIT_TAG        2271682df50ecc2c9ae9225d4fbd808176c60240
+)
+FetchContent_Declare(
+    abc
+    GIT_REPOSITORY https://github.com/berkeley-abc/abc.git
+    GIT_TAG        0ed81b34f1048a10aa1b6785c2fb65b526c77b5a
+)
+FetchContent_MakeAvailable(sylvan)
+FetchContent_MakeAvailable(oink)
+set (READLINE_FOUND FALSE)
+add_definitions (-DABC_USE_STDINT_H)
+FetchContent_MakeAvailable(abc)
 
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_FLAGS "-Wall -Wextra")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -march=native")
-
-if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel." FORCE)
-ENDIF(NOT CMAKE_BUILD_TYPE)
-
-# Some info
-message(STATUS "OS: ${CMAKE_SYSTEM_NAME}")
-message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID}")
-
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    # require at least gcc 4.9
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9)
-        message(FATAL_ERROR "GCC version must be at least 4.9!  " ${CMAKE_CXX_COMPILER_VERSION})
-    endif()
-endif()
-
+# Parser generator
 find_package(FLEX)
 find_package(BISON)
-
 FLEX_TARGET(hoalexer src/hoa.l ${CMAKE_CURRENT_BINARY_DIR}/hoalexer.c DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/hoalexer.h)
 BISON_TARGET(hoaparser src/hoa.y ${CMAKE_CURRENT_BINARY_DIR}/hoaparser.c DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/hoaparser.h)
 ADD_FLEX_BISON_DEPENDENCY(hoalexer hoaparser)
 
-find_package(Git QUIET)
-if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/.git")
-    # Update submodules as needed
-    option(GIT_SUBMODULE "Check submodules during build" ON)
-    if(GIT_SUBMODULE)
-        message(STATUS "Submodule update")
-        execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
-                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                        RESULT_VARIABLE GIT_SUBMOD_RESULT)
-        if(NOT GIT_SUBMOD_RESULT EQUAL "0")
-            message(WARNING "git submodule update --init failed with ${GIT_SUBMOD_RESULT}, please checkout submodules")
-        endif()
-    endif()
-endif()
-
-if(NOT EXISTS "${PROJECT_SOURCE_DIR}/sylvan/CMakeLists.txt" OR
-   NOT EXISTS "${PROJECT_SOURCE_DIR}/oink/CMakeLists.txt")
-    message(FATAL_ERROR "The submodules were not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
-endif()
-
-add_subdirectory("oink" EXCLUDE_FROM_ALL)
-add_subdirectory("sylvan" EXCLUDE_FROM_ALL)
-
-set (READLINE_FOUND FALSE)
-add_definitions (-DABC_USE_STDINT_H)
-add_subdirectory("abc" EXCLUDE_FROM_ALL)
-
-add_executable(knor
+# Knor itself
+add_executable(knor)
+target_sources(knor
+  PRIVATE
     src/knor.cpp
     src/symgame.cpp
     src/bisim.cpp
@@ -72,7 +49,8 @@ add_executable(knor
     src/aiger.c
     ${BISON_hoaparser_OUTPUTS}
     ${FLEX_hoalexer_OUTPUTS}
-    )
-target_link_libraries(knor PRIVATE oink sylvan libabc "-static")
+)
+target_compile_features(knor PUBLIC c_std_11 cxx_std_11)
+target_compile_options(knor PRIVATE -Wall -Wextra -fno-strict-aliasing -Wno-deprecated -Wno-unused-parameter)
+target_link_libraries(knor PRIVATE oink sylvan::sylvan libabc "-static")
 target_include_directories(knor PRIVATE src)
-

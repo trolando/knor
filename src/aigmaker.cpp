@@ -456,9 +456,9 @@ AIGmaker::process()
                     lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
                 }
 
-                for (int from : source_states) {
+                //for (int from : source_states) {
                     //std::cerr << "source state " << from << " with UAP " << ((uap&sylvan_complement)?"~":"") << (uap&~sylvan_complement) << std::endl;
-                }
+                //}
 
                 int aig_uap = isop ? bdd_to_aig_isop(uap) : bdd_to_aig(uap);
                 int aig_states = make_or(source_gates);
@@ -521,9 +521,9 @@ AIGmaker::process()
                     lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
                 }
 
-                for (int from : source_states) {
+                //for (int from : source_states) {
                     // std::cerr << "source state " << from << " with UAP " << ((uap&sylvan_complement)?"~":"") << (uap&~sylvan_complement) << std::endl;
-                }
+                //}
 
                 int aig_uap = isop ? bdd_to_aig_isop(uap) : bdd_to_aig(uap);
                 int aig_states = make_or(source_gates);

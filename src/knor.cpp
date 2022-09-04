@@ -13,7 +13,7 @@
 #include <game.hpp>
 #include <oink.hpp>
 #include <solvers.hpp>
-#include <tools/cxxopts.hpp>
+#include <cxxopts.hpp>
 #include <knor.hpp>
 #include <symgame.hpp>
 #include <bisim.hpp>

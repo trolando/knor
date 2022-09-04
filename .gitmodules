@@ -1,9 +1,0 @@
-[submodule "oink"]
-	path = oink
-	url = https://www.github.com/trolando/oink
-[submodule "sylvan"]
-	path = sylvan
-	url = https://github.com/trolando/sylvan/
-[submodule "abc"]
-	path = abc
-	url = https://github.com/berkeley-abc/abc
