@@ -946,7 +946,7 @@ main(int argc, char* argv[])
                     var3b.writeBinary(stdout);
                 }
             } else if (options["write-ascii"].count() > 0) {
-                std::cout << "REALIZABLE" << std::endl;
+                // std::cout << "REALIZABLE" << std::endl;
                 if (var1.getNumAnds() == smallest) {
                     var1.writeAscii(stdout);
                 } else if (var2.getNumAnds() == smallest) {
@@ -1032,12 +1032,12 @@ main(int argc, char* argv[])
         if (options["write-binary"].count() > 0) {
             maker.writeBinary(stdout);
         } else if (options["write-ascii"].count() > 0) {
-            std::cout << "REALIZABLE" << std::endl;
+            //std::cout << "REALIZABLE" << std::endl;
             maker.writeAscii(stdout);
         }
         exit(10);
     } else {
-        std::cout << "UNREALIZABLE" << std::endl;
+        //std::cout << "UNREALIZABLE" << std::endl;
         exit(20);
     }
 
