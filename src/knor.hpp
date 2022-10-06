@@ -32,10 +32,10 @@ sylvan::MTBDD encode_prio(int priority, int priobits);
 sylvan::MTBDD encode_state(uint32_t state, const int statebits, const int s_first_var);
 
 /**
-* Encode a priostate as a BDD, using priobits > statebits
+* Encode a priostate as a BDD, using priobits before statebits
 * High-significant bits come before low-significant bits in the BDD
 */
-sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, const int statebits, const int priobits, const int offset);
+sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, const int statebits, const int priobits, const int s_first_var, const int p_first_var);
 
 /**
  * Convert a transition label (Btree) to a BDD encoding the label

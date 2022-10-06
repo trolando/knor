@@ -193,7 +193,7 @@ TASK_IMPL_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool,
             // encode the label as a MTBDD
             lblbdd = CALL(evalLabel, label, data, variables);
             // encode priostate (leaf) and update transition relation
-            leaf = encode_priostate(succ, priority, statebits, priobits, statebits+priobits+data->noAPs);
+            leaf = encode_priostate(succ, priority, statebits, priobits, mtbdd_set_first(res->ns_vars), mtbdd_set_first(res->p_vars));
             // trans := lbl THEN leaf ELSE trans
             transbdd = mtbdd_ite(lblbdd, leaf, transbdd);
             // deref lblbdd and leaf
@@ -204,7 +204,7 @@ TASK_IMPL_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool,
         int src = state->id;
         if (src == 0) src = vstart;
         else if (src == vstart) src = 0;
-        statebdd = encode_state(src, statebits, priobits);
+        statebdd = encode_state(src, statebits, mtbdd_set_first(res->s_vars));
         // update full trans with <statebdd> then <transbdd>
         res->trans = mtbdd_ite(statebdd, transbdd, res->trans);
         // deref statebdd and transbdd
@@ -670,10 +670,6 @@ SymGame::solve(bool verbose)
         }
     }
 
-    // We force initial state to be state 0 in construction
-    MTBDD initial = encode_priostate(0, 0, this->statebits, this->priobits, 0);
-    mtbdd_refs_pushptr(&initial);
-
     // using the freezing FPI algorithm
     // prepare the distractions set
     MTBDD distractions = mtbdd_false; // initially, no distractions
@@ -691,9 +687,11 @@ SymGame::solve(bool verbose)
     }
 
     int pr = 0;
+    int iterations = 0;
     while (pr <= this->maxprio) {
+        ++iterations;
         if (verbose) {
-            // too much
+            // too verbose... comment out for now
             // std::cerr << "priority " << pr << std::endl;
         }
 
@@ -835,7 +833,15 @@ SymGame::solve(bool verbose)
         mtbdd_refs_popptr(3); // pop newd, strat, onestepeven
     }
 
+    if (verbose) {
+        std::cerr << "symbolic solver required " << iterations << " iterations." << std::endl;
+    }
+
     // we now know if the initial state is distracting or not
+    // We force initial state to be state 0 in construction
+    MTBDD initial = encode_priostate(0, 0, this->statebits, this->priobits, mtbdd_set_first(s_vars), 0);
+    mtbdd_refs_pushptr(&initial);
+
     if (sylvan_and(initial, distractions) != sylvan_false) {
         mtbdd_refs_popptr(10+3*this->maxprio); // free it up
 

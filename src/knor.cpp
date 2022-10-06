@@ -234,22 +234,22 @@ encode_state(uint32_t state, const int statebits, const int s_first_var)
 
 
 /**
-* Encode a priostate as a BDD, using priobits > statebits
+* Encode a priostate as a BDD, with priobits before statebits
 * High-significant bits come before low-significant bits in the BDD
 */
 MTBDD
-encode_priostate(uint32_t state, uint32_t priority, const int statebits, const int priobits, const int offset)
+encode_priostate(uint32_t state, uint32_t priority, const int statebits, const int priobits, const int s_first_var, const int p_first_var)
 {
     // create a cube
     MTBDD cube = mtbdd_true;
     for (int i=0; i<statebits; i++) {
-        if (state & 1) cube = mtbdd_makenode(offset+statebits+priobits-i-1, mtbdd_false, cube);
-        else cube = mtbdd_makenode(offset+statebits+priobits-i-1, cube, mtbdd_false);
+        if (state & 1) cube = mtbdd_makenode(s_first_var+statebits-i-1, mtbdd_false, cube);
+        else cube = mtbdd_makenode(s_first_var+statebits-i-1, cube, mtbdd_false);
         state >>= 1;
     }
     for (int i=0; i<priobits; i++) {
-        if (priority & 1) cube = mtbdd_makenode(offset+priobits-i-1, mtbdd_false, cube);
-        else cube = mtbdd_makenode(offset+priobits-i-1, cube, mtbdd_false);
+        if (priority & 1) cube = mtbdd_makenode(p_first_var+priobits-i-1, mtbdd_false, cube);
+        else cube = mtbdd_makenode(p_first_var+priobits-i-1, cube, mtbdd_false);
         priority >>= 1;
     }
     return cube;
@@ -272,7 +272,7 @@ collect_targets(MTBDD trans, std::set<uint64_t> &res, const int statebits, const
         uint32_t priority = (uint32_t)(leaf>>32);
         uint32_t state = (uint32_t)(leaf & 0xffffffff);
 
-        return encode_priostate(state, priority, statebits, priobits, 0);
+        return encode_priostate(state, priority, statebits, priobits, priobits, 0);
     } else {
         MTBDD left = mtbdd_false;
         MTBDD right = mtbdd_false;
