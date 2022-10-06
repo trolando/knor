@@ -620,35 +620,29 @@ SymGame::strategyToPG()
 bool
 SymGame::solve(bool verbose)
 {
-    const int offset = this->cap_count + this->uap_count + this->priobits + this->statebits;
-
-    MTBDD s_vars = mtbdd_set_empty();
-    MTBDD uap_vars = mtbdd_set_empty();
-    MTBDD cap_vars = mtbdd_set_empty();
-    MTBDD ns_vars = mtbdd_set_empty();
-    mtbdd_refs_pushptr(&s_vars);
-    mtbdd_refs_pushptr(&uap_vars);
-    mtbdd_refs_pushptr(&cap_vars);
-    mtbdd_refs_pushptr(&ns_vars);
-
-    for (int i=0; i<(this->priobits + this->statebits); i++) s_vars = mtbdd_set_add(s_vars, i);
-    for (int i=0; i<this->uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, this->priobits+this->statebits+i);
-    for (int i=0; i<this->cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, this->priobits+this->statebits+this->uap_count+i);
-    for (int i=0; i<(this->priobits + this->statebits); i++) ns_vars = mtbdd_set_add(ns_vars, offset + i);
+    // prepare Odd (all odd-priority states)
 
     MTBDD odd = sylvan_ithvar(this->priobits-1); // deepest bit is the parity
     mtbdd_refs_pushptr(&odd);
 
-    MTBDD from_next = mtbdd_map_empty();
-    mtbdd_refs_pushptr(&from_next);
-    for (int i=0; i<(this->priobits + this->statebits); i++) {
-        from_next = mtbdd_map_add(from_next, offset+i, sylvan_ithvar(i));
-    }
+    // prepare renamers s_to_ns and ns_to_s
 
-    MTBDD to_next = mtbdd_map_empty();
-    mtbdd_refs_pushptr(&to_next);
-    for (int i=0; i<(this->priobits + this->statebits); i++) {
-        to_next = mtbdd_map_add(to_next, i, sylvan_ithvar(offset+i));
+    MTBDD pns_to_ps = mtbdd_map_empty();
+    MTBDD ps_to_pns = mtbdd_map_empty();
+    mtbdd_refs_pushptr(&pns_to_ps);
+    mtbdd_refs_pushptr(&ps_to_pns);
+    {
+        MTBDD _s = ps_vars;
+        MTBDD _n = pns_vars;
+        while (!mtbdd_set_isempty(_s)) {
+            int sv = mtbdd_set_first(_s);
+            int nv = mtbdd_set_first(_n);
+            _s = mtbdd_set_next(_s);
+            _n = mtbdd_set_next(_n);
+            pns_to_ps = mtbdd_map_add(pns_to_ps, nv, sylvan_ithvar(sv));
+            ps_to_pns = mtbdd_map_add(ps_to_pns, sv, sylvan_ithvar(nv));
+        }
+        assert(mtbdd_set_isempty(_n));
     }
 
     // prepare for every priority, priostates := the states of that priority
@@ -710,12 +704,12 @@ SymGame::solve(bool verbose)
             mtbdd_refs_popptr(2); // pop OddAndDistraction, OddOrDistraction
 
             // and convert to prime variables
-            onestepeven = sylvan_compose(onestepeven, to_next);
+            onestepeven = sylvan_compose(onestepeven, ps_to_pns);
         }
 
         // then take product with transition
         // remember the strat: state -> uap -> cap
-        MTBDD strat = onestepeven = sylvan_and_exists(this->trans, onestepeven, ns_vars);
+        MTBDD strat = onestepeven = sylvan_and_exists(this->trans, onestepeven, pns_vars);
         mtbdd_refs_pushptr(&strat);
 
         // Extract vertices won by even in one step = \forall U. \exists C. onestepeven
@@ -766,7 +760,7 @@ SymGame::solve(bool verbose)
 
             // Extract strategy (for controller) -- str_vars is all except priorities
             // strat = sylvan_project(strat, str_vars);
-            MTBDD states_in_strat = sylvan_project(strat, s_vars);
+            MTBDD states_in_strat = sylvan_project(strat, ps_vars);
             mtbdd_refs_pushptr(&states_in_strat);
             strategies = sylvan_ite(states_in_strat, strat, strategies); // big updater...
             mtbdd_refs_popptr(1); // pop states_in_strat
@@ -822,7 +816,7 @@ SymGame::solve(bool verbose)
             }
             // Now strat is only for unfrozen vertices in the <=pr game
             // Update <strategies> with <strat> but only for states in <strat>
-            MTBDD states_in_strat = sylvan_project(strat, s_vars);
+            MTBDD states_in_strat = sylvan_project(strat, ps_vars);
             mtbdd_refs_pushptr(&states_in_strat);
             strategies = sylvan_ite(states_in_strat, strat, strategies); // big updater...
             mtbdd_refs_popptr(1); // pop states_in_strat
@@ -843,7 +837,7 @@ SymGame::solve(bool verbose)
     mtbdd_refs_pushptr(&initial);
 
     if (sylvan_and(initial, distractions) != sylvan_false) {
-        mtbdd_refs_popptr(10+3*this->maxprio); // free it up
+        mtbdd_refs_popptr(6+3*this->maxprio); // free it up
 
         delete[] freeze;
         delete[] priostates;
@@ -857,7 +851,7 @@ SymGame::solve(bool verbose)
         strategies = mtbdd_getlow(strategies);
     }
 
-    mtbdd_refs_popptr(10+3+3*this->maxprio); // WHATEVER
+    mtbdd_refs_popptr(6+3+3*this->maxprio); // WHATEVER
 
     this->strategies = strategies;
 
