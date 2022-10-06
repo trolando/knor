@@ -126,7 +126,7 @@ TASK_IMPL_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool,
 
     // Prepare number of statebits and priobits
     int statebits = 1;
-    while ((1ULL<<(statebits)) <= (uint64_t)data->noStates) statebits++;
+    while ((1ULL<<(statebits)) < (uint64_t)data->noStates) statebits++;
 
     const int evenMax = 2 + 2*((data->noAccSets+1)/2); // should be enough...
     int priobits = 1;
