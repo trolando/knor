@@ -14,7 +14,7 @@ fi
 for e in `ls -XrS ../examples/*hoa`; do
     f=$e
     for s in sym tl; do
-        for o in "" "--onehot" "--bisim" "--isop" "--bisim --isop"; do
+        for o in "" "--bisim-game" "--bisim-game --bisim" "--bisim" "--isop" "--onehot" "--onehot --isop"; do
             echo "solving $f using solver $s and options $o"
             ../build/knor $f --$s $o -v -a > $f-output-$s 2> $f-log
             res=$?
