@@ -468,7 +468,7 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
                 priority = adjustPriority(trans->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
             }
             // translate the label to a BDD
-            lblbdd = RUN(evalLabel, label, data, variables);
+            lblbdd = CALL(evalLabel, label, data, variables);
             leaf = mtbdd_int64(((uint64_t)priority << 32) | (uint64_t)(trans->successors[0]));
             // add the transition to the transition BDD
             trans_bdd = mtbdd_ite(lblbdd, leaf, trans_bdd);
@@ -603,7 +603,7 @@ handleOptions(int &argc, char**& argv)
         }
 
         return options;
-    } catch (const cxxopts::OptionException& e) {
+    } catch (const cxxopts::exceptions::exception & e) {
         std::cout << "error parsing options: " << e.what() << std::endl;
         exit(0);
     }
@@ -622,13 +622,9 @@ VOID_TASK_0(gc_end)
 }
 
 
-/**
- * The main function
- */
-int
-main(int argc, char* argv[])
+TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 {
-    auto options = handleOptions(argc, argv);
+    auto & options = *_options;
 
     bool verbose = options["verbose"].count() > 0;
 
@@ -637,13 +633,14 @@ main(int argc, char* argv[])
     HoaData* data = (HoaData*)malloc(sizeof(HoaData));
     defaultsHoa(data);
 
-    if (argc == 1) {
+    if (options.unmatched().size() == 0) {
         int ret = parseHoa(stdin, data);
         if (ret != 0) return ret;
     } else {
-        FILE* f = fopen(argv[1], "r");
+        std::string filename = options.unmatched()[0];
+        FILE* f = fopen(filename.c_str(), "r");
         if (f == NULL) {
-            std::cout << "file not found: " << argv[1] << std::endl;
+            std::cout << "file not found: " << filename << std::endl;
             return 0;
         }
         int ret = parseHoa(f, data);
@@ -689,11 +686,7 @@ main(int argc, char* argv[])
         else std::cerr << "priorities are on transitions" << std::endl;
     }
 
-    // Initialize Lace
-    lace_start(1, 1024*1024*2); // initialize Lace, but sequentially
-                                // also get a large enough task size... (2M tasks) for PSI!
-
-    // And initialize Sylvan
+    // Initialize Sylvan
     sylvan_set_limits(512LL << 22, 1, 14); // should be enough (2 gigabytes)
     sylvan_init_package();
     sylvan_init_mtbdd();
@@ -719,12 +712,12 @@ main(int argc, char* argv[])
         pg::Game *game = nullptr;
         const double t_before_splitting = wctime();
         if (naive_splitting) {
-            game = RUN(constructGameNaive, data, isMaxParity, controllerIsOdd);
+            game = CALL(constructGameNaive, data, isMaxParity, controllerIsOdd);
         } else if (explicit_splitting) {
-            game = RUN(constructGame, data, isMaxParity, controllerIsOdd);
+            game = CALL(constructGame, data, isMaxParity, controllerIsOdd);
         } else {
             vstart = 0; // always set to 0 by constructSymGame
-            sym = RUN(constructSymGame, data, isMaxParity, controllerIsOdd);
+            sym = CALL(constructSymGame, data, isMaxParity, controllerIsOdd);
             game = sym->toExplicit(vertex_to_bdd);
         }
         const double t_after_splitting = wctime();
@@ -802,7 +795,7 @@ main(int argc, char* argv[])
     } else {
         // Construct the game
         const double t_before_construct = wctime();
-        sym = RUN(constructSymGame, data, isMaxParity, controllerIsOdd);
+        sym = CALL(constructSymGame, data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
 
         if (write_pg) {
@@ -822,7 +815,7 @@ main(int argc, char* argv[])
         }
 
         const double t_before_solve = wctime();
-        realizable = RUN(wrap_solve, sym, verbose);
+        realizable = CALL(wrap_solve, sym, verbose);
         const double t_after_solve = wctime();
 
         if (verbose) {
@@ -853,7 +846,7 @@ main(int argc, char* argv[])
         }
 
         const double t_before = wctime();
-        RUN(wrap_pp, sym, verbose);
+        CALL(wrap_pp, sym, verbose);
         const double t_after = wctime();
 
         if (verbose) {
@@ -986,12 +979,12 @@ main(int argc, char* argv[])
 
         if (options["bisim"].count() > 0) {
             const double t_before = wctime();
-            MTBDD partition = RUN(min_lts_strong, sym);
+            MTBDD partition = CALL(min_lts_strong, sym);
             mtbdd_protect(&partition);
             if (verbose) {
-                // RUN(print_partition, sym, partition);
+                // CALL(print_partition, sym, partition);
             }
-            RUN(minimize, sym, partition, verbose);
+            CALL(minimize, sym, partition, verbose);
             mtbdd_unprotect(&partition);
             const double t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
@@ -1085,7 +1078,26 @@ main(int argc, char* argv[])
 
     // free HOA allocated data structure
     resetHoa(data);
+}
+
+
+
+/**
+ * The main function
+ */
+int
+main(int argc, char* argv[])
+{
+    auto options = handleOptions(argc, argv);
+
+    // Initialize Lace, only 1 worker
+    lace_start(1, 1024*1024*2); // initialize Lace, but sequentially
+                                // also get a large enough task size... (2M tasks) for PSI!
+
+    int res = RUN(main_task, &options);
 
     lace_stop();
+
+    return res;
 }
 
