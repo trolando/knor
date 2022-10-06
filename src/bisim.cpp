@@ -618,4 +618,47 @@ VOID_TASK_IMPL_2(print_partition, SymGame*, game, MTBDD, partition)
 }
 
 
-
+VOID_TASK_IMPL_2(print_signature, SymGame*, game, MTBDD, signature)
+{
+    MTBDD vars = mtbdd_set_empty();
+    mtbdd_protect(&vars);
+    vars = mtbdd_set_addall(vars, game->s_vars);
+    vars = mtbdd_set_addall(vars, game->uap_vars);
+    vars = mtbdd_set_addall(vars, game->cap_vars);
+    vars = mtbdd_set_addall(vars, game->p_vars);
+    uint8_t arr[mtbdd_set_count(vars)+1];
+    MTBDD lf = mtbdd_enum_all_first(signature, vars, arr, NULL);
+    while (lf != mtbdd_false) {
+        int idx=0;
+        // decode state
+        int state = 0;
+        for (int i=0; i<game->statebits; i++) {
+            state <<= 1;
+            if (arr[idx++]) state |= 1;
+        }
+        // decode uap
+        int uap = 0;
+        for (int i=0; i<game->uap_count; i++) {
+            uap <<= 1;
+            if (arr[idx++]) uap |= 1;
+        }
+        // decode cap
+        int cap = 0;
+        for (int i=0; i<game->cap_count; i++) {
+            cap <<= 1;
+            if (arr[idx++]) cap |= 1;
+        }
+        // decode prio
+        int prio = 0;
+        for (int i=0; i<game->priobits; i++) {
+            prio <<= 1;
+            if (arr[idx++]) prio |= 1;
+        }
+        // decode block
+        uint64_t block = CALL(decode_block, lf);
+        assert(idx == mtbdd_set_count(vars));
+        // std::cerr << "from " << state << " uap " << uap << ": " << cap << " --> (" << prio << ") " << block << std::endl;
+        lf = mtbdd_enum_all_next(signature, vars, arr, NULL);
+    }
+    mtbdd_unprotect(&vars);
+}
