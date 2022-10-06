@@ -566,6 +566,7 @@ handleOptions(int &argc, char**& argv)
             ("naive", "Use the naive splitting procedure (not recommended)")
             ("explicit", "Use the explicit splitting procedure (not recommended)")
             ("real", "Only check realiziability (no synthesis)")
+            ("bisim-game", "Apply bisimulation minimisation to the game")
             ("bisim", "Apply bisimulation minimisation to the solution")
             ("onehot", "Use onehot encoding for the states")
             ("isop", "Convert BDDs to AIG using ISOP (instead of Shannon expansion)")
@@ -718,6 +719,16 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         } else {
             vstart = 0; // always set to 0 by constructSymGame
             sym = CALL(constructSymGame, data, isMaxParity, controllerIsOdd);
+            if (options["bisim-game"].count() > 0) {
+                const double t_before = wctime();
+                MTBDD partition = CALL(min_lts_strong, sym, false);
+                mtbdd_protect(&partition);
+                CALL(minimize, sym, partition, verbose);
+                mtbdd_unprotect(&partition);
+                std::cerr << "number of blocks: " << count_blocks() << std::endl;
+                const double t_after = wctime();
+                if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of game in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+            }
             game = sym->toExplicit(vertex_to_bdd);
         }
         const double t_after_splitting = wctime();
@@ -797,6 +808,17 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         const double t_before_construct = wctime();
         sym = CALL(constructSymGame, data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
+
+        if (options["bisim-game"].count() > 0) {
+            const double t_before = wctime();
+            MTBDD partition = CALL(min_lts_strong, sym, false);
+            mtbdd_protect(&partition);
+            CALL(minimize, sym, partition, verbose);
+            mtbdd_unprotect(&partition);
+            std::cerr << "number of blocks: " << count_blocks() << std::endl;
+            const double t_after = wctime();
+            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of game in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+        }
 
         if (write_pg) {
             // in case we want to write the file to PGsolver file format...
