@@ -56,6 +56,7 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     cap_vars = mtbdd_set_empty();
     p_vars = mtbdd_set_empty();
     ns_vars = mtbdd_set_empty();
+    ps_vars = mtbdd_set_empty();
     pns_vars = mtbdd_set_empty();
     trans = mtbdd_false;
     strategies = mtbdd_false;
@@ -65,6 +66,7 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     mtbdd_protect(&cap_vars);
     mtbdd_protect(&p_vars);
     mtbdd_protect(&ns_vars);
+    mtbdd_protect(&ps_vars);
     mtbdd_protect(&pns_vars);
     mtbdd_protect(&trans);
     mtbdd_protect(&strategies);
@@ -72,12 +74,15 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     // FIXME this should be done inside a Lace task (set_add, etc)
     // or better, all those functions should be behind a RUN(...) ?
 
+    // skip to priobits
     int var = priobits;
     for (int i=0; i<statebits; i++) s_vars = mtbdd_set_add(s_vars, var++);
     for (int i=0; i<uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, var++);
     for (int i=0; i<cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, var++);
     for (int i=0; i<priobits; i++) p_vars = mtbdd_set_add(p_vars, var++);
     for (int i=0; i<statebits; i++) ns_vars = mtbdd_set_add(ns_vars, var++);
+    ps_vars = s_vars;
+    for (int i=0; i<priobits; i++) ps_vars = mtbdd_set_add(ps_vars, i);
     pns_vars = mtbdd_set_addall(p_vars, ns_vars);
 
     this->maxprio = maxprio;
@@ -94,6 +99,7 @@ SymGame::~SymGame()
     mtbdd_unprotect(&cap_vars);
     mtbdd_unprotect(&p_vars);
     mtbdd_unprotect(&ns_vars);
+    mtbdd_unprotect(&ps_vars);
     mtbdd_unprotect(&pns_vars);
     mtbdd_unprotect(&trans);
     mtbdd_unprotect(&strategies);
@@ -124,6 +130,7 @@ TASK_IMPL_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool,
     int priobits = 1;
     while ((1ULL<<(priobits)) <= (unsigned)evenMax) priobits++;
 
+    // Initially, set maxprio to 0, will be updated later
     SymGame *res = new SymGame(statebits, priobits, uap_count, cap_count, 0);
 
     // first <priobits, statebits> will be state variables
@@ -249,6 +256,9 @@ TASK_2(MTBDD, clarify, MTBDD, str, MTBDD, cap_vars)
 }
 
 
+/**
+ * Convert the symbolic parity game to an explicit parity game, labeling vertices with BDD node indices.
+ */
 pg::Game*
 SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
 {
@@ -421,6 +431,10 @@ SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
 }
 
 
+/**
+ * Restrict the transition relation to the given complete strategy.
+ * Assumes <str> is defined on state + uap
+ */
 MTBDD select_str(MTBDD trans, MTBDD str)
 {
     if (trans == str) {
@@ -635,11 +649,15 @@ SymGame::solve(bool verbose)
         to_next = mtbdd_map_add(to_next, i, sylvan_ithvar(offset+i));
     }
 
+    // prepare for every priority, priostates := the states of that priority
+
     MTBDD* priostates = new MTBDD[this->maxprio+1];
     for (int i=0; i<=this->maxprio; i++) {
         priostates[i] = encode_prio(i, this->priobits);
         mtbdd_refs_pushptr(&priostates[i]);
     }
+
+    // prepare for every priority, lowereq := the states of <= priority
 
     MTBDD* lowereq = new MTBDD[this->maxprio+1];
     for (int i=0; i<=this->maxprio; i++) {
@@ -655,13 +673,15 @@ SymGame::solve(bool verbose)
     mtbdd_refs_pushptr(&initial);
 
     // using the freezing FPI algorithm
-    // 
+    // prepare the distractions set
     MTBDD distractions = mtbdd_false; // initially, no distractions
     mtbdd_refs_pushptr(&distractions);
 
+    // prepare the strategies set
     MTBDD strategies = mtbdd_false; // will have strategies ([prio]state -> priostate)
     mtbdd_refs_pushptr(&strategies);
 
+    // prepare for every priority, the set of frozen states
     MTBDD* freeze = new MTBDD[this->maxprio+1];
     for (int i=0; i<=this->maxprio; i++) {
         freeze[i] = mtbdd_false;
@@ -895,7 +915,7 @@ SymGame::postprocess(bool verbose)
             mtbdd_refs_pop(1);
         }
 
-        assert(mtbdd_getvar(visited) >= (unsigned)this->priobits); // should not have priorities
+        assert(visited == mtbdd_true || mtbdd_getvar(visited) >= (unsigned)this->priobits); // should not have priorities
 
         // count the number of states
         if (verbose) {

@@ -20,6 +20,7 @@ public:
     sylvan::MTBDD cap_vars;
     sylvan::MTBDD p_vars;
     sylvan::MTBDD ns_vars;
+    sylvan::MTBDD ps_vars;
     sylvan::MTBDD pns_vars;
 
     int statebits;
