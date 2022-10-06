@@ -302,11 +302,14 @@ free_refine_data()
     }
 }
 
-TASK_IMPL_1(MTBDD, min_lts_strong, SymGame*, sym)
+TASK_IMPL_2(MTBDD, min_lts_strong, SymGame*, sym, bool, strip_priority)
 {
-    // first get the transition relation with the priorities
+    next_block = 1;
+    refine_iteration = 0;
+
+    // first get the transition relation without the priorities
     //  i.e., only keep s > uap > cap > ns
-    MTBDD trans = sylvan_exists(sym->trans, sym->p_vars);
+    MTBDD trans = strip_priority ? sylvan_exists(sym->trans, sym->p_vars) : sym->trans;
     mtbdd_refs_pushptr(&trans);
 
     // next, get state data, prepare blocks
@@ -333,7 +336,8 @@ TASK_IMPL_1(MTBDD, min_lts_strong, SymGame*, sym)
     // initial partition!
     partition = CALL(encode_block, get_next_block());
 
-    // restrict to reachable states
+    // find all states with a transition in trans and add them 
+    // (assumption is that all states have successors)
     {
         MTBDD states = sylvan_project(sym->trans, sym->s_vars);
         mtbdd_refs_pushptr(&states);
@@ -350,7 +354,7 @@ TASK_IMPL_1(MTBDD, min_lts_strong, SymGame*, sym)
         }
         states = sylvan_compose(states, s_to_ns);
         partition = sylvan_ite(states, partition, mtbdd_false);
-        mtbdd_refs_popptr(2);
+        mtbdd_refs_popptr(2); // states and s_to_ns
     }
 
     // main loop
@@ -365,6 +369,7 @@ TASK_IMPL_1(MTBDD, min_lts_strong, SymGame*, sym)
         // CALL(print_partition, sym, partition);
 
         // compute signature: s > uap > cap > B
+        //                or: s > uap > cap > prio > B
         signature = sylvan_and_exists(trans, partition, sym->ns_vars);
         CACHE_REFINE = cache_next_opid(); // each refine needs fresh cache
         partition = CALL(refine, signature, sym->s_vars, sym->ns_vars, partition);
@@ -380,7 +385,7 @@ TASK_IMPL_1(MTBDD, min_lts_strong, SymGame*, sym)
 }
 
 
-uint64_t state_0_block = 0;
+static uint64_t state_0_block = 0;
 
 
 /**
@@ -582,6 +587,8 @@ VOID_TASK_IMPL_3(minimize, SymGame*, sym, MTBDD, partition, bool, verbose)
 
     sym->s_vars = block_s_vars;
     sym->ns_vars = block_ns_vars;
+    sym->ps_vars = sym->s_vars;
+    for (int i=0; i<sym->priobits; i++) sym->ps_vars = mtbdd_set_add(sym->ps_vars, i);
     sym->pns_vars = mtbdd_set_addall(sym->p_vars, sym->ns_vars);
     sym->statebits = no_ns_vars;
     

@@ -14,7 +14,7 @@ extern "C" {
 
 // Bisimulation minimisation
 
-TASK_DECL_1(sylvan::MTBDD, min_lts_strong, SymGame*);
+TASK_DECL_2(sylvan::MTBDD, min_lts_strong, SymGame*, bool);
 VOID_TASK_DECL_3(minimize, SymGame*, sylvan::MTBDD, bool);
 VOID_TASK_DECL_2(print_partition, SymGame*, sylvan::MTBDD)
 

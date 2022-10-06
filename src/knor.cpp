@@ -871,7 +871,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             var3.process();
 
             const double t_before = wctime();
-            MTBDD partition = RUN(min_lts_strong, sym);
+            MTBDD partition = RUN(min_lts_strong, sym, true);
             mtbdd_protect(&partition);
             RUN(minimize, sym, partition, verbose);
             mtbdd_unprotect(&partition);
@@ -979,7 +979,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
         if (options["bisim"].count() > 0) {
             const double t_before = wctime();
-            MTBDD partition = CALL(min_lts_strong, sym);
+            MTBDD partition = CALL(min_lts_strong, sym, true);
             mtbdd_protect(&partition);
             if (verbose) {
                 // CALL(print_partition, sym, partition);
