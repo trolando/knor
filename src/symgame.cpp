@@ -51,6 +51,12 @@ using namespace sylvan;
 
 SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int maxprio)
 {
+    trans = mtbdd_false;
+    strategies = mtbdd_false;
+
+    mtbdd_protect(&trans);
+    mtbdd_protect(&strategies);
+
     s_vars = mtbdd_set_empty();
     uap_vars = mtbdd_set_empty();
     cap_vars = mtbdd_set_empty();
@@ -58,8 +64,6 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     ns_vars = mtbdd_set_empty();
     ps_vars = mtbdd_set_empty();
     pns_vars = mtbdd_set_empty();
-    trans = mtbdd_false;
-    strategies = mtbdd_false;
 
     mtbdd_protect(&s_vars);
     mtbdd_protect(&uap_vars);
@@ -68,8 +72,6 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     mtbdd_protect(&ns_vars);
     mtbdd_protect(&ps_vars);
     mtbdd_protect(&pns_vars);
-    mtbdd_protect(&trans);
-    mtbdd_protect(&strategies);
 
     // FIXME this should be done inside a Lace task (set_add, etc)
     // or better, all those functions should be behind a RUN(...) ?
@@ -86,14 +88,16 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     pns_vars = mtbdd_set_addall(p_vars, ns_vars);
 
     this->maxprio = maxprio;
+    this->priobits = priobits;
+    this->statebits = statebits;
     this->uap_count = uap_count;
     this->cap_count = cap_count;
-    this->statebits = statebits;
-    this->priobits = priobits;
 }
 
 SymGame::~SymGame()
 {
+    mtbdd_unprotect(&trans);
+    mtbdd_unprotect(&strategies);
     mtbdd_unprotect(&s_vars);
     mtbdd_unprotect(&uap_vars);
     mtbdd_unprotect(&cap_vars);
@@ -101,8 +105,6 @@ SymGame::~SymGame()
     mtbdd_unprotect(&ns_vars);
     mtbdd_unprotect(&ps_vars);
     mtbdd_unprotect(&pns_vars);
-    mtbdd_unprotect(&trans);
-    mtbdd_unprotect(&strategies);
 }
 
 /**
