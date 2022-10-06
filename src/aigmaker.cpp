@@ -436,6 +436,7 @@ AIGmaker::process()
             std::deque<int> terms;
 
             for (MTBDD uap : uaps) {
+                // s is all states that go to that particular uap
                 s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uap_vars), uap);
 
                 std::vector<int> source_states;
@@ -532,6 +533,7 @@ AIGmaker::process()
             }
 
             int result = make_or(terms);
+            // if state 0, take inverse
             if (state == 0) result = aiger_not(result);
             aiger_add_latch(a, state_to_lit[state], result, "");
             lf = mtbdd_enum_all_next(states, game->s_vars, state_arr, NULL);
