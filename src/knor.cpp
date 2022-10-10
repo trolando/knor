@@ -562,16 +562,17 @@ handleOptions(int &argc, char**& argv)
         opts.custom_help("[OPTIONS...] [FILE]");
         opts.add_options()
             ("help", "Print help")
-            ("sym", "Solve the parity game symbolically")
+            ("sym", "Solve the parity game using the internal symbolic solver")
             ("naive", "Use the naive splitting procedure (not recommended)")
             ("explicit", "Use the explicit splitting procedure (not recommended)")
-            ("real", "Only check realiziability (no synthesis)")
+            ("real", "Only check realizability (no synthesis)")
             ("bisim-game", "Apply bisimulation minimisation to the game")
-            ("bisim", "Apply bisimulation minimisation to the solution")
-            ("onehot", "Use onehot encoding for the states")
+            ("bisim-sol", "Apply bisimulation minimisation to the solution")
+            ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
+            ("onehot", "Use one-hot encoding for the states (recommended)")
             ("isop", "Convert BDDs to AIG using ISOP (instead of Shannon expansion)")
-            ("compress", "Compress the AIG using ABC")
-            ("drewrite", "Compress the AIG using ABCs commands drw and drf")
+            ("compress", "Compress the generated AIG using ABC")
+            ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
             ("best", "Try all combinations of bisim and isop and write the smallest AIG")
             ("no-solve", "Do not solve, halt after constructing the parity game")
             ("print-game", "Just print the parity game (implies no-solve)")
@@ -700,6 +701,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     bool explicit_splitting = options["explicit"].count() > 0;
     bool write_pg = options["print-game"].count() > 0;
     bool no_solve = options["no-solve"].count() > 0;
+    bool bisim_game = options["bisim"].count() > 0 or options["bisim-game"].count() > 0;
+    bool bisim_sol = options["bisim"].count() > 0 or options["bisim-sol"].count() > 0;
 
     SymGame *sym = nullptr;
     bool realizable = false; // not known yet
@@ -711,15 +714,27 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
         // Construct the explicit game
         pg::Game *game = nullptr;
-        const double t_before_splitting = wctime();
         if (naive_splitting) {
+            const double t_before_splitting = wctime();
             game = CALL(constructGameNaive, data, isMaxParity, controllerIsOdd);
+            const double t_after_splitting = wctime();
+            if (verbose) {
+                std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
+            }
         } else if (explicit_splitting) {
+            const double t_before_splitting = wctime();
             game = CALL(constructGame, data, isMaxParity, controllerIsOdd);
+            const double t_after_splitting = wctime();
+            if (verbose) {
+                std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
+            }
         } else {
+            const double t_1 = wctime();
             vstart = 0; // always set to 0 by constructSymGame
             sym = CALL(constructSymGame, data, isMaxParity, controllerIsOdd);
-            if (options["bisim-game"].count() > 0) {
+            const double t_2 = wctime();
+            if (verbose) std::cerr << "\033[1;37mfinished constructing symbolic game in " << std::fixed << (t_2 - t_1) << " sec.\033[m" << std::endl;
+            if (bisim_game) {
                 const double t_before = wctime();
                 MTBDD partition = CALL(min_lts_strong, sym, false);
                 mtbdd_protect(&partition);
@@ -729,12 +744,15 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                 const double t_after = wctime();
                 if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of game in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
             }
+            const double t_3 = wctime();
             game = sym->toExplicit(vertex_to_bdd);
+            const double t_4 = wctime();
+            if (verbose) {
+                std::cerr << "\033[1;37mfinished constructing explicit game in " << std::fixed << (t_4 - t_3) << " sec.\033[m" << std::endl;
+            }
         }
-        const double t_after_splitting = wctime();
 
         if (verbose) {
-            std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
             std::cerr << "constructed game has " << game->vertexcount() << " vertices and " << game->edgecount() << " edges." << std::endl;
         }
 
@@ -809,7 +827,11 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         sym = CALL(constructSymGame, data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
 
-        if (options["bisim-game"].count() > 0) {
+        if (verbose) {
+            std::cerr << "\033[1;37mfinished constructing symbolic game in " << std::fixed << (t_after_construct - t_before_construct) << " sec.\033[m" << std::endl;
+        }
+
+        if (bisim_game) {
             const double t_before = wctime();
             MTBDD partition = CALL(min_lts_strong, sym, false);
             mtbdd_protect(&partition);
@@ -826,10 +848,6 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             auto pg = sym->toExplicit(vertex_to_bdd);
             pg->write_pgsolver(std::cout);
             exit(0);
-        }
-
-        if (verbose) {
-            std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_construct - t_before_construct) << " sec.\033[m" << std::endl;
         }
 
         if (no_solve) {
@@ -862,6 +880,13 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     }
 
     if (realizable) {
+        if (verbose) std::cerr << "\033[1;38;5;10mgame is realizable!\033[m" << std::endl;
+
+        if (naive_splitting or explicit_splitting) {
+            std::cerr << "--naive and --explicit are incompatible with generating the AIG!" << std::endl;
+            exit(10);
+        }
+
         if (verbose) {
             // sym->print_trans();
             // sym->print_strategies();
@@ -898,7 +923,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             RUN(minimize, sym, partition, verbose);
             mtbdd_unprotect(&partition);
             const double t_after = wctime();
-            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
 
             AIGmaker var1b(data, sym);
             var1b.process();
@@ -978,7 +1003,6 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                     var3b.writeBinary(stdout);
                 }
             } else if (options["write-ascii"].count() > 0) {
-                // std::cout << "REALIZABLE" << std::endl;
                 if (var1.getNumAnds() == smallest) {
                     var1.writeAscii(stdout);
                 } else if (var2.getNumAnds() == smallest) {
@@ -999,7 +1023,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             exit(10);
         }
 
-        if (options["bisim"].count() > 0) {
+        if (bisim_sol) {
             const double t_before = wctime();
             MTBDD partition = CALL(min_lts_strong, sym, true);
             mtbdd_protect(&partition);
@@ -1009,7 +1033,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             CALL(minimize, sym, partition, verbose);
             mtbdd_unprotect(&partition);
             const double t_after = wctime();
-            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
 
         if (verbose) {
@@ -1041,10 +1065,11 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         if (options["onehot"].count() > 0) {
             maker.setOneHot();
         }
-        maker.process();
-        const double t_after_encoding = wctime();
-        if (verbose) {
-            std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after_encoding - t_before_encoding) << " sec.\033[m" << std::endl;
+        {
+            const double t_before = wctime();
+            maker.process();
+            const double t_after = wctime();
+            if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
 
         /**
@@ -1074,7 +1099,6 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         if (options["write-binary"].count() > 0) {
             maker.writeBinary(stdout);
         } else if (options["write-ascii"].count() > 0) {
-            //std::cout << "REALIZABLE" << std::endl;
             maker.writeAscii(stdout);
         }
         if (verbose) {
@@ -1082,9 +1106,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
         exit(10);
     } else {
-        //std::cout << "UNREALIZABLE" << std::endl;
         if (verbose) {
             std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+            std::cerr << "\033[1;31mgame is unrealizable!\033[m" << std::endl;
         }
         exit(20);
     }
