@@ -32,6 +32,7 @@ public:
     sylvan::MTBDD strategies;  // contains the solution: the strategies:       good_state -> uap -> cap
 
     SymGame(int statebits, int priobits, int uap_count, int cap_count, int maxprio);
+    SymGame(const SymGame&) = delete;
     virtual ~SymGame() ;
 
     /**

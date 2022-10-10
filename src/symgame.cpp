@@ -73,9 +73,6 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     mtbdd_protect(&ps_vars);
     mtbdd_protect(&pns_vars);
 
-    // FIXME this should be done inside a Lace task (set_add, etc)
-    // or better, all those functions should be behind a RUN(...) ?
-
     // skip to priobits
     int var = priobits;
     for (int i=0; i<statebits; i++) s_vars = mtbdd_set_add(s_vars, var++);

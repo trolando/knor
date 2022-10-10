@@ -7,6 +7,10 @@
 #include <set>
 #include <cstring> // for strcpy
 
+// FIXME the caches should be wiped on gc, they are redundant anyway
+// the important bit happens in makeand to ensure no double AIGs are made...
+#define CACHES 0
+
 using namespace sylvan;
 
 
@@ -80,7 +84,7 @@ AIGmaker::makeand(int rhs0, int rhs1)
     cache_key <<= 32;
     cache_key |= rhs0;
     auto c = cache.find(cache_key);
-    if (1 and c != cache.end()) {
+    if (c != cache.end()) {
         return c->second;
     } else {
         aiger_add_and(a, lit, rhs0, rhs1);
@@ -266,7 +270,7 @@ AIGmaker::bdd_to_aig_cover(ZDD cover)
     if (cover == zdd_false) return aiger_false;
 
     auto it = mapping.find(cover);
-    if (it != mapping.end()) {
+    if (CACHES && it != mapping.end()) {
         return it->second;
     }
 
@@ -306,7 +310,7 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
     }
 
     auto it = mapping.find(bdd);
-    if (it != mapping.end()) {
+    if (CACHES && it != mapping.end()) {
         return comp ? aiger_not(it->second) : it->second;
     }
 
@@ -432,6 +436,7 @@ AIGmaker::process()
             // this gives source states and UAP for this cap
             std::set<MTBDD> uaps;
             collect_inter(cap_bdd, mtbdd_set_first(game->uap_vars), uaps);
+            // each uap is a MTBDD node in cap_bdd, so no need to reference
 
             std::deque<int> terms;
 
@@ -603,9 +608,6 @@ AIGmaker::process()
                 MTBDD bddres;
                 cap_zdds[i] = zdd_isop(cap_bdds[i], cap_bdds[i], &bddres);
                 assert(bddres == cap_bdds[i]);
-                if (verbose) {
-                    std::cerr << "isop has " << (long)zdd_pathcount(cap_zdds[i]) << " terms and " << zdd_nodecount(&cap_zdds[i], 1) << " nodes." << std::endl;
-                }
             }
 
             ZDD* state_zdds = new ZDD[game->statebits];
@@ -616,9 +618,6 @@ AIGmaker::process()
                 MTBDD bddres;
                 state_zdds[i] = zdd_isop(state_bdds[i], state_bdds[i], &bddres);
                 assert(bddres == state_bdds[i]);
-                if (verbose) {
-                    std::cerr << "isop has " << (long)zdd_pathcount(state_zdds[i]) << " terms and " << zdd_nodecount(&state_zdds[i], 1) << " nodes." << std::endl;
-                }
             }
 
             for (int i=0; i<game->cap_count; i++) {
@@ -631,11 +630,11 @@ AIGmaker::process()
             }
         } else {
             for (int i=0; i<game->cap_count; i++) {
-                int res = isop ? bdd_to_aig_isop(cap_bdds[i]) : bdd_to_aig(cap_bdds[i]);
+                int res = bdd_to_aig(cap_bdds[i]);
                 aiger_add_output(a, res, caps[i]); // simple, really
             }
             for (int i=0; i<game->statebits; i++) {
-                int res = isop ? bdd_to_aig_isop(state_bdds[i]) : bdd_to_aig(state_bdds[i]);
+                int res = bdd_to_aig(state_bdds[i]);
                 aiger_add_latch(a, state_to_lit[i], res, "");
             }
         }
