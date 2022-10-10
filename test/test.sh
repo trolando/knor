@@ -11,10 +11,13 @@ if ! [ -x "$nuXmv" ]; then
     exit
 fi
 
+#for e in `ls -XrS ../examples/SliderScored.tlsf.ehoa ../examples/TwoCounters4.tlsf.ehoa ../examples/TwoCountersInRangeA6.tlsf.ehoa`; do
 for e in `ls -XrS ../examples/*hoa`; do
     f=$e
     for s in sym tl; do
-        for o in "" "--bisim-game" "--bisim-game --bisim" "--bisim" "--isop" "--onehot" "--onehot --isop"; do
+        # for o in "" "--bisim-game" "--bisim-game --bisim" "--bisim" "--isop" "--onehot" "--onehot --isop"; do
+        # for o in "--onehot" "--onehot --isop"; do
+        for o in "--onehot"; do
             echo "solving $f using solver $s and options $o"
             ../build/knor $f --$s $o -v -a > $f-output-$s 2> $f-log
             res=$?
