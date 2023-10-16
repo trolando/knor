@@ -572,7 +572,8 @@ handleOptions(int &argc, char**& argv)
             ("compress", "Compress the AIG using ABC")
             ("drewrite", "Compress the AIG using ABCs commands drw and drf")
             ("best", "Try all combinations of bisim and isop and write the smallest AIG")
-            ("print-game", "Just print the parity game")
+            ("no-solve", "Do not solve, halt after constructing the parity game")
+            ("print-game", "Just print the parity game (implies no-solve)")
             ("print-witness", "Print the witness parity game")
             ("a,write-ascii", "Write ascii AIGER file")
             ("b,write-binary", "Write binary AIGER file")
@@ -703,6 +704,7 @@ main(int argc, char* argv[])
     bool naive_splitting = options["naive"].count() > 0;
     bool explicit_splitting = options["explicit"].count() > 0;
     bool write_pg = options["print-game"].count() > 0;
+    bool no_solve = options["no-solve"].count() > 0;
 
     SymGame *sym = nullptr;
     bool realizable = false; // not known yet
@@ -738,6 +740,10 @@ main(int argc, char* argv[])
             exit(0);
         }
 
+        if (no_solve) {
+            exit(0);
+        }
+
         // we sort now, so we can track the initial state
         double begin = wctime();
         int *mapping = new int[game->vertexcount()];
@@ -767,7 +773,7 @@ main(int argc, char* argv[])
             std::cerr << "\033[1;37mfinished solving game in " << std::fixed << (end - begin) << " sec.\033[m" << std::endl;
         }
 
-        // undo the sorting
+        // undo the sorting ## FOR SOME REASON, THIS CAN BE SLOW!
         game->permute(mapping);
         delete[] mapping;
 
@@ -808,6 +814,10 @@ main(int argc, char* argv[])
 
         if (verbose) {
             std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_construct - t_before_construct) << " sec.\033[m" << std::endl;
+        }
+
+        if (no_solve) {
+            exit(0);
         }
 
         const double t_before_solve = wctime();
