@@ -822,9 +822,15 @@ main(int argc, char* argv[])
     if (options["real"].count() > 0) {
         if (realizable) {
             std::cout << "REALIZABLE" << std::endl;
+            if (verbose) {
+                std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+            }
             exit(10);
         } else {
             std::cout << "UNREALIZABLE" << std::endl;
+            if (verbose) {
+                std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+            }
             exit(20);
         }
     }
@@ -961,6 +967,9 @@ main(int argc, char* argv[])
                     var3b.writeAscii(stdout);
                 }
             }
+            if (verbose) {
+                std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+            }
             exit(10);
         }
 
@@ -989,9 +998,13 @@ main(int argc, char* argv[])
         if (options["print-witness"].count() > 0) {
             auto pargame = sym->strategyToPG();
             pargame->write_pgsolver(std::cout);
+            if (verbose) {
+                std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+            }
             exit(10);
         }
 
+        const double t_before_encoding = wctime();
         AIGmaker maker(data, sym);
         if (verbose) {
             maker.setVerbose();
@@ -1003,6 +1016,10 @@ main(int argc, char* argv[])
             maker.setOneHot();
         }
         maker.process();
+        const double t_after_encoding = wctime();
+        if (verbose) {
+            std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after_encoding - t_before_encoding) << " sec.\033[m" << std::endl;
+        }
 
         /**
          * maybe compress with ABC
@@ -1014,8 +1031,6 @@ main(int argc, char* argv[])
             const double t_after = wctime();
             if (verbose) std::cerr << "size of AIG after drw+drf: " << maker.getNumAnds() << " gates." << std::endl;
             if (verbose) std::cerr << "\033[1;37mfinished drw+drf in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
-        } else {
-            if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
         }
 
         if (options["compress"].count() > 0) {
@@ -1025,9 +1040,10 @@ main(int argc, char* argv[])
             const double t_after = wctime();
             if (verbose) std::cerr << "size of AIG after compression: " << maker.getNumAnds() << " gates." << std::endl;
             if (verbose) std::cerr << "\033[1;37mfinished compression in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
-        } else {
-            if (verbose) std::cerr << "size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
         }
+
+        if (verbose) std::cerr << "final size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
+
 
         if (options["write-binary"].count() > 0) {
             maker.writeBinary(stdout);
@@ -1035,10 +1051,20 @@ main(int argc, char* argv[])
             //std::cout << "REALIZABLE" << std::endl;
             maker.writeAscii(stdout);
         }
+        if (verbose) {
+            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+        }
         exit(10);
     } else {
         //std::cout << "UNREALIZABLE" << std::endl;
+        if (verbose) {
+            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+        }
         exit(20);
+    }
+
+    if (verbose) {
+        std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
     }
 
     if (verbose) sylvan_stats_report(stdout);
