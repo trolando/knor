@@ -760,7 +760,7 @@ main(int argc, char* argv[])
         }
 
         pg::Oink engine(*game, verbose ? std::cerr : log);
-        engine.setTrace(verbose ? 1 : 0);
+        engine.setTrace(0); //verbose ? 1 : 0); actually don´t -- maybe add a 2nd verbosity level later
         engine.setRenumber();
         engine.setSolver(solver);
         engine.setWorkers(-1);
