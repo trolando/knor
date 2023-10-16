@@ -690,10 +690,11 @@ main(int argc, char* argv[])
     }
 
     // Initialize Lace
-    lace_start(1, 0); // initialize Lace, but sequentially
+    lace_start(1, 1024*1024*2); // initialize Lace, but sequentially
+                                // also get a large enough task size... (2M tasks) for PSI!
 
     // And initialize Sylvan
-    sylvan_set_limits(512LL << 20, 1, 14); // should be enough (512 megabytes)
+    sylvan_set_limits(512LL << 22, 1, 14); // should be enough (2 gigabytes)
     sylvan_init_package();
     sylvan_init_mtbdd();
     sylvan_init_zdd();
