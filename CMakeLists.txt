@@ -13,16 +13,19 @@ FetchContent_Declare(
     sylvan
     GIT_REPOSITORY https://github.com/trolando/sylvan.git
     GIT_TAG        v1.7.1
+    FIND_PACKAGE_ARGS
 )
 FetchContent_Declare(
     oink
     GIT_REPOSITORY https://github.com/trolando/oink.git
-    GIT_TAG        2271682df50ecc2c9ae9225d4fbd808176c60240
+    GIT_TAG        6f849c74bdaa3dbf44c808654f29864df45dcaa4
+    FIND_PACKAGE_ARGS
 )
 FetchContent_Declare(
     abc
     GIT_REPOSITORY https://github.com/berkeley-abc/abc.git
     GIT_TAG        0ed81b34f1048a10aa1b6785c2fb65b526c77b5a
+    FIND_PACKAGE_ARGS
 )
 FetchContent_MakeAvailable(sylvan)
 FetchContent_MakeAvailable(oink)

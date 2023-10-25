@@ -3,7 +3,7 @@
  */
 
 #include <sylvan.h>
-#include <oink.hpp>
+#include <oink/oink.hpp>
 #include <deque>
 #include <symgame.hpp>
 

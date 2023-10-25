@@ -3,7 +3,7 @@
  */
 
 #include <sylvan.h>
-#include <oink.hpp>
+#include <oink/oink.hpp>
 
 extern "C" {
 #include "simplehoa.h"

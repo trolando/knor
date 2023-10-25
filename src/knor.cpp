@@ -10,9 +10,9 @@
 #include <sys/time.h> // for gettimeofday
 #include <deque>
 
-#include <game.hpp>
-#include <oink.hpp>
-#include <solvers.hpp>
+#include <oink/game.hpp>
+#include <oink/oink.hpp>
+#include <oink/solvers.hpp>
 #include <cxxopts.hpp>
 #include <knor.hpp>
 #include <symgame.hpp>

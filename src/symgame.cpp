@@ -34,9 +34,9 @@
 //#include <sys/time.h> // for gettimeofday
 #include <deque>
 
-#include <game.hpp>
-#include <oink.hpp>
-#include <solvers.hpp>
+#include <oink/game.hpp>
+#include <oink/oink.hpp>
+#include <oink/solvers.hpp>
 //#include <tools/cxxopts.hpp>
 #include <sylvan.h>
 #include <knor.hpp>
