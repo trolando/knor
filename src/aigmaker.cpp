@@ -156,7 +156,7 @@ AIGmaker::bdd_to_aig_isop(MTBDD bdd)
         // std::cerr << "isop has " << (long)zdd_pathcount(isop) << " terms and " << zdd_nodecount(&isop, 1) << " nodes." << std::endl;
     }
 
-    int res = bdd_to_aig_cover(isop);
+    int res = bdd_to_aig_cover_sop(isop);
     zdd_unprotect(&isop);
     return res;
 }
@@ -620,11 +620,11 @@ AIGmaker::process()
             }
 
             for (int i=0; i<game->cap_count; i++) {
-                int res = bdd_to_aig_cover(cap_zdds[i]);
+                int res = bdd_to_aig_cover_sop(cap_zdds[i]);
                 aiger_add_output(a, res, caps[i]); // simple, really
             }
             for (int i=0; i<game->statebits; i++) {
-                int res = bdd_to_aig_cover(state_zdds[i]);
+                int res = bdd_to_aig_cover_sop(state_zdds[i]);
                 aiger_add_latch(a, state_to_lit[i], res, "");
             }
         } else {
