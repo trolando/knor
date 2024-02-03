@@ -571,6 +571,7 @@ handleOptions(int &argc, char**& argv)
             ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
             ("onehot", "Use one-hot encoding for the states (recommended)")
             ("isop", "Convert BDDs to AIG using ISOP (instead of Shannon expansion)")
+            ("sop", "Encode with ISOP and onehot (SOP variant of --isop --onehot)")
             ("compress", "Compress the generated AIG using ABC")
             ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
             ("best", "Try all combinations of bisim and isop and write the smallest AIG")
@@ -1064,6 +1065,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
         if (options["onehot"].count() > 0) {
             maker.setOneHot();
+        }
+        if (options["sop"].count() > 0) {
+            maker.setSop();
         }
         {
             const double t_before = wctime();

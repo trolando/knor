@@ -358,8 +358,375 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
 }
 
 void
+AIGmaker::reduce(std::vector<std::vector<int>>& system, bool is_or)
+{
+    std::map<int, int> pop;
+    for (auto& x : system) {
+        if (x.size() == 1) continue;
+        for (auto& y : x) {
+            pop[y] += 1;
+        }
+    }
+
+    std::map<int, int> pop2;
+
+    while (true) {
+        /*
+        for (auto& x : system) {
+            for (auto& y : x) std::cerr << y << " ";
+            std::cerr << std::endl << std::flush;
+        }
+        for (auto& x : pop) {
+            std::cerr << x.first << ": " << x.second << std::endl;
+        }
+        */
+
+        if (pop.empty()) break;
+        auto best = std::max_element(pop.begin(), pop.end(),
+                 [] (const auto& a, const auto& b) -> bool { return a.second < b.second; } );
+        auto first = best->first;
+
+        pop2.clear();
+        for (auto& x : system) {
+            if (std::find(x.begin(), x.end(), first) != x.end()) {
+                for (auto& y : x) {
+                    if (y != first) pop2[y] += 1;
+                }
+            }
+        }
+        best = std::max_element(pop2.begin(), pop2.end(),
+                 [] (const auto& a, const auto& b) -> bool { return a.second < b.second; } );
+        auto second = best->first;
+
+        // create new gate
+        int m = 0, n = 0;
+        auto gate = is_or ? aiger_not(makeand(aiger_not(first), aiger_not(second))) : makeand(first, second);
+        for (auto& x : system) {
+            auto it_f = std::find(x.begin(), x.end(), first);
+            if (it_f != x.end()) {
+                auto it_s = std::find(x.begin(), x.end(), second);
+                if (it_s != x.end()) {
+                    x.erase(std::remove_if(x.begin(), x.end(), [&] (const auto& a) -> bool { return a == first or a == second; }), x.end());
+                    x.erase(std::remove(x.begin(), x.end(), second), x.end());
+                    x.push_back(gate);
+                    m++;
+                    if (x.size() > 1) n++;
+                }
+            }
+        }
+        if ((pop[first] -= m) == 0) pop.erase(first);
+        if ((pop[second] -= m) == 0) pop.erase(second);
+        if (n > 0) pop[gate] += n;
+    }
+}
+
+void
+AIGmaker::process_sop()
+{
+    // initialize aiger
+    a = aiger_init();
+
+    // we start with literal 2 (because 0/1 is reserved)
+    lit = 2;
+
+    // set which APs are controllable in the bitset controllable
+    pg::bitset controllable(data->noAPs);
+    for (int i=0; i<data->noCntAPs; i++) {
+        controllable[data->cntAPs[i]] = 1;
+    }
+
+    // initialize array of input signals to literal
+    uap_to_lit = new int[game->uap_count];
+
+    // initialize array of output signal labels
+    caps = new char*[game->cap_count];
+
+    // fill the two arrays
+    int uap_idx = 0;
+    int cap_idx = 0;
+    for (int i=0; i<data->noAPs; i++) {
+        if (!controllable[i]) {
+            uap_to_lit[uap_idx] = lit;
+            aiger_add_input(a, lit, data->aps[i]);
+            uap_idx++;
+            lit += 2;
+        } else {
+            caps[cap_idx++] = data->aps[i];
+        }
+    }
+
+    // make var_to_lit for uncontrollable APs
+    {
+        MTBDD _vars = game->uap_vars;
+        for (int i=0; i<game->uap_count; i++) {
+            uint32_t bddvar = mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+            var_to_lit.emplace(bddvar, uap_to_lit[i]);
+        }
+    }
+
+    // compute the set of states so we can create state_to_lit
+    MTBDD states = sylvan_project(game->trans, game->s_vars);
+    mtbdd_protect(&states);
+
+    // make state_to_lit
+    {
+        uint8_t state_arr[game->statebits];
+        MTBDD lf = mtbdd_enum_all_first(states, game->s_vars, state_arr, NULL);
+        while (lf != mtbdd_false) {
+            // decode state
+            int state = 0;
+            for (int i=0; i<game->statebits; i++) {
+                state <<= 1;
+                if (state_arr[i]) state |= 1;
+            }
+            // give the state a literal
+            state_to_lit[state] = lit;
+            lit += 2;
+            // next state
+            lf = mtbdd_enum_all_next(states, game->s_vars, state_arr, NULL);
+        }
+    }
+
+    // data structures
+    std::vector<std::vector<int>> uap_products;
+    std::vector<std::vector<int>> uap_sums;
+    std::vector<std::vector<int>> state_sums;
+    std::vector<std::vector<int>> uap_state_products;
+    std::vector<std::vector<int>> uap_state_sums;
+
+    // do each controllable AP (output signals)
+    MTBDD cap_bdd = mtbdd_false;
+    mtbdd_protect(&cap_bdd);
+
+    MTBDD s = mtbdd_false;
+    mtbdd_protect(&s);
+
+    for (int i=0; i<game->cap_count; i++) {
+        cap_bdd = sylvan_ithvar(mtbdd_set_first(game->cap_vars)+i);
+        // keep just s and u... get rid of other cap variables
+        cap_bdd = sylvan_and_exists(game->strategies, cap_bdd, game->cap_vars);
+
+        // this gives source states and UAP for this cap
+        std::set<MTBDD> uaps;
+        collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
+
+        uap_state_sums.emplace_back();
+
+        for (MTBDD uap : uaps) {
+            s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uns_vars), uap);
+
+            state_sums.emplace_back();
+            uint8_t state_arr_2[game->statebits];
+            MTBDD lf2 = mtbdd_enum_all_first(s, game->s_vars, state_arr_2, NULL);
+            while (lf2 != mtbdd_false) {
+                // decode state
+                int from = 0;
+                for (int i=0; i<game->statebits; i++) {
+                    from <<= 1;
+                    if (state_arr_2[i]) from |= 1;
+                }
+                // if state 0, take inverse
+                state_sums.back().push_back(from == 0 ? aiger_not(state_to_lit.at(from)) : state_to_lit.at(from));
+                lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
+            }
+
+            uap_sums.emplace_back();
+            MTBDD bddres;
+            ZDD isop = zdd_isop(uap, uap, &bddres);
+            zdd_protect(&isop);
+            // assert(uap == bddres);
+            // assert(uap == zdd_cover_to_bdd(isop));
+            if (isop == zdd_true) {
+                // it is aiger_true
+                uap_sums.back().push_back(-1);
+            } else if (isop == zdd_false) {
+                // it is aiger_false
+                uap_sums.back().push_back(-2);
+            } else {
+                uap_idx = uap_products.size();
+                // loop over all products
+                int product[game->statebits+game->uap_count+1] = { 0 };
+                ZDD res = zdd_cover_enum_first(isop, product);
+                while (res != zdd_false) {
+                    uap_products.emplace_back();
+                    for (int i=0; product[i] != -1; i++) {
+                        int the_lit = var_to_lit.at(product[i]/2);
+                        if (product[i]&1) the_lit = aiger_not(the_lit);
+                        uap_products.back().push_back(the_lit);
+                    }
+                    res = zdd_cover_enum_next(isop, product);
+                    uap_sums.back().push_back(uap_products.size()-1);
+                }
+            }
+            zdd_unprotect(&isop);
+
+            uap_state_products.emplace_back();
+            uap_state_products.back().push_back(uap_sums.size()-1);
+            uap_state_products.back().push_back(state_sums.size()-1);
+            uap_state_sums.back().push_back(uap_state_products.size()-1);
+        }
+    }
+
+    MTBDD su_vars = mtbdd_set_addall(game->p_vars, game->cap_vars);
+    mtbdd_protect(&su_vars);
+
+    // full is: s > u > ns
+    MTBDD full = mtbdd_and_exists(game->strategies, game->trans, su_vars);
+    mtbdd_protect(&full);
+
+    std::vector<int> states_vec;
+
+    uint8_t state_arr[game->statebits];
+    MTBDD lf = mtbdd_enum_all_first(states, game->s_vars, state_arr, NULL);
+    while (lf != mtbdd_false) {
+        // decode state
+        int state = 0;
+        for (int i=0; i<game->statebits; i++) {
+            state <<= 1;
+            if (state_arr[i]) state |= 1;
+        }
+        states_vec.push_back(state);
+
+        // encode state using NS vars
+        cap_bdd = encode_state(state, game->statebits, mtbdd_set_first(game->ns_vars));
+        // keep s > u of this state
+        cap_bdd = sylvan_and_exists(full, cap_bdd, game->ns_vars);
+
+        // this gives source states and UAP for this state
+        std::set<MTBDD> uaps;
+        collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
+
+        uap_state_sums.emplace_back();
+        for (MTBDD uap : uaps) {
+            s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uns_vars), uap);
+
+            state_sums.emplace_back();
+            uint8_t state_arr_2[game->statebits];
+            MTBDD lf2 = mtbdd_enum_all_first(s, game->s_vars, state_arr_2, NULL);
+            while (lf2 != mtbdd_false) {
+                // decode state
+                int from = 0;
+                for (int i=0; i<game->statebits; i++) {
+                    from <<= 1;
+                    if (state_arr_2[i]) from |= 1;
+                }
+                // if state 0, take inverse
+                state_sums.back().push_back(from == 0 ? aiger_not(state_to_lit.at(from)) : state_to_lit.at(from));
+                lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
+            }
+
+            uap_sums.emplace_back();
+            MTBDD bddres;
+            ZDD isop = zdd_isop(uap, uap, &bddres);
+            zdd_protect(&isop);
+            // assert(uap == bddres);
+            // assert(uap == zdd_cover_to_bdd(isop));
+            if (isop == zdd_true) {
+                // it is aiger_true
+                uap_sums.back().push_back(-1);
+            } else if (isop == zdd_false) {
+                // it is aiger_false
+                uap_sums.back().push_back(-2);
+            } else {
+                uap_idx = uap_products.size();
+                // loop over all products
+                int product[game->statebits+game->uap_count+1] = { 0 };
+                ZDD res = zdd_cover_enum_first(isop, product);
+                while (res != zdd_false) {
+                    uap_products.emplace_back();
+                    for (int i=0; product[i] != -1; i++) {
+                        int the_lit = var_to_lit.at(product[i]/2);
+                        if (product[i]&1) the_lit = aiger_not(the_lit);
+                        uap_products.back().push_back(the_lit);
+                    }
+                    uap_sums.back().push_back(uap_products.size()-1);
+                    res = zdd_cover_enum_next(isop, product);
+                }
+            }
+            zdd_unprotect(&isop);
+
+            uap_state_products.emplace_back();
+            uap_state_products.back().push_back(uap_sums.size()-1);
+            uap_state_products.back().push_back(state_sums.size()-1);
+            uap_state_sums.back().push_back(uap_state_products.size()-1);
+        }
+        lf = mtbdd_enum_all_next(states, game->s_vars, state_arr, NULL);
+    }
+
+    mtbdd_unprotect(&states);
+    mtbdd_unprotect(&cap_bdd);
+    mtbdd_unprotect(&s);
+    mtbdd_unprotect(&full);
+    mtbdd_unprotect(&su_vars);
+
+    // Process UAP_PRODUCTS
+    if (verbose) std::cerr << "encoding input products" << std::endl << std::flush;
+    reduce(uap_products, false);
+
+    // Process UAP_SUMS
+    if (verbose) std::cerr << "encoding input sums of products" << std::endl << std::flush;
+    for (auto& x : uap_sums) {
+        for (int i=0; i<x.size(); i++) {
+            if (x[i] == -2) x[i] = aiger_false;
+            else if (x[i] == -1) x[i] = aiger_true;
+            else x[i] = uap_products[x[i]].front();
+        }
+    }
+    reduce(uap_sums, true);
+
+    // Process STATES_SUMS
+    if (verbose) std::cerr << "encoding state sums" << std::endl << std::flush;
+    reduce(state_sums, true);
+
+    // Process UAP_STATE_PRODUCTS
+    if (verbose) std::cerr << "encoding uap-state products" << std::endl << std::flush;
+    for (auto& x : uap_state_products) {
+        auto u = uap_sums[x[0]].front();
+        auto s = state_sums[x[1]].front();
+        x[0] = u;
+        x[1] = s;
+        // actually, skip reduce
+        // we immediately make AND(u, s) instead of letting reduce do its magic
+        // the reason being that this is very unlikely to find improvements anyhow and it takes "long"
+        // (4 seconds on full_arbiter_8 which isn't so bad, but it did not improve the number of gates
+        x.clear();
+        x.push_back(makeand(u, s));
+    }
+    // reduce(uap_state_products, false);
+
+    // Process UAP_STATE_SUMS
+    if (verbose) std::cerr << "encoding uap-state sums of products" << std::endl << std::flush;
+    for (auto& x : uap_state_sums) {
+        if (x.size() == 0) {
+            x.push_back(aiger_false);
+        } else {
+            for (int i=0; i<x.size(); i++) {
+                x[i] = uap_state_products[x[i]].front();
+            }
+        }
+    }
+    reduce(uap_state_sums, true);
+
+    for (int i=0; i<game->cap_count; i++) {
+        // get the aiger thing
+        auto result = uap_state_sums[i].front();
+        aiger_add_output(a, result, caps[i]); // simple, really
+    }
+
+    for (int i=0; i<states_vec.size(); i++) {
+        auto state = states_vec[i];
+        auto result = uap_state_sums[game->cap_count + i].front();
+        if (state == 0) result = aiger_not(result);
+        aiger_add_latch(a, state_to_lit.at(state), result, "");
+    }
+}
+
+void
 AIGmaker::process()
 {
+    if (sop) return process_sop();
+
     a = aiger_init();
     lit = 2;
 

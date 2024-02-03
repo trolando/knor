@@ -24,6 +24,7 @@ private:
     HoaData *data;
     SymGame *game;
 
+    bool sop = false; // use ISOP onehot SOP
     bool isop = false; // use ISOP
     bool verbose = false;
     bool onehot = false; // use onehot encoding
@@ -48,6 +49,7 @@ private:
 
     int make_and(std::deque<int> &gates);
     int make_or(std::deque<int> &gates);
+    void reduce(std::vector<std::vector<int>>& system, bool is_or);
 
     static const std::vector<std::string> compressCommands;
     void executeAbcCommand(Abc_Frame_t* pAbc, const std::string command) const;
@@ -60,6 +62,11 @@ private:
 public:
     AIGmaker(HoaData *data, SymGame *game);
     ~AIGmaker();
+
+    void setSop()
+    {
+        this->sop = true;
+    }
 
     void setIsop()
     {
@@ -82,6 +89,8 @@ public:
     }
 
     void process();
+    void process_sop();
+
     void writeAscii(FILE* out);
     void writeBinary(FILE* out);
 
