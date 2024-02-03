@@ -435,14 +435,14 @@ AIGmaker::process()
 
             // this gives source states and UAP for this cap
             std::set<MTBDD> uaps;
-            collect_inter(cap_bdd, mtbdd_set_first(game->uap_vars), uaps);
+            collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
             // each uap is a MTBDD node in cap_bdd, so no need to reference
 
             std::deque<int> terms;
 
             for (MTBDD uap : uaps) {
                 // s is all states that go to that particular uap
-                s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uap_vars), uap);
+                s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uns_vars), uap);
 
                 std::vector<int> source_states;
                 std::deque<int> source_gates;
@@ -503,11 +503,11 @@ AIGmaker::process()
             // std::cerr << "state " << state << /*" to has " << s <<*/ std::endl;
 
             std::set<MTBDD> uaps;
-            collect_inter(cap_bdd, mtbdd_set_first(game->uap_vars), uaps);
+            collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
 
             std::deque<int> terms;
             for (MTBDD uap : uaps) {
-                s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uap_vars), uap);
+                s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uns_vars), uap);
 
                 std::vector<int> source_states;
                 std::deque<int> source_gates;

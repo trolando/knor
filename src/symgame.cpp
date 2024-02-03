@@ -64,6 +64,7 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     ns_vars = mtbdd_set_empty();
     ps_vars = mtbdd_set_empty();
     pns_vars = mtbdd_set_empty();
+    uns_vars = mtbdd_set_empty();
 
     mtbdd_protect(&s_vars);
     mtbdd_protect(&uap_vars);
@@ -72,6 +73,7 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     mtbdd_protect(&ns_vars);
     mtbdd_protect(&ps_vars);
     mtbdd_protect(&pns_vars);
+    mtbdd_protect(&uns_vars);
 
     // skip to priobits
     int var = priobits;
@@ -83,6 +85,7 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     ps_vars = s_vars;
     for (int i=0; i<priobits; i++) ps_vars = mtbdd_set_add(ps_vars, i);
     pns_vars = mtbdd_set_addall(p_vars, ns_vars);
+    uns_vars = mtbdd_set_addall(uap_vars, ns_vars);
 
     this->maxprio = maxprio;
     this->priobits = priobits;
@@ -102,6 +105,7 @@ SymGame::~SymGame()
     mtbdd_unprotect(&ns_vars);
     mtbdd_unprotect(&ps_vars);
     mtbdd_unprotect(&pns_vars);
+    mtbdd_unprotect(&uns_vars);
 }
 
 /**

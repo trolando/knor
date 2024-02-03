@@ -22,6 +22,7 @@ public:
     sylvan::MTBDD ns_vars;
     sylvan::MTBDD ps_vars;
     sylvan::MTBDD pns_vars;
+    sylvan::MTBDD uns_vars;
 
     int statebits;
     int priobits;
