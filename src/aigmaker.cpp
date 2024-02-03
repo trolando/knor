@@ -220,7 +220,7 @@ AIGmaker::bdd_to_aig_cover_sop(ZDD cover)
         std::deque<int> gates;
 
         for (int i=0; product[i] != -1; i++) {
-            int the_lit = var_to_lit[product[i]/2];
+            int the_lit = var_to_lit.at(product[i]/2);
             if (product[i]&1) the_lit = aiger_not(the_lit);
             gates.push_back(the_lit);
         }
@@ -275,7 +275,7 @@ AIGmaker::bdd_to_aig_cover(ZDD cover)
     }
 
     int the_var = zdd_getvar(cover);
-    int the_lit = var_to_lit[the_var/2];
+    int the_lit = var_to_lit.at(the_var/2);
     if (the_var & 1) the_lit = aiger_not(the_lit);
 
     ZDD low = zdd_getlow(cover);
@@ -314,7 +314,7 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
         return comp ? aiger_not(it->second) : it->second;
     }
 
-    int the_lit = var_to_lit[mtbdd_getvar(bdd)];
+    int the_lit = var_to_lit.at(mtbdd_getvar(bdd));
 
     MTBDD low = mtbdd_getlow(bdd);
     MTBDD high = mtbdd_gethigh(bdd);
@@ -391,7 +391,7 @@ AIGmaker::process()
         for (int i=0; i<game->uap_count; i++) {
             uint32_t bddvar = mtbdd_set_first(_vars);
             _vars = mtbdd_set_next(_vars);
-            var_to_lit[bddvar] = uap_to_lit[i];
+            var_to_lit.emplace(bddvar, uap_to_lit[i]);
         }
     }
 
@@ -458,7 +458,7 @@ AIGmaker::process()
                     }
                     source_states.push_back(from);
                     // if state 0, take inverse
-                    source_gates.push_back(from == 0 ? aiger_not(state_to_lit[from]) : state_to_lit[from]);
+                    source_gates.push_back(from == 0 ? aiger_not(state_to_lit.at(from)) : state_to_lit.at(from));
                     lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
                 }
 
@@ -523,7 +523,7 @@ AIGmaker::process()
                     }
                     source_states.push_back(from);
                     // if state 0, take inverse
-                    source_gates.push_back(from == 0 ? aiger_not(state_to_lit[from]) : state_to_lit[from]);
+                    source_gates.push_back(from == 0 ? aiger_not(state_to_lit.at(from)) : state_to_lit.at(from));
                     lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
                 }
 
@@ -540,7 +540,7 @@ AIGmaker::process()
             int result = make_or(terms);
             // if state 0, take inverse
             if (state == 0) result = aiger_not(result);
-            aiger_add_latch(a, state_to_lit[state], result, "");
+            aiger_add_latch(a, state_to_lit.at(state), result, "");
             lf = mtbdd_enum_all_next(states, game->s_vars, state_arr, NULL);
         }
 
@@ -563,7 +563,7 @@ AIGmaker::process()
         for (int i=0; i<game->statebits; i++) {
             uint32_t bddvar = mtbdd_set_first(_vars);
             _vars = mtbdd_set_next(_vars);
-            var_to_lit[bddvar] = state_to_lit[i];
+            var_to_lit.emplace(bddvar, state_to_lit.at(i));
         }
 
         MTBDD* cap_bdds;   // contains the solution: controllable ap bdds: state -> uap -> B
@@ -626,7 +626,7 @@ AIGmaker::process()
             }
             for (int i=0; i<game->statebits; i++) {
                 int res = bdd_to_aig_cover_sop(state_zdds[i]);
-                aiger_add_latch(a, state_to_lit[i], res, "");
+                aiger_add_latch(a, state_to_lit.at(i), res, "");
             }
         } else {
             for (int i=0; i<game->cap_count; i++) {
@@ -635,7 +635,7 @@ AIGmaker::process()
             }
             for (int i=0; i<game->statebits; i++) {
                 int res = bdd_to_aig(state_bdds[i]);
-                aiger_add_latch(a, state_to_lit[i], res, "");
+                aiger_add_latch(a, state_to_lit.at(i), res, "");
             }
         }
 

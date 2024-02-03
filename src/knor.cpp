@@ -810,8 +810,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                 for (int v=0; v<game->vertexcount(); v++) {
                     // good cap states are owned and won by 0
                     if (game->owner(v) == 0 && game->winner[v] == 0) {
-                        auto a = vertex_to_bdd[v];
-                        auto b = vertex_to_bdd[game->strategy[v]];
+                        auto a = vertex_to_bdd.at(v);
+                        auto b = vertex_to_bdd.at(game->strategy[v]);
                         str[a] = b;
                     }
                 }
