@@ -889,7 +889,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
 
         if (verbose) {
-            // sym->print_trans();
+            // sym->print_trans(true);
             // sym->print_strategies();
         }
 
@@ -1038,7 +1038,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
 
         if (verbose) {
-            // sym->print_trans();
+            // sym->print_trans(true);
             // sym->print_strategies();
         }
 
@@ -1055,7 +1055,6 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             exit(10);
         }
 
-        const double t_before_encoding = wctime();
         AIGmaker maker(data, sym);
         if (verbose) {
             maker.setVerbose();

@@ -934,6 +934,61 @@ SymGame::postprocess(bool verbose)
 
 
 void
+SymGame::print_vars()
+{
+    {
+        std::cerr << "s vars:";
+        MTBDD _vars = s_vars;
+        while (_vars != mtbdd_set_empty()) {
+            std::cerr << " " << mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+        }
+        std::cerr << std::endl;
+    }
+
+    {
+        std::cerr << "u vars:";
+        MTBDD _vars = uap_vars;
+        while (_vars != mtbdd_set_empty()) {
+            std::cerr << " " << mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+        }
+        std::cerr << std::endl;
+    }
+
+    {
+        std::cerr << "c vars:";
+        MTBDD _vars = cap_vars;
+        while (_vars != mtbdd_set_empty()) {
+            std::cerr << " " << mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+        }
+        std::cerr << std::endl;
+    }
+
+    {
+        std::cerr << "p vars:";
+        MTBDD _vars = p_vars;
+        while (_vars != mtbdd_set_empty()) {
+            std::cerr << " " << mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+        }
+        std::cerr << std::endl;
+    }
+
+    {
+        std::cerr << "ns vars:";
+        MTBDD _vars = ns_vars;
+        while (_vars != mtbdd_set_empty()) {
+            std::cerr << " " << mtbdd_set_first(_vars);
+            _vars = mtbdd_set_next(_vars);
+        }
+        std::cerr << std::endl;
+    }
+}
+
+
+void
 SymGame::print_trans(bool only_strategy)
 {
     MTBDD vars = mtbdd_set_empty();

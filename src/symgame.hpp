@@ -62,6 +62,7 @@ public:
      */
     void postprocess(bool verbose);
 
+    void print_vars();
     void print_trans(bool only_strategy=false);
     void print_strategies();
 };

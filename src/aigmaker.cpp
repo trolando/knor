@@ -9,7 +9,8 @@
 
 // FIXME the caches should be wiped on gc, they are redundant anyway
 // the important bit happens in makeand to ensure no double AIGs are made...
-#define CACHES 0
+#define CACHES 0  // if set to 0, this will NOT use a cache on makeand!
+// note that the "sop" method does not require caches anyway
 
 using namespace sylvan;
 
@@ -798,8 +799,6 @@ AIGmaker::process()
             // keep just s and u... get rid of other cap variables
             cap_bdd = sylvan_and_exists(game->strategies, cap_bdd, game->cap_vars);
 
-            // std::cerr << "for controllable ap " << i << std::endl;
-
             // this gives source states and UAP for this cap
             std::set<MTBDD> uaps;
             collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
@@ -828,10 +827,6 @@ AIGmaker::process()
                     source_gates.push_back(from == 0 ? aiger_not(state_to_lit.at(from)) : state_to_lit.at(from));
                     lf2 = mtbdd_enum_all_next(s, game->s_vars, state_arr_2, NULL);
                 }
-
-                //for (int from : source_states) {
-                    //std::cerr << "source state " << from << " with UAP " << ((uap&sylvan_complement)?"~":"") << (uap&~sylvan_complement) << std::endl;
-                //}
 
                 int aig_uap = isop ? bdd_to_aig_isop(uap) : bdd_to_aig(uap);
                 int aig_states = make_or(source_gates);
