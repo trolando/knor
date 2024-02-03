@@ -934,7 +934,7 @@ SymGame::postprocess(bool verbose)
 
 
 void
-SymGame::print_trans()
+SymGame::print_trans(bool only_strategy)
 {
     MTBDD vars = mtbdd_set_empty();
     mtbdd_protect(&vars);
@@ -943,7 +943,12 @@ SymGame::print_trans()
     vars = mtbdd_set_addall(vars, this->cap_vars);
     vars = mtbdd_set_addall(vars, this->pns_vars);
     uint8_t arr[mtbdd_set_count(vars)+1];
-    MTBDD lf = mtbdd_enum_all_first(this->trans, vars, arr, NULL);
+    MTBDD trans = this->trans;
+    mtbdd_protect(&trans);
+    if (only_strategy) {
+        trans = sylvan_and(trans, this->strategies);
+    }
+    MTBDD lf = mtbdd_enum_all_first(trans, vars, arr, NULL);
     while (lf != mtbdd_false) {
         int idx=0;
         // decode state
@@ -977,10 +982,11 @@ SymGame::print_trans()
             if (arr[idx++]) next_state |= 1;
         }
         assert(idx == mtbdd_set_count(vars));
-        std::cerr << "from " << state << " uap " << uap << ": " << cap << " --> (" << prio << ") " << next_state << std::endl;
-        lf = mtbdd_enum_all_next(this->trans, vars, arr, NULL);
+        std::cerr << "from " << state << " uap " << uap << ": cap " << cap << " --> (" << prio << ") " << next_state << std::endl;
+        lf = mtbdd_enum_all_next(trans, vars, arr, NULL);
     }
     mtbdd_unprotect(&vars);
+    mtbdd_unprotect(&trans);
 }
 
 
