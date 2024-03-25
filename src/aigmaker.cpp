@@ -2,6 +2,7 @@
  * Copyright Tom van Dijk
  *************************************************************************/
 
+#include <abcminimization.hpp>
 #include <aigmaker.hpp>
 #include <knor.hpp>
 #include <set>
@@ -1008,180 +1009,34 @@ AIGmaker::process()
     }
 }
 
-void
+int
 AIGmaker::writeAscii(FILE* out)
 {
-    aiger_write_to_file(a, aiger_ascii_mode, out);
+    return aiger_write_to_file(a, aiger_ascii_mode, out);
 }
 
-void
+int
 AIGmaker::writeBinary(FILE* out)
 {
-    aiger_write_to_file(a, aiger_binary_mode, out);
+    return aiger_write_to_file(a, aiger_binary_mode, out);
 }
 
-// commands taken from 'alias compress2rs' from 'abc.rc' file
-const std::vector<std::string> AIGmaker::compressCommands ({
-    "balance -l",
-    "resub -K 6 -l",
-    "rewrite -l",
-    "resub -K 6 -N 2",
-    "refactor -l",
-    "resub -K 8 -l",
-    "balance -l",
-    "resub -K 8 -N 2 -l",
-    "rewrite -l",
-    "resub -K 10 -l",
-    "rewrite -z -l",
-    "resub -K 10 -N 2 -l",
-    "balance -l",
-    "resub -K 12 -l",
-    "refactor -z -l",
-    "resub -K 12 -N 2 -l",
-    "balance -l",
-    "rewrite -z -l",
-    "balance -l",
-    "dc2"
-});
-
-// commands taken from 'alias compress2' from 'abc.rc' file
-/*
-const std::vector<std::string> AIGmaker::compressCommands ({
-    "balance -l",
-    "rewrite -l",
-    "refactor -l",
-    "balance -l",
-    "rewrite -l",
-    "rewrite -z -l",
-    "balance -l",
-    "refactor -z -l",
-    "rewrite -z -l",
-    "balance -l"
-});
-*/
-
-void
-AIGmaker::compress()
-{
-    Abc_Start();
-    Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
-
-    writeToAbc(pAbc);
-
-    // compress until convergence
-    int new_num_nodes = getAbcNetworkSize(pAbc);
-    int old_num_nodes = new_num_nodes + 1;
-    while (new_num_nodes > 0 && new_num_nodes < old_num_nodes) {
-        executeCompressCommands(pAbc);
-        old_num_nodes = new_num_nodes;
-        new_num_nodes = getAbcNetworkSize(pAbc);
-        // std::cerr << "nodes after compress run: " << new_num_nodes << std::endl;
-        if ((old_num_nodes-new_num_nodes)<old_num_nodes/40) break; // 2.5% improvement or better pls
-    }
-
-    readFromAbc(pAbc);
-
-    Abc_Stop();
-}
-
-void
-AIGmaker::drewrite()
-{
-    Abc_Start();
-    Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
-
-    writeToAbc(pAbc);
-
-    // compress until convergence
-    int new_num_nodes = getAbcNetworkSize(pAbc);
-    int old_num_nodes = new_num_nodes + 1;
-    while (new_num_nodes > 0 && new_num_nodes < old_num_nodes) {
-        executeAbcCommand(pAbc, "drw");
-        executeAbcCommand(pAbc, "balance");
-        executeAbcCommand(pAbc, "drf");
-        executeAbcCommand(pAbc, "dc2");
-        old_num_nodes = new_num_nodes;
-        new_num_nodes = getAbcNetworkSize(pAbc);
-        // std::cerr << "nodes after compress run: " << new_num_nodes << std::endl;
-        if ((old_num_nodes-new_num_nodes)<old_num_nodes/100) break; // 1% improvement or better pls
-    }
-
-    readFromAbc(pAbc);
-
-    Abc_Stop();
-}
-
-void AIGmaker::executeAbcCommand(Abc_Frame_t* pAbc, const std::string command) const {
-    if (Cmd_CommandExecute( pAbc, command.c_str())) {
-        throw std::runtime_error("Cannot execute ABC command: " + command);
-    }
-    if (verbose) std::cerr << "after " << command << ": " << getAbcNetworkSize(pAbc) << std::endl;
-}
-
-void AIGmaker::executeCompressCommands(Abc_Frame_t* pAbc) const {
-    for (const auto& command : compressCommands) {
-        executeAbcCommand(pAbc, command);
-    }
-}
-
-int AIGmaker::getAbcNetworkSize(Abc_Frame_t* pAbc) const {
-    Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
-    return Abc_NtkNodeNum(pNtk);
-}
-
-int AIGmaker::getTmpFile(char* tmp_filename) const {
-    std::strcpy(tmp_filename, "knor.XXXXXX");
-    int fd = mkstemp(tmp_filename);
-    if (fd == -1) {
-        throw std::runtime_error("Could not create temporary file: " + std::string(tmp_filename));
-    }
-    return fd;
-}
-
-void AIGmaker::writeToAbc(Abc_Frame_t* pAbc) const {
-    char tmp_filename[256];
-    int fd = getTmpFile(tmp_filename);
-
-    // write AIGER out to be read by ABC
-    FILE* file = fdopen(fd, "w");
-    if (file == nullptr) {
-        throw std::runtime_error("Could not open temporary file: " + std::string(tmp_filename));
-    }
-    int write_result = aiger_write_to_file(a, aiger_binary_mode, file);
-    fclose(file);
-    if (write_result == 0) {
-        throw std::runtime_error("Could not write AIGER circuit to file: " + std::string(tmp_filename));
-    }
-
-    std::stringstream read_command;
-    read_command << "read_aiger " << tmp_filename;
-    executeAbcCommand(pAbc, read_command.str());
-
-    std::remove(tmp_filename);
-}
-
-void AIGmaker::readFromAbc(Abc_Frame_t* pAbc) {
-    char tmp_filename[256];
-    int fd = getTmpFile(tmp_filename);
-
-    std::stringstream write_command;
-    write_command << "write_aiger -s " << tmp_filename;
-    executeAbcCommand(pAbc, write_command.str());
-
-    // read AIGER back, delete comments added by ABC
-    FILE* file = fdopen(fd, "r");
-    if (file == nullptr) {
-        throw std::runtime_error("Could not open temporary file: " + std::string(tmp_filename));
-    }
-    // read_aiger
+void AIGmaker::readFile(FILE* infile) {
     aiger_reset(a);
     a = aiger_init();
-    const char* read_result = aiger_read_from_file(a, file);
-    fclose(file);
-    std::remove(tmp_filename);
+    const char *read_result = aiger_read_from_file(a, infile);
     if (read_result != nullptr) {
-        throw std::runtime_error("Could not read AIGER circuit from file: " + std::string(tmp_filename) + ": " + std::string(read_result));
+        throw std::runtime_error("Could not read AIGER circuit from file: " + std::string(read_result));
     }
     aiger_delete_comments(a);
 }
 
+void AIGmaker::drewrite() {
+    ABCMinimization min(*this, verbose);
+    min.drewrite();
+}
+
+void AIGmaker::compress() {
+    ABCMinimization min(*this, verbose);
+    min.compress();
+}

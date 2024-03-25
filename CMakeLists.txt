@@ -44,12 +44,13 @@ ADD_FLEX_BISON_DEPENDENCY(hoalexer hoaparser)
 add_executable(knor)
 target_sources(knor
   PRIVATE
-    src/knor.cpp
-    src/symgame.cpp
-    src/bisim.cpp
-    src/aigmaker.cpp
-    src/simplehoa.c
     src/aiger.c
+    src/abcminimization.cpp
+    src/aigmaker.cpp
+    src/bisim.cpp
+    src/knor.cpp
+    src/simplehoa.c
+    src/symgame.cpp
     ${BISON_hoaparser_OUTPUTS}
     ${FLEX_hoalexer_OUTPUTS}
 )

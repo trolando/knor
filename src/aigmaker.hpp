@@ -51,14 +51,6 @@ private:
     int make_or(std::deque<int> &gates);
     void reduce(std::vector<std::vector<int>>& system, bool is_or);
 
-    static const std::vector<std::string> compressCommands;
-    void executeAbcCommand(Abc_Frame_t* pAbc, const std::string command) const;
-    void executeCompressCommands(Abc_Frame_t* pAbc) const;
-    int getAbcNetworkSize(Abc_Frame_t* pAbc) const;
-    int getTmpFile(char* tmp_filename) const;
-    void writeToAbc(Abc_Frame_t* pAbc) const;
-    void readFromAbc(Abc_Frame_t* pAbc);
-
 public:
     AIGmaker(HoaData *data, SymGame *game);
     ~AIGmaker();
@@ -91,8 +83,9 @@ public:
     void process();
     void process_sop();
 
-    void writeAscii(FILE* out);
-    void writeBinary(FILE* out);
+    int writeAscii(FILE* outfile);
+    int writeBinary(FILE* outfile);
+    void readFile(FILE* infile);
 
     void drewrite();
     void compress();
