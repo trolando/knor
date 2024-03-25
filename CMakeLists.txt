@@ -44,6 +44,7 @@ ADD_FLEX_BISON_DEPENDENCY(hoalexer hoaparser)
 add_executable(knor)
 target_sources(knor
   PRIVATE
+    src/aigcircuit.cpp
     src/aiger.c
     src/abcminimization.cpp
     src/aigmaker.cpp

@@ -10,16 +10,18 @@ extern "C" {
     #include "simplehoa.h"
 }
 
-#pragma once
+#ifndef KNOR_SYMGAME_HPP
+#define KNOR_SYMGAME_HPP
 
-class SymGame {
+class SymGame final {
 public:
     int maxprio;
 
+    sylvan::MTBDD p_vars;
     sylvan::MTBDD s_vars;
     sylvan::MTBDD uap_vars;
     sylvan::MTBDD cap_vars;
-    sylvan::MTBDD p_vars;
+    sylvan::MTBDD np_vars;
     sylvan::MTBDD ns_vars;
     sylvan::MTBDD ps_vars;
     sylvan::MTBDD pns_vars;
@@ -35,9 +37,27 @@ public:
 
     SymGame(int statebits, int priobits, int uap_count, int cap_count, int maxprio);
     SymGame(const SymGame&) = delete;
-    virtual ~SymGame();
+    ~SymGame();
 
     static std::unique_ptr<SymGame> constructSymGame(HoaData* data, bool isMaxParity, bool controllerIsOdd);
+
+    /**
+     * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
+     * High-significant bits come before low-significant bits in the BDD
+     */
+    static sylvan::MTBDD encode_state(uint32_t state, sylvan::MTBDD state_vars);
+
+    /**
+     * Encode priority i.e. all states via priority <priority>
+     */
+    static sylvan::MTBDD encode_prio(int priority, int priobits);
+
+    /**
+     * Encode a priostate as a BDD, using priobits before statebits
+     * High-significant bits come before low-significant bits in the BDD
+     */
+    static sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, int statebits, int priobits, int s_first_var, int p_first_var);
+    static sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, sylvan::MTBDD statevars, sylvan::MTBDD priovars);
 
     /**
      * Translate symbolic PG to explicit game in Oink, that can then be solved.
@@ -70,3 +90,5 @@ public:
     void print_trans(bool only_strategy=false);
     void print_strategies();
 };
+
+#endif // KNOR_SYMGAME_HPP

@@ -2,18 +2,13 @@
  * Copyright (c) 2020-2021 Tom van Dijk
  *************************************************************************/
 
-//#include <cassert> // for assert
-//#include <cstring> // for strcmp
 #include <iostream>
 #include <map>
 #include <set>
-//#include <sys/time.h> // for gettimeofday
 #include <deque>
 
 #include <oink/game.hpp>
-#include <oink/oink.hpp>
 #include <oink/solvers.hpp>
-//#include <tools/cxxopts.hpp>
 #include <sylvan.h>
 #include <knor.hpp>
 #include <symgame.hpp>
@@ -33,34 +28,36 @@ SymGame::SymGame(int statebits, int priobits, int uap_count, int cap_count, int 
     mtbdd_protect(&trans);
     mtbdd_protect(&strategies);
 
+    p_vars = mtbdd_set_empty();
     s_vars = mtbdd_set_empty();
     uap_vars = mtbdd_set_empty();
     cap_vars = mtbdd_set_empty();
-    p_vars = mtbdd_set_empty();
+    np_vars = mtbdd_set_empty();
     ns_vars = mtbdd_set_empty();
     ps_vars = mtbdd_set_empty();
     pns_vars = mtbdd_set_empty();
     uns_vars = mtbdd_set_empty();
 
+    mtbdd_protect(&p_vars);
     mtbdd_protect(&s_vars);
     mtbdd_protect(&uap_vars);
     mtbdd_protect(&cap_vars);
-    mtbdd_protect(&p_vars);
+    mtbdd_protect(&np_vars);
     mtbdd_protect(&ns_vars);
     mtbdd_protect(&ps_vars);
     mtbdd_protect(&pns_vars);
     mtbdd_protect(&uns_vars);
 
     // skip to priobits
-    int var = priobits;
+    int var = 0;
+    for (int i=0; i<priobits; i++) p_vars = mtbdd_set_add(p_vars, var++);
     for (int i=0; i<statebits; i++) s_vars = mtbdd_set_add(s_vars, var++);
     for (int i=0; i<uap_count; i++) uap_vars = mtbdd_set_add(uap_vars, var++);
     for (int i=0; i<cap_count; i++) cap_vars = mtbdd_set_add(cap_vars, var++);
-    for (int i=0; i<priobits; i++) p_vars = mtbdd_set_add(p_vars, var++);
+    for (int i=0; i<priobits; i++) np_vars = mtbdd_set_add(np_vars, var++);
     for (int i=0; i<statebits; i++) ns_vars = mtbdd_set_add(ns_vars, var++);
-    ps_vars = s_vars;
-    for (int i=0; i<priobits; i++) ps_vars = mtbdd_set_add(ps_vars, i);
-    pns_vars = mtbdd_set_addall(p_vars, ns_vars);
+    ps_vars = mtbdd_set_addall(p_vars, s_vars);
+    pns_vars = mtbdd_set_addall(np_vars, ns_vars);
     uns_vars = mtbdd_set_addall(uap_vars, ns_vars);
 
     this->maxprio = maxprio;
@@ -74,14 +71,108 @@ SymGame::~SymGame()
 {
     mtbdd_unprotect(&trans);
     mtbdd_unprotect(&strategies);
+    mtbdd_unprotect(&p_vars);
     mtbdd_unprotect(&s_vars);
     mtbdd_unprotect(&uap_vars);
     mtbdd_unprotect(&cap_vars);
-    mtbdd_unprotect(&p_vars);
+    mtbdd_unprotect(&np_vars);
     mtbdd_unprotect(&ns_vars);
     mtbdd_unprotect(&ps_vars);
     mtbdd_unprotect(&pns_vars);
     mtbdd_unprotect(&uns_vars);
+}
+
+/**
+ * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
+ * High-significant bits come before low-significant bits in the BDD
+ */
+MTBDD SymGame::encode_state(uint32_t state, MTBDD statevars)
+{
+    // convert statevars to stack
+    std::vector<unsigned int> vars;
+    while (statevars != mtbdd_set_empty()) {
+        vars.push_back(mtbdd_set_first(statevars));
+        statevars = mtbdd_set_next(statevars);
+    }
+    // create a cube
+    auto cube = mtbdd_true;
+    while (!vars.empty()) {
+        auto var = vars.back();
+        vars.pop_back();
+        if (state & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
+        else cube = mtbdd_makenode(var, cube, mtbdd_false);
+        state >>= 1;
+    }
+    return cube;
+}
+
+/**
+ * Encode priority i.e. all states via priority <priority>
+ */
+MTBDD SymGame::encode_prio(int priority, int priobits)
+{
+    MTBDD cube = mtbdd_true;
+    for (int i=0; i<priobits; i++) {
+        if (priority & 1) cube = mtbdd_makenode(priobits-i-1, mtbdd_false, cube);
+        else cube = mtbdd_makenode(priobits-i-1, cube, mtbdd_false);
+        priority >>= 1;
+    }
+    return cube;
+}
+
+
+/**
+* Encode a priostate as a BDD, with priobits before statebits
+* High-significant bits come before low-significant bits in the BDD
+*/
+MTBDD SymGame::encode_priostate(uint32_t state, uint32_t priority, int statebits, int priobits, int s_first_var, int p_first_var)
+{
+    // create a cube
+    MTBDD cube = mtbdd_true;
+    for (int i=0; i<statebits; i++) {
+        if (state & 1) cube = mtbdd_makenode(s_first_var+statebits-i-1, mtbdd_false, cube);
+        else cube = mtbdd_makenode(s_first_var+statebits-i-1, cube, mtbdd_false);
+        state >>= 1;
+    }
+    for (int i=0; i<priobits; i++) {
+        if (priority & 1) cube = mtbdd_makenode(p_first_var+priobits-i-1, mtbdd_false, cube);
+        else cube = mtbdd_makenode(p_first_var+priobits-i-1, cube, mtbdd_false);
+        priority >>= 1;
+    }
+    return cube;
+}
+
+MTBDD SymGame::encode_priostate(uint32_t state, uint32_t priority, MTBDD statevars, MTBDD priovars)
+{
+    // convert statevars to stack
+    std::vector<unsigned int> vars;
+    while (statevars != mtbdd_set_empty()) {
+        vars.push_back(mtbdd_set_first(statevars));
+        statevars = mtbdd_set_next(statevars);
+    }
+    // create the cube
+    auto cube = mtbdd_true;
+    while (!vars.empty()) {
+        auto var = vars.back();
+        vars.pop_back();
+        if (state & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
+        else cube = mtbdd_makenode(var, cube, mtbdd_false);
+        state >>= 1;
+    }
+    // convert priovars to stack
+    while (priovars != mtbdd_set_empty()) {
+        vars.push_back(mtbdd_set_first(priovars));
+        priovars = mtbdd_set_next(priovars);
+    }
+    // create the rest of the cube
+    while (!vars.empty()) {
+        auto var = vars.back();
+        vars.pop_back();
+        if (priority & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
+        else cube = mtbdd_makenode(var, cube, mtbdd_false);
+        priority >>= 1;
+    }
+    return cube;
 }
 
 /**
@@ -169,7 +260,8 @@ std::unique_ptr<SymGame> SymGame::constructSymGame(HoaData *data, bool isMaxPari
             // encode the label as a MTBDD
             lblbdd = RUN(evalLabel, label, data, variables);
             // encode priostate (leaf) and update transition relation
-            leaf = encode_priostate(succ, priority, statebits, priobits, mtbdd_set_first(res->ns_vars), mtbdd_set_first(res->p_vars));
+            leaf = encode_priostate(succ, priority, statebits, priobits, mtbdd_set_first(res->ns_vars), mtbdd_set_first(res->np_vars));
+            // leaf = encode_priostate(succ, priority, res->ns_vars, res->np_vars);
             // trans := lbl THEN leaf ELSE trans
             transbdd = mtbdd_ite(lblbdd, leaf, transbdd);
             // deref lblbdd and leaf
@@ -180,7 +272,7 @@ std::unique_ptr<SymGame> SymGame::constructSymGame(HoaData *data, bool isMaxPari
         int src = state->id;
         if (src == 0) src = vstart;
         else if (src == vstart) src = 0;
-        statebdd = encode_state(src, statebits, mtbdd_set_first(res->s_vars));
+        statebdd = encode_state(src, res->s_vars);
         // update full trans with <statebdd> then <transbdd>
         res->trans = mtbdd_ite(statebdd, transbdd, res->trans);
         // deref statebdd and transbdd
@@ -541,7 +633,7 @@ pg::Game* SymGame::strategyToPG()
 
         MTBDD pns = sylvan_project(lf, pns_vars);
         mtbdd_refs_pushptr(&pns);
-        
+
         uint8_t pns_arr[this->priobits+this->statebits];
         MTBDD lf2 = mtbdd_enum_all_first(pns, pns_vars, pns_arr, NULL);
         while (lf2 != mtbdd_false) {
@@ -568,7 +660,7 @@ pg::Game* SymGame::strategyToPG()
             vidx++;
 
             // std::cout << "to (" << pr << ") " << to << std::endl;
-            
+
             lf2 = mtbdd_enum_all_next(pns, pns_vars, pns_arr, NULL);
         }
 
@@ -691,7 +783,7 @@ bool SymGame::solve(bool verbose)
         // Restrict strat to states that are one step even (winning)
         strat = sylvan_and(strat, onestepeven);
 
-        // those are won by Even in one step ... 
+        // those are won by Even in one step ...
         MTBDD newd = mtbdd_false;
         mtbdd_refs_pushptr(&newd); // push newd
 
@@ -768,7 +860,7 @@ bool SymGame::solve(bool verbose)
             }
 
             // select all lower not frozen at pr and reset them
-            lwr = sylvan_and(lwr, sylvan_not(freeze[pr])); 
+            lwr = sylvan_and(lwr, sylvan_not(freeze[pr]));
             distractions = sylvan_and(distractions, sylvan_not(lwr));
             mtbdd_refs_popptr(1); // pop lwr
 
@@ -805,7 +897,7 @@ bool SymGame::solve(bool verbose)
 
     // we now know if the initial state is distracting or not
     // We force initial state to be state 0 in construction
-    MTBDD initial = encode_priostate(0, 0, this->statebits, this->priobits, mtbdd_set_first(s_vars), 0);
+    MTBDD initial = encode_priostate(0, 0, s_vars, p_vars);
     mtbdd_refs_pushptr(&initial);
 
     if (sylvan_and(initial, distractions) != sylvan_false) {
@@ -864,7 +956,7 @@ void SymGame::postprocess(bool verbose)
         {
             // compute the strategy transition relation
             // s > ns
-            MTBDD vars = p_vars;
+            MTBDD vars = np_vars;
             mtbdd_refs_pushptr(&vars);
             vars = mtbdd_set_addall(vars, cap_vars);
             vars = mtbdd_set_addall(vars, uap_vars);
@@ -872,7 +964,7 @@ void SymGame::postprocess(bool verbose)
             mtbdd_refs_popptr(1);
         }
 
-        MTBDD visited = encode_state(0, this->statebits, mtbdd_set_first(s_vars));
+        MTBDD visited = encode_state(0, s_vars);
         mtbdd_refs_pushptr(&visited);
 
         MTBDD old = mtbdd_false;
@@ -937,7 +1029,7 @@ void SymGame::print_vars()
 
     {
         std::cerr << "p vars:";
-        MTBDD _vars = p_vars;
+        MTBDD _vars = np_vars;
         while (_vars != mtbdd_set_empty()) {
             std::cerr << " " << mtbdd_set_first(_vars);
             _vars = mtbdd_set_next(_vars);

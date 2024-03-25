@@ -309,7 +309,7 @@ TASK_IMPL_2(MTBDD, min_lts_strong, SymGame*, sym, bool, strip_priority)
 
     // first get the transition relation without the priorities
     //  i.e., only keep s > uap > cap > ns
-    MTBDD trans = strip_priority ? sylvan_exists(sym->trans, sym->p_vars) : sym->trans;
+    MTBDD trans = strip_priority ? sylvan_exists(sym->trans, sym->np_vars) : sym->trans;
     mtbdd_refs_pushptr(&trans);
 
     // next, get state data, prepare blocks
@@ -589,7 +589,7 @@ VOID_TASK_IMPL_3(minimize, SymGame*, sym, MTBDD, partition, bool, verbose)
     sym->ns_vars = block_ns_vars;
     sym->ps_vars = sym->s_vars;
     for (int i=0; i<sym->priobits; i++) sym->ps_vars = mtbdd_set_add(sym->ps_vars, i);
-    sym->pns_vars = mtbdd_set_addall(sym->p_vars, sym->ns_vars);
+    sym->pns_vars = mtbdd_set_addall(sym->np_vars, sym->ns_vars);
     sym->statebits = no_ns_vars;
     
     mtbdd_refs_popptr(4);
@@ -625,7 +625,7 @@ VOID_TASK_IMPL_2(print_signature, SymGame*, game, MTBDD, signature)
     vars = mtbdd_set_addall(vars, game->s_vars);
     vars = mtbdd_set_addall(vars, game->uap_vars);
     vars = mtbdd_set_addall(vars, game->cap_vars);
-    vars = mtbdd_set_addall(vars, game->p_vars);
+    vars = mtbdd_set_addall(vars, game->np_vars);
     uint8_t arr[mtbdd_set_count(vars)+1];
     MTBDD lf = mtbdd_enum_all_first(signature, vars, arr, NULL);
     while (lf != mtbdd_false) {

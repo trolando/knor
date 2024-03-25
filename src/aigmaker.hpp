@@ -6,88 +6,67 @@
 #include <oink/oink.hpp>
 #include <deque>
 #include <symgame.hpp>
+#include <aigcircuit.hpp>
+#include <sylvan_mtbdd.h>
 
 extern "C" {
     #include "aiger.h"
     #include "simplehoa.h"
-    #include "misc/util/abc_namespaces.h"
-    #include "base/main/abcapis.h"
-    #include "base/abc/abc.h"
-    #include "base/main/main.h"
 }
 
 #pragma once
 
-class AIGmaker {
+class AIGmaker final {
+public:
+    AIGmaker(HoaData *data, SymGame *game);
+
+    AIGmaker& setSop()
+    {
+        this->sop = true;
+        return *this;
+    }
+
+    AIGmaker& setIsop()
+    {
+        this->isop = true;
+        return *this;
+    }
+
+    AIGmaker& setOneHot()
+    {
+        this->onehot = true;
+        return *this;
+    }
+
+    AIGmaker& setVerbose()
+    {
+        this->verbose = true;
+        return *this;
+    }
+
+    std::unique_ptr<AIGCircuit> process();
 private:
-    aiger *a;
-    HoaData *data;
-    SymGame *game;
+    HoaData &data;
+    SymGame &game;
+    std::unique_ptr<AIGCircuit> circuit;
 
     bool sop = false; // use ISOP onehot SOP
     bool isop = false; // use ISOP
     bool verbose = false;
     bool onehot = false; // use onehot encoding
-    
-    int lit; // current next literal
 
-    int* uap_to_lit; // the input literal for each uncontrolled AP
-    std::map<int, int> state_to_lit; // the latch literal for each state bit / onehot state
-    char** caps; // labels for controlled APs
-    std::map<uint32_t, int> var_to_lit; // translate BDD variable (uap/state) to AIGER literal
+    std::vector<unsigned int> uap_to_lit; // store the input literals for each uncontrolled AP
+    std::vector<std::string> cap_labels; // store the labels for controlled APs
+    std::map<int, unsigned int> state_to_lit; // the latch literal for each state bit / onehot state
+    std::map<uint32_t, unsigned int> bddvar_to_lit; // translate BDD variable (uap/state) to AIGER literal
 
-    std::map<sylvan::MTBDD, int> mapping; // map MTBDD to AIGER literal
-    std::map<uint64_t, int> cache; // cache for ands
-
-    int makeand(int rhs0, int rhs1);
-    int bdd_to_aig(sylvan::MTBDD bdd);           // use recursive encoding of BDD (shannon expanion)
-    int bdd_to_aig_isop(sylvan::MTBDD bdd);
-    int bdd_to_aig_cover(sylvan::ZDD bdd);       // use recursive encoding of ZDD cover (~shannon expansion)
-    int bdd_to_aig_cover_sop(sylvan::ZDD cover); // use SOP encoding ("two level logic")
-    void simplify_and(std::deque<int> &gates);
-    void simplify_or(std::deque<int> &gates);
-
-    int make_and(std::deque<int> &gates);
-    int make_or(std::deque<int> &gates);
-    void reduce(std::vector<std::vector<int>>& system, bool is_or);
-
-public:
-    AIGmaker(HoaData *data, SymGame *game);
-    ~AIGmaker();
-
-    void setSop()
-    {
-        this->sop = true;
-    }
-
-    void setIsop()
-    {
-        this->isop = true;
-    }
-
-    void setOneHot()
-    {
-        this->onehot = true;
-    }
-
-    void setVerbose()
-    {
-        this->verbose = true;
-    }
-
-    long getNumAnds()
-    {
-        return this->a->num_ands;
-    }
-
-    void process();
-    void process_sop();
-
-    int writeAscii(FILE* outfile);
-    int writeBinary(FILE* outfile);
-    void readFile(FILE* infile);
-
-    void drewrite();
-    void compress();
+    unsigned int bddToAigRecursive(sylvan::MTBDD bdd);           // use recursive encoding of BDD (shannon expanion)
+    unsigned int bdd_to_aig_isop(sylvan::MTBDD bdd);
+    unsigned int bddToAigCover(sylvan::ZDD bdd);       // use recursive encoding of ZDD cover (~shannon expansion)
+    unsigned int bdd_to_aig_cover_sop(sylvan::ZDD cover); // use SOP encoding ("two level logic")
+    void reduce(std::vector<std::vector<unsigned int>>& system, bool is_or);
+    void processSOP();
+    void processOnehot();
+    void processBinary();
 };
 

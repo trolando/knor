@@ -2,7 +2,11 @@
  * Copyright Tom van Dijk
  */
 
-#include "abcminimization.hpp"
+#include <abcminimization.hpp>
+#include <stdexcept>
+#include <iostream>
+#include <cstring>
+#include <sstream>
 
 // commands taken from 'alias compress2rs' from 'abc.rc' file
 const std::vector<std::string> ABCMinimization::compressCommands ({
@@ -130,12 +134,13 @@ void ABCMinimization::executeCompressCommands(Abc_Frame_t* pAbc) const {
     }
 }
 
-int ABCMinimization::getAbcNetworkSize(Abc_Frame_t* pAbc) const {
+int ABCMinimization::getAbcNetworkSize(Abc_Frame_t* pAbc) {
     Abc_Ntk_t* pNtk = Abc_FrameReadNtk(pAbc);
     return Abc_NtkNodeNum(pNtk);
 }
 
-int ABCMinimization::getTmpFile(char* tmp_filename) const {
+int ABCMinimization::getTmpFile(char* tmp_filename) {
+    // TODO this needs to be fixed (maybe to std::string?) strcpy usage is technically prone to errors
     std::strcpy(tmp_filename, "knor.XXXXXX");
     int fd = mkstemp(tmp_filename);
     if (fd == -1) {

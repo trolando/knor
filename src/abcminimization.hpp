@@ -7,7 +7,7 @@
 
 #include <vector>
 #include <string>
-#include <aigmaker.hpp>
+#include <aigcircuit.hpp>
 
 extern "C" {
 #include "misc/util/abc_namespaces.h"
@@ -16,20 +16,22 @@ extern "C" {
 #include "base/main/main.h"
 }
 
-class ABCMinimization {
-private:
-    AIGmaker& circuit;
-    bool verbose = false;
+class ABCMinimization final {
 public:
-    ABCMinimization(AIGmaker& circuit, bool verbose = false) : circuit(circuit), verbose(verbose) {}
+    explicit ABCMinimization(AIGCircuit& circuit, bool verbose = false)
+        : circuit(circuit), verbose(verbose) {}
     void drewrite();
     void compress();
+
 private:
+    AIGCircuit& circuit;
+    bool verbose = false;
+
     static const std::vector<std::string> compressCommands;
     void executeAbcCommand(Abc_Frame_t* pAbc, const std::string& command) const;
     void executeCompressCommands(Abc_Frame_t* pAbc) const;
-    int getAbcNetworkSize(Abc_Frame_t* pAbc) const;
-    int getTmpFile(char* tmp_filename) const;
+    static int getAbcNetworkSize(Abc_Frame_t* pAbc) ;
+    static int getTmpFile(char* tmp_filename) ;
     void writeToAbc(Abc_Frame_t* pAbc) const;
     void readFromAbc(Abc_Frame_t* pAbc);
 };

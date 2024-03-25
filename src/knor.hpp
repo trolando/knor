@@ -21,23 +21,6 @@ extern "C" {
 int adjustPriority(int p, bool maxPriority, bool controllerIsOdd, int noPriorities);
 
 /**
- * Encode priority i.e. all states via priority <priority>
- */
-sylvan::MTBDD encode_prio(int priority, int priobits);
-
-/**
- * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
- * High-significant bits come before low-significant bits in the BDD
- */
-sylvan::MTBDD encode_state(uint32_t state, const int statebits, const int s_first_var);
-
-/**
-* Encode a priostate as a BDD, using priobits before statebits
-* High-significant bits come before low-significant bits in the BDD
-*/
-sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, const int statebits, const int priobits, const int s_first_var, const int p_first_var);
-
-/**
  * Convert a transition label (Btree) to a BDD encoding the label
  * a label is essentially a boolean combination of atomic propositions and aliases
  */

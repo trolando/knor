@@ -171,89 +171,30 @@ adjustPriority(int p, bool maxPriority, bool controllerIsOdd, int noPriorities)
 
 
 /**
- * Encode priority i.e. all states via priority <priority>
- */
-MTBDD
-encode_prio(int priority, int priobits)
-{
-    MTBDD cube = mtbdd_true;
-    for (int i=0; i<priobits; i++) {
-        if (priority & 1) cube = mtbdd_makenode(priobits-i-1, mtbdd_false, cube);
-        else cube = mtbdd_makenode(priobits-i-1, cube, mtbdd_false);
-        priority >>= 1;
-    }
-    return cube;
-}
-
-
-/**
- * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
- * High-significant bits come before low-significant bits in the BDD
- */
-MTBDD
-encode_state(uint32_t state, const int statebits, const int s_first_var)
-{
-    // create a cube
-    MTBDD cube = mtbdd_true;
-    for (int i=0; i<statebits; i++) {
-        const int bit = s_first_var+statebits-i-1;
-        if (state & 1) cube = mtbdd_makenode(bit, mtbdd_false, cube);
-        else cube = mtbdd_makenode(bit, cube, mtbdd_false);
-        state >>= 1;
-    }
-    return cube;
-}
-
-
-/**
-* Encode a priostate as a BDD, with priobits before statebits
-* High-significant bits come before low-significant bits in the BDD
-*/
-MTBDD
-encode_priostate(uint32_t state, uint32_t priority, const int statebits, const int priobits, const int s_first_var, const int p_first_var)
-{
-    // create a cube
-    MTBDD cube = mtbdd_true;
-    for (int i=0; i<statebits; i++) {
-        if (state & 1) cube = mtbdd_makenode(s_first_var+statebits-i-1, mtbdd_false, cube);
-        else cube = mtbdd_makenode(s_first_var+statebits-i-1, cube, mtbdd_false);
-        state >>= 1;
-    }
-    for (int i=0; i<priobits; i++) {
-        if (priority & 1) cube = mtbdd_makenode(p_first_var+priobits-i-1, mtbdd_false, cube);
-        else cube = mtbdd_makenode(p_first_var+priobits-i-1, cube, mtbdd_false);
-        priority >>= 1;
-    }
-    return cube;
-}
-
-
-/**
  * Given some intermediary MTBDD root, collect all the MTBDD leafs.
  * It decodes the leaf <priority, state> and re-encodes the leaf as a BDD such that
  * the first <priobits> BDD variables encode the priority and
  * the next <statebits> BDD variables encode the target state
  */
-MTBDD
-collect_targets(MTBDD trans, std::set<uint64_t> &res, const int statebits, const int priobits)
+MTBDD collect_targets(MTBDD trans, std::set<uint64_t> &res, MTBDD statevars, MTBDD priovars)
 {
     if (mtbdd_isleaf(trans)) {
         uint64_t leaf = mtbdd_getint64(trans);
         res.insert(leaf);
 
-        uint32_t priority = (uint32_t)(leaf>>32);
-        uint32_t state = (uint32_t)(leaf & 0xffffffff);
+        auto priority = (uint32_t)(leaf>>32);
+        auto state = (uint32_t)(leaf & 0xffffffff);
 
-        return encode_priostate(state, priority, statebits, priobits, priobits, 0);
+        return SymGame::encode_priostate(state, priority, statevars, priovars);
     } else {
-        MTBDD left = mtbdd_false;
-        MTBDD right = mtbdd_false;
+        auto left = mtbdd_false;
+        auto right = mtbdd_false;
         mtbdd_refs_pushptr(&left);
         mtbdd_refs_pushptr(&right);
 
-        left = collect_targets(mtbdd_getlow(trans), res, statebits, priobits);
-        right = collect_targets(mtbdd_gethigh(trans), res, statebits, priobits);
-        MTBDD result = sylvan_or(left, right);
+        left = collect_targets(mtbdd_getlow(trans), res, statevars, priovars);
+        right = collect_targets(mtbdd_gethigh(trans), res, statevars, priovars);
+        auto result = sylvan_or(left, right);
 
         mtbdd_refs_popptr(2);
         return result;
@@ -366,12 +307,12 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
     // Set which APs are controllable in the bitset controllable
     pg::bitset controllable(data->noAPs);
     for (int i=0; i<data->noCntAPs; i++) {
-        controllable[data->cntAPs[i]] = 1;
+        controllable[data->cntAPs[i]] = true;
     }
 
     // Count the number of controllable/uncontrollable APs
-    const int cap_count = controllable.count();
-    const int uap_count = data->noAPs - cap_count;
+    const auto cap_count = controllable.count();
+    const auto uap_count = data->noAPs - cap_count;
 
     // Initialize the BDD variable indices
     // Variable order uncontrollable < controllable
@@ -394,6 +335,15 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
     int evenMax = 2 + 2*((data->noAccSets+1)/2); // should be enough...
     int priobits = 1;
     while ((1ULL<<(priobits)) <= (unsigned)evenMax) priobits++;
+
+    // Prepare the p_vars and s_vars (for building the BDD)
+    auto p_vars = mtbdd_set_empty();
+    auto s_vars = mtbdd_set_empty();
+    mtbdd_refs_pushptr(&p_vars);
+    mtbdd_refs_pushptr(&s_vars);
+    int var = 0;
+    for (int i=0; i<priobits; i++) p_vars = mtbdd_set_add(p_vars, var++);
+    for (int i=0; i<statebits; i++) s_vars = mtbdd_set_add(s_vars, var++);
 
     std::vector<int> succ_state;  // for current state, the successors
     std::vector<int> succ_inter;  // for current intermediate state, the successors
@@ -427,12 +377,12 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
             assert(trans->noSucc == 1);
             // there should be a label at state or transition level
             BTree* label;
-            if (state->label != NULL) label = state->label;
+            if (state->label != nullptr) label = state->label;
             else label = trans->label;
-            assert(label != NULL);
+            assert(label != nullptr);
             // there should be a priority at state or transition level
             int priority = 0;
-            if (state->accSig == NULL) {
+            if (state->accSig == nullptr) {
                 // there should be exactly one acceptance set!
                 assert(trans->noAccSig == 1);
                 // adjust priority
@@ -452,7 +402,7 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
         // TODO: this assumes uap_count is the first non-uap variable index
         auto inter_bdds = BDDTools::collectSubroots(trans_bdd, uap_count);
         for (MTBDD inter_bdd : inter_bdds) {
-            MTBDD targets_bdd = collect_targets(inter_bdd, targets, statebits, priobits);
+            MTBDD targets_bdd = collect_targets(inter_bdd, targets, s_vars, p_vars);
 
             int vinter;
             auto it = inter_vertices.find(targets_bdd);
@@ -518,7 +468,7 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
     // tell Oink we're done adding stuff, resize game to final size
     game->v_resize(nextIndex);
 
-    mtbdd_refs_popptr(3);
+    mtbdd_refs_popptr(5);
     mtbdd_refs_pop(ref_counter);
 
     return game;
@@ -604,7 +554,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     bool verbose = options["verbose"].count() > 0;
 
     // First initialize the HOA data structure
-    const double t_before_parsing = wctime();
+    const auto t_before_parsing = wctime();
     HoaData* data = (HoaData*)malloc(sizeof(HoaData));
     defaultsHoa(data);
 
@@ -623,7 +573,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         if (ret != 0) return ret;
     }
 
-    const double t_after_parsing = wctime();
+    const auto t_after_parsing = wctime();
     if (verbose) {
         std::cerr << "\033[1;37mfinished parsing automaton in " << std::fixed << (t_after_parsing - t_before_parsing) << " sec.\033[m" << std::endl;
         std::cerr << "automaton has " << data->noStates << " states." << std::endl;
@@ -713,7 +663,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                 mtbdd_protect(&partition);
                 CALL(minimize, sym.get(), partition, verbose);
                 mtbdd_unprotect(&partition);
-                std::cerr << "number of blocks: " << count_blocks() << std::endl;
+                if (verbose) {
+                     std::cerr << "after bisimulation minimisation: " << count_blocks() << " blocks." << std::endl;
+                }
                 const double t_after = wctime();
                 if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of game in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
             }
@@ -810,7 +762,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             mtbdd_protect(&partition);
             CALL(minimize, sym.get(), partition, verbose);
             mtbdd_unprotect(&partition);
-            std::cerr << "number of blocks: " << count_blocks() << std::endl;
+            if (verbose) {
+                std::cerr << "after bisimulation minimisation: " << count_blocks() << " blocks." << std::endl;
+            }
             const double t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of game in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
@@ -881,14 +835,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         const bool best = options["best"].count() > 0;
 
         if (best) {
-            AIGmaker var1(data, sym.get());
-            var1.process();
-            AIGmaker var2(data, sym.get());
-            var2.setIsop();
-            var2.process();
-            AIGmaker var3(data, sym.get());
-            var3.setOneHot();
-            var3.process();
+            auto var1 = AIGmaker(data, sym.get()).process();
+            auto var2 = AIGmaker(data, sym.get()).setIsop().process();
+            auto var3 = AIGmaker(data, sym.get()).setOneHot().process();
 
             const double t_before = wctime();
             MTBDD partition = RUN(min_lts_strong, sym.get(), true);
@@ -898,96 +847,91 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             const double t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
 
-            AIGmaker var1b(data, sym.get());
-            var1b.process();
-            AIGmaker var2b(data, sym.get());
-            var2b.setIsop();
-            var2b.process();
-            AIGmaker var3b(data, sym.get());
-            var3b.setOneHot();
-            var3b.process();
+            auto var1b = AIGmaker(data, sym.get()).process();
+            auto var2b = AIGmaker(data, sym.get()).setIsop().process();
+            auto var3b = AIGmaker(data, sym.get()).setOneHot().process();
 
             if (verbose) {
-                std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
-                std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
-                std::cerr << "no bisim, oh: " << var3.getNumAnds() << std::endl;
-                std::cerr << "bisim, ite: " << var1b.getNumAnds() << std::endl;
-                std::cerr << "bisim, isop: " << var2b.getNumAnds() << std::endl;
-                std::cerr << "bisim, oh: " << var3b.getNumAnds() << std::endl;
+                std::cerr << "no bisim, ite: " << var1->getNumAnds() << std::endl;
+                std::cerr << "no bisim, isop: " << var2->getNumAnds() << std::endl;
+                std::cerr << "no bisim, oh: " << var3->getNumAnds() << std::endl;
+                std::cerr << "bisim, ite: " << var1b->getNumAnds() << std::endl;
+                std::cerr << "bisim, isop: " << var2b->getNumAnds() << std::endl;
+                std::cerr << "bisim, oh: " << var3b->getNumAnds() << std::endl;
             }
 
             if (options["drewrite"].count() > 0) {
-                var1.drewrite();
-                var2.drewrite();
-                var3.drewrite();
-                var1b.drewrite();
-                var2b.drewrite();
-                var3b.drewrite();
+                var1->drewrite(verbose);
+                var2->drewrite(verbose);
+                var3->drewrite(verbose);
+                var1b->drewrite(verbose);
+                var2b->drewrite(verbose);
+                var3b->drewrite(verbose);
 
                 if (verbose) {
                     std::cerr << "sizes after drw+drf with ABC:" << std::endl;
-                    std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
-                    std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
-                    std::cerr << "no bisim, oh: " << var3.getNumAnds() << std::endl;
-                    std::cerr << "bisim, ite: " << var1b.getNumAnds() << std::endl;
-                    std::cerr << "bisim, isop: " << var2b.getNumAnds() << std::endl;
-                    std::cerr << "bisim, oh: " << var3b.getNumAnds() << std::endl;
+                    std::cerr << "no bisim, ite: " << var1->getNumAnds() << std::endl;
+                    std::cerr << "no bisim, isop: " << var2->getNumAnds() << std::endl;
+                    std::cerr << "no bisim, oh: " << var3->getNumAnds() << std::endl;
+                    std::cerr << "bisim, ite: " << var1b->getNumAnds() << std::endl;
+                    std::cerr << "bisim, isop: " << var2b->getNumAnds() << std::endl;
+                    std::cerr << "bisim, oh: " << var3b->getNumAnds() << std::endl;
                 }
             }
 
             if (options["compress"].count() > 0) {
-                var1.compress();
-                var2.compress();
-                var3.compress();
-                var1b.compress();
-                var2b.compress();
-                var3b.compress();
+                var1->compress(verbose);
+                var2->compress(verbose);
+                var3->compress(verbose);
+                var1b->compress(verbose);
+                var2b->compress(verbose);
+                var3b->compress(verbose);
 
                 if (verbose) {
                     std::cerr << "sizes after compressing with ABC:" << std::endl;
-                    std::cerr << "no bisim, ite: " << var1.getNumAnds() << std::endl;
-                    std::cerr << "no bisim, isop: " << var2.getNumAnds() << std::endl;
-                    std::cerr << "no bisim, oh: " << var3.getNumAnds() << std::endl;
-                    std::cerr << "bisim, ite: " << var1b.getNumAnds() << std::endl;
-                    std::cerr << "bisim, isop: " << var2b.getNumAnds() << std::endl;
-                    std::cerr << "bisim, oh: " << var3b.getNumAnds() << std::endl;
+                    std::cerr << "no bisim, ite: " << var1->getNumAnds() << std::endl;
+                    std::cerr << "no bisim, isop: " << var2->getNumAnds() << std::endl;
+                    std::cerr << "no bisim, oh: " << var3->getNumAnds() << std::endl;
+                    std::cerr << "bisim, ite: " << var1b->getNumAnds() << std::endl;
+                    std::cerr << "bisim, isop: " << var2b->getNumAnds() << std::endl;
+                    std::cerr << "bisim, oh: " << var3b->getNumAnds() << std::endl;
                 }
             }
 
-            auto smallest = var1.getNumAnds();
-            smallest = std::min(smallest, var2.getNumAnds());
-            smallest = std::min(smallest, var3.getNumAnds());
-            smallest = std::min(smallest, var1b.getNumAnds());
-            smallest = std::min(smallest, var2b.getNumAnds());
-            smallest = std::min(smallest, var3b.getNumAnds());
+            auto smallest = var1->getNumAnds();
+            smallest = std::min(smallest, var2->getNumAnds());
+            smallest = std::min(smallest, var3->getNumAnds());
+            smallest = std::min(smallest, var1b->getNumAnds());
+            smallest = std::min(smallest, var2b->getNumAnds());
+            smallest = std::min(smallest, var3b->getNumAnds());
 
             if (options.count("write-binary")) {
-                if (var1.getNumAnds() == smallest) {
-                    var1.writeBinary(stdout);
-                } else if (var2.getNumAnds() == smallest) {
-                    var2.writeBinary(stdout);
-                } else if (var3.getNumAnds() == smallest) {
-                    var3.writeBinary(stdout);
-                } else if (var1b.getNumAnds() == smallest) {
-                    var1b.writeBinary(stdout);
-                } else if (var2b.getNumAnds() == smallest) {
-                    var2b.writeBinary(stdout);
-                } else if (var3b.getNumAnds() == smallest) {
-                    var3b.writeBinary(stdout);
+                if (var1->getNumAnds() == smallest) {
+                    var1->writeBinary(stdout);
+                } else if (var2->getNumAnds() == smallest) {
+                    var2->writeBinary(stdout);
+                } else if (var3->getNumAnds() == smallest) {
+                    var3->writeBinary(stdout);
+                } else if (var1b->getNumAnds() == smallest) {
+                    var1b->writeBinary(stdout);
+                } else if (var2b->getNumAnds() == smallest) {
+                    var2b->writeBinary(stdout);
+                } else if (var3b->getNumAnds() == smallest) {
+                    var3b->writeBinary(stdout);
                 }
             } else if (options["write-ascii"].count() > 0) {
-                if (var1.getNumAnds() == smallest) {
-                    var1.writeAscii(stdout);
-                } else if (var2.getNumAnds() == smallest) {
-                    var2.writeAscii(stdout);
-                } else if (var3.getNumAnds() == smallest) {
-                    var3.writeAscii(stdout);
-                } else if (var1b.getNumAnds() == smallest) {
-                    var1b.writeAscii(stdout);
-                } else if (var2b.getNumAnds() == smallest) {
-                    var2b.writeAscii(stdout);
-                } else if (var3b.getNumAnds() == smallest) {
-                    var3b.writeAscii(stdout);
+                if (var1->getNumAnds() == smallest) {
+                    var1->writeAscii(stdout);
+                } else if (var2->getNumAnds() == smallest) {
+                    var2->writeAscii(stdout);
+                } else if (var3->getNumAnds() == smallest) {
+                    var3->writeAscii(stdout);
+                } else if (var1b->getNumAnds() == smallest) {
+                    var1b->writeAscii(stdout);
+                } else if (var2b->getNumAnds() == smallest) {
+                    var2b->writeAscii(stdout);
+                } else if (var3b->getNumAnds() == smallest) {
+                    var3b->writeAscii(stdout);
                 }
             }
             if (verbose) {
@@ -997,7 +941,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
 
         if (bisim_sol) {
-            const double t_before = wctime();
+            const auto t_before = wctime();
             MTBDD partition = CALL(min_lts_strong, sym.get(), true);
             mtbdd_protect(&partition);
             if (verbose) {
@@ -1005,7 +949,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             }
             CALL(minimize, sym.get(), partition, verbose);
             mtbdd_unprotect(&partition);
-            const double t_after = wctime();
+            const auto t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
 
@@ -1035,22 +979,24 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             exit(10);
         }
 
-        AIGmaker maker(data, sym.get());
-        if (verbose) {
-            maker.setVerbose();
-        }
-        if (options["isop"].count() > 0) {
-            maker.setIsop();
-        }
-        if (options["onehot"].count() > 0) {
-            maker.setOneHot();
-        }
-        if (options["sop"].count() > 0) {
-            maker.setSop();
-        }
+        std::unique_ptr<AIGCircuit> circuit = nullptr;
+
         {
+            AIGmaker maker(data, sym.get());
+            if (verbose) {
+                maker.setVerbose();
+            }
+            if (options["isop"].count() > 0) {
+                maker.setIsop();
+            }
+            if (options["onehot"].count() > 0) {
+                maker.setOneHot();
+            }
+            if (options["sop"].count() > 0) {
+                maker.setSop();
+            }
             const double t_before = wctime();
-            maker.process();
+            circuit = maker.process();
             const double t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
@@ -1059,48 +1005,43 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
          * maybe compress with ABC
          */
         if (options["drewrite"].count() > 0) {
-            if (verbose) std::cerr << "size of AIG before drw+drf: " << maker.getNumAnds() << " gates." << std::endl;
+            if (verbose) std::cerr << "size of AIG before drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
             const double t_before = wctime();
-            maker.drewrite();
+            circuit->drewrite(verbose);
             const double t_after = wctime();
-            if (verbose) std::cerr << "size of AIG after drw+drf: " << maker.getNumAnds() << " gates." << std::endl;
+            if (verbose) std::cerr << "size of AIG after drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
             if (verbose) std::cerr << "\033[1;37mfinished drw+drf in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
 
         if (options["compress"].count() > 0) {
-            if (verbose) std::cerr << "size of AIG before compression: " << maker.getNumAnds() << " gates." << std::endl;
+            if (verbose) std::cerr << "size of AIG before compression: " << circuit->getNumAnds() << " gates." << std::endl;
             const double t_before = wctime();
-            maker.compress();
+            circuit->compress(verbose);
             const double t_after = wctime();
-            if (verbose) std::cerr << "size of AIG after compression: " << maker.getNumAnds() << " gates." << std::endl;
+            if (verbose) std::cerr << "size of AIG after compression: " << circuit->getNumAnds() << " gates." << std::endl;
             if (verbose) std::cerr << "\033[1;37mfinished compression in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
 
-        if (verbose) std::cerr << "final size of AIG: " << maker.getNumAnds() << " gates." << std::endl;
-
+        if (verbose) std::cerr << "final size of AIG: " << circuit->getNumAnds() << " gates." << std::endl;
 
         if (options["write-binary"].count() > 0) {
-            maker.writeBinary(stdout);
+            circuit->writeBinary(stdout);
         } else if (options["write-ascii"].count() > 0) {
-            maker.writeAscii(stdout);
+            circuit->writeAscii(stdout);
         }
         if (verbose) {
             std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+            sylvan_stats_report(stdout);
         }
-        exit(10);
+        return 10;
     } else {
         if (verbose) {
             std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
             std::cerr << "\033[1;31mgame is unrealizable!\033[m" << std::endl;
+            sylvan_stats_report(stdout);
         }
-        exit(20);
+        return 20;
     }
-
-    if (verbose) {
-        std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
-    }
-
-    if (verbose) sylvan_stats_report(stdout);
 
     // We don't need Sylvan anymore at this point
     sylvan_quit();
