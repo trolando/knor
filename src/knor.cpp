@@ -18,6 +18,7 @@
 #include <symgame.hpp>
 #include <bisim.hpp>
 #include <aigmaker.hpp>
+#include <bddtools.hpp>
 
 extern "C" {
     #include <sylvan.h>
@@ -166,35 +167,6 @@ adjustPriority(int p, bool maxPriority, bool controllerIsOdd, int noPriorities)
     // If "controllerParity" is 1 (odd), automatically adjust the priority
     if (controllerIsOdd) p--;
     return p;
-}
-
-
-/**
- * Collect all intermediary MTBDD roots that become the vertices
- * where player 0 chooses the response in controllable APs.
- *
- * The input <trans> is the [partial] transition, essentially we just skip
- * the first <uap_count> variables, assuming that those are the uncontrollable APs...
- *
- * This is also why u_ap before c_ap variables in the BDD!
- */
-void
-collect_inter(MTBDD trans, int uap_count, std::set<MTBDD> &res)
-{
-    if (mtbdd_isleaf(trans)) {
-        res.insert(trans);
-    } else {
-        // node
-        uint32_t var = mtbdd_getvar(trans);
-        if (var < (unsigned)uap_count) {
-            // uncontrollable ap
-            collect_inter(mtbdd_gethigh(trans), uap_count, res);
-            collect_inter(mtbdd_getlow(trans), uap_count, res);
-        } else {
-            // controllable ap
-            res.insert(trans);
-        }
-    }
 }
 
 
@@ -429,7 +401,6 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
     MTBDD trans_bdd = mtbdd_false;
     mtbdd_refs_pushptr(&trans_bdd);
 
-    std::set<MTBDD> inter_bdds;
     std::set<uint64_t> targets;
 
     std::map<MTBDD, int> inter_vertices;
@@ -478,7 +449,8 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
         // At this point, we have the transitions from the state all in a neat single BDD.
         // Time to generate the split game fragment from the current state.
 
-        collect_inter(trans_bdd, uap_count, inter_bdds);
+        // TODO: this assumes uap_count is the first non-uap variable index
+        auto inter_bdds = BDDTools::collectSubroots(trans_bdd, uap_count);
         for (MTBDD inter_bdd : inter_bdds) {
             MTBDD targets_bdd = collect_targets(inter_bdd, targets, statebits, priobits);
 
@@ -540,7 +512,6 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
         game->e_finish();
 
         succ_state.clear();
-        inter_bdds.clear();
         inter_vertices.clear();
     }
 

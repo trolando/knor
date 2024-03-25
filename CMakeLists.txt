@@ -47,6 +47,7 @@ target_sources(knor
     src/aiger.c
     src/abcminimization.cpp
     src/aigmaker.cpp
+    src/bddtools.cpp
     src/bisim.cpp
     src/knor.cpp
     src/simplehoa.c

@@ -4,6 +4,7 @@
 
 #include <abcminimization.hpp>
 #include <aigmaker.hpp>
+#include <bddtools.hpp>
 #include <knor.hpp>
 #include <set>
 #include <cstring> // for strcpy
@@ -14,48 +15,6 @@
 // note that the "sop" method does not require caches anyway
 
 using namespace sylvan;
-
-
-static void
-collect_inter(MTBDD bdd, uint32_t firstvar, std::set<MTBDD> &res)
-{
-    // TODO needs caching (visited or not)
-    if (bdd == mtbdd_false) {
-        return;
-    }
-    else if (mtbdd_isleaf(bdd)) {
-        res.insert(bdd);
-    } else {
-        if (mtbdd_getvar(bdd) < firstvar) {
-            collect_inter(mtbdd_gethigh(bdd), firstvar, res);
-            collect_inter(mtbdd_getlow(bdd), firstvar, res);
-        } else {
-            res.insert(bdd);
-        }
-    }
-}
-
-
-TASK_3(MTBDD, collect_ending, MTBDD, bdd, uint32_t, firstvar, MTBDD, leaf)
-{
-    // TODO needs caching
-    if (bdd == leaf) {
-        return mtbdd_true;
-    } else if (mtbdd_isleaf(bdd)) {
-        return mtbdd_false;
-    } else if (mtbdd_getvar(bdd) >= firstvar) {
-        return mtbdd_false;
-    } else {
-        uint32_t var = mtbdd_getvar(bdd);
-        mtbdd_refs_spawn(SPAWN(collect_ending, mtbdd_gethigh(bdd), firstvar, leaf));
-        MTBDD low = mtbdd_refs_push(CALL(collect_ending, mtbdd_getlow(bdd), firstvar, leaf));
-        MTBDD high = mtbdd_refs_push(mtbdd_refs_sync(SYNC(collect_ending)));
-        MTBDD res = mtbdd_makenode(var, low, high);
-        mtbdd_refs_pop(2);
-        return res;
-    }
-}
-
 
 AIGmaker::AIGmaker(HoaData *data, SymGame *game) : data(data), game(game)
 {
@@ -510,13 +469,12 @@ AIGmaker::process_sop()
         cap_bdd = sylvan_and_exists(game->strategies, cap_bdd, game->cap_vars);
 
         // this gives source states and UAP for this cap
-        std::set<MTBDD> uaps;
-        collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
+        auto uaps = BDDTools::collectSubroots(cap_bdd, mtbdd_set_first(game->uns_vars));
 
         uap_state_sums.emplace_back();
 
         for (MTBDD uap : uaps) {
-            s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uns_vars), uap);
+            s = BDDTools::pathsToSubroot(cap_bdd, mtbdd_set_first(game->uns_vars), uap);
 
             state_sums.emplace_back();
             uint8_t state_arr_2[game->statebits];
@@ -596,12 +554,11 @@ AIGmaker::process_sop()
         cap_bdd = sylvan_and_exists(full, cap_bdd, game->ns_vars);
 
         // this gives source states and UAP for this state
-        std::set<MTBDD> uaps;
-        collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
+        auto uaps = BDDTools::collectSubroots(cap_bdd, mtbdd_set_first(game->uns_vars));
 
         uap_state_sums.emplace_back();
         for (MTBDD uap : uaps) {
-            s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uns_vars), uap);
+            s = BDDTools::pathsToSubroot(cap_bdd, mtbdd_set_first(game->uns_vars), uap);
 
             state_sums.emplace_back();
             uint8_t state_arr_2[game->statebits];
@@ -801,15 +758,14 @@ AIGmaker::process()
             cap_bdd = sylvan_and_exists(game->strategies, cap_bdd, game->cap_vars);
 
             // this gives source states and UAP for this cap
-            std::set<MTBDD> uaps;
-            collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
+            auto uaps = BDDTools::collectSubroots(cap_bdd, mtbdd_set_first(game->uns_vars));
             // each uap is a MTBDD node in cap_bdd, so no need to reference
 
             std::deque<int> terms;
 
             for (MTBDD uap : uaps) {
                 // s is all states that go to that particular uap
-                s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uns_vars), uap);
+                s = BDDTools::pathsToSubroot(cap_bdd, mtbdd_set_first(game->uns_vars), uap);
 
                 std::vector<int> source_states;
                 std::deque<int> source_gates;
@@ -865,12 +821,11 @@ AIGmaker::process()
 
             // std::cerr << "state " << state << /*" to has " << s <<*/ std::endl;
 
-            std::set<MTBDD> uaps;
-            collect_inter(cap_bdd, mtbdd_set_first(game->uns_vars), uaps);
+            auto uaps = BDDTools::collectSubroots(cap_bdd, mtbdd_set_first(game->uns_vars));
 
             std::deque<int> terms;
             for (MTBDD uap : uaps) {
-                s = RUN(collect_ending, cap_bdd, mtbdd_set_first(game->uns_vars), uap);
+                s = BDDTools::pathsToSubroot(cap_bdd, mtbdd_set_first(game->uns_vars), uap);
 
                 std::vector<int> source_states;
                 std::deque<int> source_gates;
