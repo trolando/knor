@@ -1167,16 +1167,3 @@ SymGame::print_strategies()
     }
     mtbdd_unprotect(&vars);
 }
-
-
-TASK_IMPL_2(bool, wrap_solve, SymGame*, game, bool, verbose)
-{
-    return game->solve(verbose);
-}
-
-
-VOID_TASK_IMPL_2(wrap_pp, SymGame*, game, bool, verbose)
-{
-    game->postprocess(verbose);
-}
-

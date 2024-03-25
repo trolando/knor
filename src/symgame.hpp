@@ -70,6 +70,4 @@ public:
 
 
 TASK_DECL_3(SymGame*, constructSymGame, HoaData* /*data*/, bool /*isMaxParity*/, bool /*controllerIsOdd*/)
-TASK_DECL_2(bool, wrap_solve, SymGame* /*game*/, bool /*verbose*/)
-VOID_TASK_DECL_2(wrap_pp, SymGame* /*game*/, bool /*verbose*/)
 

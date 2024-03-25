@@ -857,7 +857,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
 
         const double t_before_solve = wctime();
-        realizable = CALL(wrap_solve, sym, verbose);
+        realizable = sym->solve(verbose);
         const double t_after_solve = wctime();
 
         if (verbose) {
@@ -895,7 +895,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
 
         const double t_before = wctime();
-        CALL(wrap_pp, sym, verbose);
+        sym->postprocess(verbose);
         const double t_after = wctime();
 
         if (verbose) {
