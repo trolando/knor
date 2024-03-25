@@ -578,6 +578,7 @@ handleOptions(int &argc, char**& argv)
             ("no-solve", "Do not solve, halt after constructing the parity game")
             ("print-game", "Just print the parity game (implies no-solve)")
             ("print-witness", "Print the witness parity game")
+            ("print-kiss", "Print the Mealy machine in KISS format")
             ("a,write-ascii", "Write ascii AIGER file")
             ("b,write-binary", "Write binary AIGER file")
             ("v,verbose", "Be verbose")
@@ -1040,6 +1041,14 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         if (verbose) {
             // sym->print_trans(true);
             // sym->print_strategies();
+        }
+
+        if (options["print-kiss"].count() > 0) {
+            sym->print_kiss(true);
+            if (verbose) {
+                std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+            }
+            exit(10);
         }
 
         /**

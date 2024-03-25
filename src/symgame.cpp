@@ -989,6 +989,91 @@ SymGame::print_vars()
 
 
 void
+SymGame::print_kiss(bool only_strategy)
+{
+    MTBDD trans = this->trans;
+    mtbdd_protect(&trans);
+    if (only_strategy) {
+        trans = sylvan_and(trans, this->strategies);
+    }
+    MTBDD vars = mtbdd_set_empty();
+    mtbdd_protect(&vars);
+    // vars = mtbdd_set_addall(vars, this->s_vars);
+    vars = mtbdd_set_addall(vars, this->uap_vars);
+    vars = mtbdd_set_addall(vars, this->cap_vars);
+    vars = mtbdd_set_addall(vars, this->pns_vars);
+    std::stringstream ss;
+    std::vector<std::string> lines;
+    uint8_t s_arr[statebits];
+    uint8_t arr[mtbdd_set_count(vars)+1];
+    int states = 0;
+    MTBDD slf = mtbdd_enum_all_first(trans, s_vars, s_arr, NULL);
+    while (slf != mtbdd_false) {
+        states++;
+        // decode state
+        int state = 0;
+        for (int i=0; i<statebits; i++) {
+            state <<= 1;
+            if (s_arr[i]) state |= 1;
+        }
+        // find all things
+        MTBDD lf = mtbdd_enum_first(slf, vars, arr, NULL);
+        while (lf != mtbdd_false) {
+            int idx=0;
+            std::string uap;
+            // decode uap
+            for (int i=0; i<this->uap_count; i++) {
+                if (arr[idx] == 0) uap += "0";
+                else if (arr[idx] == 1) uap += "1";
+                else if (arr[idx] == 2) uap += "-";
+                idx++;
+            }
+            // decode cap
+            std::string cap;
+            for (int i=0; i<this->cap_count; i++) {
+                if (arr[idx] == 0) cap += "0";
+                else if (arr[idx] == 1) cap += "1";
+                else if (arr[idx] == 2) cap += "-";
+                idx++;
+            }
+            // decode prio
+            int prio = 0;
+            for (int i=0; i<this->priobits; i++) {
+                prio <<= 1;
+                if (arr[idx++]) prio |= 1;
+            }
+            // decode next state
+            int next_state = 0;
+            for (int i=0; i<this->statebits; i++) {
+                next_state <<= 1;
+                if (arr[idx] == 1) next_state |= 1;
+                else if (arr[idx] == 2) {
+                    std::cerr << "ERROR: did not expect multiple next states!" << std::endl;
+                }
+                idx++;
+            }
+            assert(idx == mtbdd_set_count(vars));
+            ss.str("");
+            ss << uap << " s" << state << " s" << next_state << " " << cap;
+            lines.push_back(ss.str());
+            lf = mtbdd_enum_next(slf, vars, arr, NULL);
+        }
+        // next state
+        slf = mtbdd_enum_all_next(trans, s_vars, s_arr, NULL);
+    }
+    mtbdd_unprotect(&vars);
+    mtbdd_unprotect(&trans);
+
+    std::cout << ".i " << uap_count << std::endl;
+    std::cout << ".o " << cap_count << std::endl;
+    std::cout << ".p " << lines.size() << std::endl;
+    std::cout << ".s " << states << std::endl;
+    std::cout << ".r 0" << std::endl;
+    for (auto& line : lines) std::cout << line << std::endl;
+}
+
+
+void
 SymGame::print_trans(bool only_strategy)
 {
     MTBDD vars = mtbdd_set_empty();

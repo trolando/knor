@@ -315,7 +315,7 @@ AIGmaker::bdd_to_aig(MTBDD bdd)
         return comp ? aiger_not(it->second) : it->second;
     }
 
-    int the_lit = var_to_lit.at(mtbdd_getvar(bdd));
+    auto the_lit = var_to_lit.at(mtbdd_getvar(bdd));
 
     MTBDD low = mtbdd_getlow(bdd);
     MTBDD high = mtbdd_gethigh(bdd);
