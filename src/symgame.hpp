@@ -4,6 +4,7 @@
 
 #include <sylvan.h>
 #include <oink/oink.hpp>
+#include <memory>
 
 extern "C" {
     #include "simplehoa.h"
@@ -34,7 +35,9 @@ public:
 
     SymGame(int statebits, int priobits, int uap_count, int cap_count, int maxprio);
     SymGame(const SymGame&) = delete;
-    virtual ~SymGame() ;
+    virtual ~SymGame();
+
+    static std::unique_ptr<SymGame> constructSymGame(HoaData* data, bool isMaxParity, bool controllerIsOdd);
 
     /**
      * Translate symbolic PG to explicit game in Oink, that can then be solved.
@@ -67,7 +70,3 @@ public:
     void print_trans(bool only_strategy=false);
     void print_strategies();
 };
-
-
-TASK_DECL_3(SymGame*, constructSymGame, HoaData* /*data*/, bool /*isMaxParity*/, bool /*controllerIsOdd*/)
-

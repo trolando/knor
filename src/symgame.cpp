@@ -1,29 +1,5 @@
 /**************************************************************************
- * Copyright (c) 2019- Guillermo A. Perez
  * Copyright (c) 2020-2021 Tom van Dijk
- * 
- * This file is a modified version of HOA2PG of HOATOOLS.
- * 
- * HOATOOLS is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- * 
- * HOATOOLS is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with HOATOOLS. If not, see <http://www.gnu.org/licenses/>.
- * 
- * Guillermo A. Perez
- * University of Antwerp
- * guillermoalberto.perez@uantwerpen.be
- *
- * Tom van Dijk
- * University of Twente
- * t.vandijk@utwente.nl
  *************************************************************************/
 
 //#include <cassert> // for assert
@@ -111,8 +87,7 @@ SymGame::~SymGame()
 /**
  * Construct the symbolic game
  */
-TASK_IMPL_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool, controllerIsOdd)
-{
+std::unique_ptr<SymGame> SymGame::constructSymGame(HoaData *data, bool isMaxParity, bool controllerIsOdd) {
     int vstart = data->start[0];
 
     // Set which APs are controllable in the bitset controllable
@@ -134,7 +109,7 @@ TASK_IMPL_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool,
     while ((1ULL<<(priobits)) <= (unsigned)evenMax) priobits++;
 
     // Initially, set maxprio to 0, will be updated later
-    SymGame *res = new SymGame(statebits, priobits, uap_count, cap_count, 0);
+    auto res = std::make_unique<SymGame>(statebits, priobits, uap_count, cap_count, 0);
 
     // first <priobits, statebits> will be state variables
 
@@ -192,7 +167,7 @@ TASK_IMPL_3(SymGame*, constructSymGame, HoaData*, data, bool, isMaxParity, bool,
             if (succ == 0) succ = vstart;
             else if (succ == vstart) succ = 0;
             // encode the label as a MTBDD
-            lblbdd = CALL(evalLabel, label, data, variables);
+            lblbdd = RUN(evalLabel, label, data, variables);
             // encode priostate (leaf) and update transition relation
             leaf = encode_priostate(succ, priority, statebits, priobits, mtbdd_set_first(res->ns_vars), mtbdd_set_first(res->p_vars));
             // trans := lbl THEN leaf ELSE trans
@@ -262,8 +237,7 @@ TASK_2(MTBDD, clarify, MTBDD, str, MTBDD, cap_vars)
 /**
  * Convert the symbolic parity game to an explicit parity game, labeling vertices with BDD node indices.
  */
-pg::Game*
-SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
+pg::Game* SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bdd)
 {
     // Check that the transition relation of the symbolic game does not have priobits on source states
     assert(mtbdd_getvar(this->trans) >= (unsigned) mtbdd_set_first(s_vars));
@@ -499,8 +473,7 @@ TASK_3(MTBDD, apply_str, MTBDD, trans, strmap*, str, int, first_cap)
 }
 
 
-bool
-SymGame::applyStrategy(const std::map<MTBDD, MTBDD>& str)
+bool SymGame::applyStrategy(const std::map<MTBDD, MTBDD>& str)
 {
     MTBDD strategy = RUN(apply_str, this->trans, &str, mtbdd_set_first(cap_vars));
     if (strategy == mtbdd_invalid) {
@@ -513,8 +486,7 @@ SymGame::applyStrategy(const std::map<MTBDD, MTBDD>& str)
 }
 
 
-pg::Game*
-SymGame::strategyToPG()
+pg::Game* SymGame::strategyToPG()
 {
     MTBDD states = sylvan_project(this->strategies, s_vars);
     long noStates = (long)sylvan_satcount(states, s_vars);
@@ -618,8 +590,7 @@ SymGame::strategyToPG()
 }
 
 
-bool
-SymGame::solve(bool verbose)
+bool SymGame::solve(bool verbose)
 {
     // prepare Odd (all odd-priority states)
 
@@ -864,8 +835,7 @@ SymGame::solve(bool verbose)
 }
 
 
-void
-SymGame::postprocess(bool verbose)
+void SymGame::postprocess(bool verbose)
 {
     // Select "lowest" strategy [heuristic]
     // TODO it would be nicer if we could do bisimulation without this heuristic
@@ -933,8 +903,7 @@ SymGame::postprocess(bool verbose)
 }
 
 
-void
-SymGame::print_vars()
+void SymGame::print_vars()
 {
     {
         std::cerr << "s vars:";
@@ -988,8 +957,7 @@ SymGame::print_vars()
 }
 
 
-void
-SymGame::print_kiss(bool only_strategy)
+void SymGame::print_kiss(bool only_strategy)
 {
     MTBDD trans = this->trans;
     mtbdd_protect(&trans);
@@ -1073,8 +1041,7 @@ SymGame::print_kiss(bool only_strategy)
 }
 
 
-void
-SymGame::print_trans(bool only_strategy)
+void SymGame::print_trans(bool only_strategy)
 {
     MTBDD vars = mtbdd_set_empty();
     mtbdd_protect(&vars);
@@ -1130,8 +1097,7 @@ SymGame::print_trans(bool only_strategy)
 }
 
 
-void
-SymGame::print_strategies()
+void SymGame::print_strategies()
 {
     // strategy: s > uap > cap
     MTBDD vars = mtbdd_set_empty();

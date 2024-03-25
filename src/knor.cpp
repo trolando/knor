@@ -677,7 +677,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     bool bisim_game = options["bisim"].count() > 0 or options["bisim-game"].count() > 0;
     bool bisim_sol = options["bisim"].count() > 0 or options["bisim-sol"].count() > 0;
 
-    SymGame *sym = nullptr;
+    std::unique_ptr<SymGame> sym = nullptr;
     bool realizable = false; // not known yet
 
     if (explicit_solver) {
@@ -704,14 +704,14 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         } else {
             const double t_1 = wctime();
             vstart = 0; // always set to 0 by constructSymGame
-            sym = CALL(constructSymGame, data, isMaxParity, controllerIsOdd);
+            sym = SymGame::constructSymGame(data, isMaxParity, controllerIsOdd);
             const double t_2 = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished constructing symbolic game in " << std::fixed << (t_2 - t_1) << " sec.\033[m" << std::endl;
             if (bisim_game) {
                 const double t_before = wctime();
-                MTBDD partition = CALL(min_lts_strong, sym, false);
+                MTBDD partition = CALL(min_lts_strong, sym.get(), false);
                 mtbdd_protect(&partition);
-                CALL(minimize, sym, partition, verbose);
+                CALL(minimize, sym.get(), partition, verbose);
                 mtbdd_unprotect(&partition);
                 std::cerr << "number of blocks: " << count_blocks() << std::endl;
                 const double t_after = wctime();
@@ -797,7 +797,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     } else {
         // Construct the game
         const double t_before_construct = wctime();
-        sym = CALL(constructSymGame, data, isMaxParity, controllerIsOdd);
+        sym = SymGame::constructSymGame(data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
 
         if (verbose) {
@@ -806,9 +806,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
         if (bisim_game) {
             const double t_before = wctime();
-            MTBDD partition = CALL(min_lts_strong, sym, false);
+            MTBDD partition = CALL(min_lts_strong, sym.get(), false);
             mtbdd_protect(&partition);
-            CALL(minimize, sym, partition, verbose);
+            CALL(minimize, sym.get(), partition, verbose);
             mtbdd_unprotect(&partition);
             std::cerr << "number of blocks: " << count_blocks() << std::endl;
             const double t_after = wctime();
@@ -881,29 +881,29 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         const bool best = options["best"].count() > 0;
 
         if (best) {
-            AIGmaker var1(data, sym);
+            AIGmaker var1(data, sym.get());
             var1.process();
-            AIGmaker var2(data, sym);
+            AIGmaker var2(data, sym.get());
             var2.setIsop();
             var2.process();
-            AIGmaker var3(data, sym);
+            AIGmaker var3(data, sym.get());
             var3.setOneHot();
             var3.process();
 
             const double t_before = wctime();
-            MTBDD partition = RUN(min_lts_strong, sym, true);
+            MTBDD partition = RUN(min_lts_strong, sym.get(), true);
             mtbdd_protect(&partition);
-            RUN(minimize, sym, partition, verbose);
+            RUN(minimize, sym.get(), partition, verbose);
             mtbdd_unprotect(&partition);
             const double t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
 
-            AIGmaker var1b(data, sym);
+            AIGmaker var1b(data, sym.get());
             var1b.process();
-            AIGmaker var2b(data, sym);
+            AIGmaker var2b(data, sym.get());
             var2b.setIsop();
             var2b.process();
-            AIGmaker var3b(data, sym);
+            AIGmaker var3b(data, sym.get());
             var3b.setOneHot();
             var3b.process();
 
@@ -998,12 +998,12 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
         if (bisim_sol) {
             const double t_before = wctime();
-            MTBDD partition = CALL(min_lts_strong, sym, true);
+            MTBDD partition = CALL(min_lts_strong, sym.get(), true);
             mtbdd_protect(&partition);
             if (verbose) {
                 // CALL(print_partition, sym, partition);
             }
-            CALL(minimize, sym, partition, verbose);
+            CALL(minimize, sym.get(), partition, verbose);
             mtbdd_unprotect(&partition);
             const double t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
@@ -1035,7 +1035,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             exit(10);
         }
 
-        AIGmaker maker(data, sym);
+        AIGmaker maker(data, sym.get());
         if (verbose) {
             maker.setVerbose();
         }
