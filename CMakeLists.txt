@@ -10,6 +10,12 @@ project(knor
 # Dependencies
 include(FetchContent)
 FetchContent_Declare(
+    lace
+    GIT_REPOSITORY https://github.com/trolando/lace.git
+    GIT_TAG        v1.4.2
+    FIND_PACKAGE_ARGS
+)
+FetchContent_Declare(
     sylvan
     GIT_REPOSITORY https://github.com/trolando/sylvan.git
     GIT_TAG        v1.7.1
@@ -27,6 +33,7 @@ FetchContent_Declare(
     GIT_TAG        0ed81b34f1048a10aa1b6785c2fb65b526c77b5a
     FIND_PACKAGE_ARGS
 )
+FetchContent_MakeAvailable(lace)
 FetchContent_MakeAvailable(sylvan)
 FetchContent_MakeAvailable(oink)
 set (READLINE_FOUND FALSE)
@@ -39,6 +46,8 @@ find_package(BISON)
 FLEX_TARGET(hoalexer src/hoa.l ${CMAKE_CURRENT_BINARY_DIR}/hoalexer.c DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/hoalexer.h)
 BISON_TARGET(hoaparser src/hoa.y ${CMAKE_CURRENT_BINARY_DIR}/hoaparser.c DEFINES_FILE ${CMAKE_CURRENT_BINARY_DIR}/hoaparser.h)
 ADD_FLEX_BISON_DEPENDENCY(hoalexer hoaparser)
+
+find_package(Boost REQUIRED random)
 
 # Knor itself
 add_executable(knor)
@@ -56,7 +65,11 @@ target_sources(knor
     ${BISON_hoaparser_OUTPUTS}
     ${FLEX_hoalexer_OUTPUTS}
 )
-target_compile_features(knor PUBLIC c_std_11 cxx_std_11)
+target_compile_features(knor PUBLIC c_std_11 cxx_std_17)
 target_compile_options(knor PRIVATE -Wall -Wextra -fno-strict-aliasing -Wno-deprecated -Wno-unused-parameter)
-target_link_libraries(knor PRIVATE oink sylvan::sylvan libabc "-static")
+target_link_libraries(knor PRIVATE oink::oink sylvan::sylvan libabc)
+target_link_libraries(knor PRIVATE Boost::boost)
+if(CMAKE_HOST_SYSTEM MATCHES Linux)
+  target_link_libraries(knor PRIVATE "-static")
+endif()
 target_include_directories(knor PRIVATE src)
