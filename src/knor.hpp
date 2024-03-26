@@ -9,7 +9,8 @@ extern "C" {
 #include "simplehoa.h"
 }
 
-#pragma once
+#ifndef KNOR_KNOR_HPP
+#define KNOR_KNOR_HPP
 
 /**
  * This helper function ensures that the priority p is adjusted to
@@ -24,4 +25,6 @@ int adjustPriority(int p, bool maxPriority, bool controllerIsOdd, int noPrioriti
  * Convert a transition label (Btree) to a BDD encoding the label
  * a label is essentially a boolean combination of atomic propositions and aliases
  */
-TASK_DECL_3(sylvan::MTBDD, evalLabel, BTree* /*label*/, HoaData* /*data*/, uint32_t* /*variables*/);
+TASK_DECL_3(sylvan::MTBDD, evalLabel, BTree* /*label*/, HoaData* /*data*/, uint32_t* /*variables*/)
+
+#endif //KNOR_KNOR_HPP

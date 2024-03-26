@@ -37,7 +37,7 @@ const std::vector<std::string> ABCMinimization::compressCommands ({
 
 // commands taken from 'alias compress2' from 'abc.rc' file
 /*
-const std::vector<std::string> AIGmaker::compressCommands ({
+const std::vector<std::string> AIGEncoder::compressCommands ({
     "balance -l",
     "rewrite -l",
     "refactor -l",

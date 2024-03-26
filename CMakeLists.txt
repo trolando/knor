@@ -56,7 +56,7 @@ target_sources(knor
     src/aigcircuit.cpp
     src/aiger.c
     src/abcminimization.cpp
-    src/aigmaker.cpp
+        src/aigencoder.cpp
     src/bddtools.cpp
     src/bisim.cpp
     src/knor.cpp

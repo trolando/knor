@@ -14,37 +14,35 @@ extern "C" {
     #include "simplehoa.h"
 }
 
-#pragma once
+#ifndef KNOR_AIGENCODER_HPP
+#define KNOR_AIGENCODER_HPP
 
-class AIGmaker final {
+class AIGEncoder final {
 public:
-    AIGmaker(HoaData *data, SymGame *game);
+    AIGEncoder(HoaData &data, SymGame &game);
 
-    AIGmaker& setSop()
-    {
+    AIGEncoder& setSop() {
         this->sop = true;
         return *this;
     }
 
-    AIGmaker& setIsop()
-    {
+    AIGEncoder& setIsop() {
         this->isop = true;
         return *this;
     }
 
-    AIGmaker& setOneHot()
-    {
+    AIGEncoder& setOneHot() {
         this->onehot = true;
         return *this;
     }
 
-    AIGmaker& setVerbose()
-    {
+    AIGEncoder& setVerbose() {
         this->verbose = true;
         return *this;
     }
 
-    std::unique_ptr<AIGCircuit> process();
+    std::unique_ptr<AIGCircuit> encode();
+
 private:
     HoaData &data;
     SymGame &game;
@@ -61,12 +59,13 @@ private:
     std::map<uint32_t, unsigned int> bddvar_to_lit; // translate BDD variable (uap/state) to AIGER literal
 
     unsigned int bddToAigRecursive(sylvan::MTBDD bdd);           // use recursive encoding of BDD (shannon expanion)
-    unsigned int bdd_to_aig_isop(sylvan::MTBDD bdd);
+    unsigned int bddToAigIsop(sylvan::MTBDD bdd);
     unsigned int bddToAigCover(sylvan::ZDD bdd);       // use recursive encoding of ZDD cover (~shannon expansion)
-    unsigned int bdd_to_aig_cover_sop(sylvan::ZDD cover); // use SOP encoding ("two level logic")
+    unsigned int bddToAigCoverSop(sylvan::ZDD cover); // use SOP encoding ("two level logic")
     void reduce(std::vector<std::vector<unsigned int>>& system, bool is_or);
     void processSOP();
     void processOnehot();
     void processBinary();
 };
 
+#endif //KNOR_AIGENCODER_HPP

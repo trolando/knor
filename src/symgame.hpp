@@ -56,19 +56,18 @@ public:
      * Encode a priostate as a BDD, using priobits before statebits
      * High-significant bits come before low-significant bits in the BDD
      */
-    static sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, int statebits, int priobits, int s_first_var, int p_first_var);
     static sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, sylvan::MTBDD statevars, sylvan::MTBDD priovars);
 
     /**
      * Translate symbolic PG to explicit game in Oink, that can then be solved.
      */
-    pg::Game *toExplicit(std::map<int, sylvan::MTBDD>&);
+    std::unique_ptr<pg::Game> toExplicit(std::map<int, sylvan::MTBDD>& vertex_to_bdd);
 
     /**
      * Convert the strategy of a realizable parity game to an explicit parity game that
      * should be won by player Even.
      */
-    pg::Game *strategyToPG();
+    std::unique_ptr<pg::Game> strategyToPG();
 
     /**
      * Apply a strategy (computed via Oink)
@@ -85,10 +84,10 @@ public:
      */
     void postprocess(bool verbose);
 
-    void print_vars();
-    void print_kiss(bool only_strategy=false);
-    void print_trans(bool only_strategy=false);
-    void print_strategies();
+    [[maybe_unused]] void print_vars() const;
+    [[maybe_unused]] void print_kiss(bool only_strategy=false);
+    [[maybe_unused]] void print_trans(bool only_strategy=false) const;
+    [[maybe_unused]] void print_strategies() const;
 };
 
 #endif // KNOR_SYMGAME_HPP

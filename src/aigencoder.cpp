@@ -3,18 +3,18 @@
  *************************************************************************/
 
 #include <abcminimization.hpp>
-#include <aigmaker.hpp>
+#include <aigencoder.hpp>
 #include <bddtools.hpp>
 #include <knor.hpp>
 #include <set>
 
 using namespace sylvan;
 
-AIGmaker::AIGmaker(HoaData *data, SymGame *game) : data(*data), game(*game), circuit(nullptr)
+AIGEncoder::AIGEncoder(HoaData &data, SymGame &game) : data(data), game(game), circuit(nullptr)
 {
 }
 
-unsigned int AIGmaker::bdd_to_aig_isop(MTBDD bdd)
+unsigned int AIGEncoder::bddToAigIsop(MTBDD bdd)
 {
     if (verbose) {
         // std::cerr << "running isop for BDD with " << mtbdd_nodecount(bdd) << " nodes." << std::endl;
@@ -29,12 +29,12 @@ unsigned int AIGmaker::bdd_to_aig_isop(MTBDD bdd)
         // std::cerr << "isop has " << (long)zdd_pathcount(isop) << " terms and " << zdd_nodecount(&isop, 1) << " nodes." << std::endl;
     }
 
-    auto res = bdd_to_aig_cover_sop(the_isop);
+    auto res = bddToAigCoverSop(the_isop);
     zdd_unprotect(&the_isop);
     return res;
 }
 
-unsigned int AIGmaker::bdd_to_aig_cover_sop(ZDD cover)
+unsigned int AIGEncoder::bddToAigCoverSop(ZDD cover)
 {
     if (cover == zdd_true) return aiger_true;
     if (cover == zdd_false) return aiger_false;
@@ -64,7 +64,7 @@ unsigned int AIGmaker::bdd_to_aig_cover_sop(ZDD cover)
             if (!gates.empty()) {
                 auto last2 = gates.front();
                 gates.pop_front();
-                auto new_gate = circuit->makeand(last, last2);
+                auto new_gate = circuit->makeAnd(last, last2);
                 gates.push_back(new_gate);
             } else {
                 products.push_back(last);
@@ -82,14 +82,14 @@ unsigned int AIGmaker::bdd_to_aig_cover_sop(ZDD cover)
         products.pop_front();
         auto product2 = products.front();
         products.pop_front();
-        auto summed_product = aiger_not(circuit->makeand(aiger_not(product1), aiger_not(product2)));
+        auto summed_product = aiger_not(circuit->makeAnd(aiger_not(product1), aiger_not(product2)));
         products.push_back(summed_product);
     }
 
     return products.front();
 }
 
-unsigned int AIGmaker::bddToAigCover(ZDD cover)
+unsigned int AIGEncoder::bddToAigCover(ZDD cover)
 {
     // TODO can we make this nonrecursive?
     if (cover == zdd_true) return aiger_true;
@@ -106,18 +106,18 @@ unsigned int AIGmaker::bddToAigCover(ZDD cover)
 
     if (high != zdd_true) {
         auto x = bddToAigCover(high);
-        res = circuit->makeand(res, x);
+        res = circuit->makeAnd(res, x);
     }
 
     if (low != zdd_false) {
         auto x = bddToAigCover(low);
-        res = aiger_not(circuit->makeand(aiger_not(res), aiger_not(x)));
+        res = aiger_not(circuit->makeAnd(aiger_not(res), aiger_not(x)));
     }
 
     return res;
 }
 
-unsigned int AIGmaker::bddToAigRecursive(MTBDD bdd)
+unsigned int AIGEncoder::bddToAigRecursive(MTBDD bdd)
 {
     if (bdd == mtbdd_true) return aiger_true;
     if (bdd == mtbdd_false) return aiger_false;
@@ -144,7 +144,7 @@ unsigned int AIGmaker::bddToAigRecursive(MTBDD bdd)
             // AND(the_lit, ...)
             auto rhs0 = the_lit;
             auto rhs1 = bddToAigRecursive(high);
-            res = circuit->makeand(rhs0, rhs1);
+            res = circuit->makeAnd(rhs0, rhs1);
         }
     } else if (high == mtbdd_false) {
         // only low (value 0)
@@ -155,21 +155,21 @@ unsigned int AIGmaker::bddToAigRecursive(MTBDD bdd)
             // AND(not the_lit, ...)
             auto rhs0 = aiger_not(the_lit);
             auto rhs1 = bddToAigRecursive(low);
-            res = circuit->makeand(rhs0, rhs1);
+            res = circuit->makeAnd(rhs0, rhs1);
         }
     } else {
         // OR(low, high) == ~AND(~AND(the_lit, ...), ~AND(~the_lit, ...))
         auto lowres = bddToAigRecursive(low);
         auto highres = bddToAigRecursive(high);
-        auto rhs0 = aiger_not(circuit->makeand(aiger_not(the_lit), lowres));
-        auto rhs1 = aiger_not(circuit->makeand(the_lit, highres));
-        res = aiger_not(circuit->makeand(rhs0, rhs1));
+        auto rhs0 = aiger_not(circuit->makeAnd(aiger_not(the_lit), lowres));
+        auto rhs1 = aiger_not(circuit->makeAnd(the_lit, highres));
+        res = aiger_not(circuit->makeAnd(rhs0, rhs1));
     }
 
     return comp ? aiger_not(res) : res;
 }
 
-void AIGmaker::reduce(std::vector<std::vector<unsigned int>>& system, bool is_or)
+void AIGEncoder::reduce(std::vector<std::vector<unsigned int>>& system, bool is_or)
 {
     std::map<unsigned int, int> pop;
     for (auto& x : system) {
@@ -211,7 +211,8 @@ void AIGmaker::reduce(std::vector<std::vector<unsigned int>>& system, bool is_or
 
         // create new gate
         auto m = 0, n = 0;
-        auto gate = is_or ? aiger_not(circuit->makeand(aiger_not(first), aiger_not(second))) : circuit->makeand(first, second);
+        auto gate = is_or ? aiger_not(circuit->makeAnd(aiger_not(first), aiger_not(second))) : circuit->makeAnd(first,
+                                                                                                                second);
         for (auto& x : system) {
             auto it_f = std::find(x.begin(), x.end(), first);
             if (it_f != x.end()) {
@@ -232,7 +233,7 @@ void AIGmaker::reduce(std::vector<std::vector<unsigned int>>& system, bool is_or
 }
 
 void
-AIGmaker::processSOP()
+AIGEncoder::processSOP()
 {
     // compute the set of states, so we can create state_to_lit
     MTBDD states = sylvan_project(game.strategies, game.s_vars);
@@ -472,7 +473,7 @@ AIGmaker::processSOP()
         // the reason being that this is very unlikely to find improvements anyhow and it takes "long"
         // (4 seconds on full_arbiter_8 which isn't so bad, but it did not improve the number of gates
         x.clear();
-        x.push_back(circuit->makeand(u, sum));
+        x.push_back(circuit->makeAnd(u, sum));
     }
     // reduce(uap_state_products, false);
 
@@ -503,7 +504,7 @@ AIGmaker::processSOP()
     }
 }
 
-void AIGmaker::processOnehot()
+void AIGEncoder::processOnehot()
 {
     MTBDD states = sylvan_project(game.trans, game.s_vars);
     mtbdd_protect(&states);
@@ -567,12 +568,12 @@ void AIGmaker::processOnehot()
                 lf2 = mtbdd_enum_all_next(s, game.s_vars, state_arr_2, nullptr);
             }
 
-            auto aig_uap = isop ? bdd_to_aig_isop(uap) : bddToAigRecursive(uap);
-            auto aig_states = circuit->make_or(source_gates);
-            terms.push_back(circuit->makeand(aig_uap, aig_states));
+            auto aig_uap = isop ? bddToAigIsop(uap) : bddToAigRecursive(uap);
+            auto aig_states = circuit->makeMultiOr(source_gates);
+            terms.push_back(circuit->makeAnd(aig_uap, aig_states));
         }
 
-        auto result = circuit->make_or(terms);
+        auto result = circuit->makeMultiOr(terms);
         circuit->makeOutput(result, cap_labels[i]);
     }
 
@@ -631,13 +632,13 @@ void AIGmaker::processOnehot()
             // std::cerr << "source state " << from << " with UAP " << ((uap&sylvan_complement)?"~":"") << (uap&~sylvan_complement) << std::endl;
             //}
 
-            auto aig_uap = isop ? bdd_to_aig_isop(uap) : bddToAigRecursive(uap);
-            auto aig_states = circuit->make_or(source_gates);
-            auto result = circuit->makeand(aig_uap, aig_states);
+            auto aig_uap = isop ? bddToAigIsop(uap) : bddToAigRecursive(uap);
+            auto aig_states = circuit->makeMultiOr(source_gates);
+            auto result = circuit->makeAnd(aig_uap, aig_states);
             terms.push_back(result);
         }
 
-        auto result = circuit->make_or(terms);
+        auto result = circuit->makeMultiOr(terms);
         // if state 0, take inverse
         if (state == 0) result = aiger_not(result);
         circuit->setLatch(state_to_lit.at(state), result, "");
@@ -651,7 +652,7 @@ void AIGmaker::processOnehot()
     mtbdd_unprotect(&su_vars);
 }
 
-void AIGmaker::processBinary()
+void AIGEncoder::processBinary()
 {
     // initialize state_to_lit and bddvar_to_lit
     {
@@ -717,12 +718,12 @@ void AIGmaker::processBinary()
             assert(bddres == state_bdds[i]);
         }
         for (int i=0; i<game.cap_count; i++) {
-            auto res = bdd_to_aig_cover_sop(cap_zdds[i]);
+            auto res = bddToAigCoverSop(cap_zdds[i]);
             circuit->makeOutput(res, cap_labels[i]);
             zdd_unprotect(&cap_zdds[i]);
         }
         for (int i=0; i<game.statebits; i++) {
-            auto res = bdd_to_aig_cover_sop(state_zdds[i]);
+            auto res = bddToAigCoverSop(state_zdds[i]);
             circuit->setLatch(state_to_lit.at(i), res, "");
             zdd_unprotect(&state_zdds[i]);
         }
@@ -768,7 +769,7 @@ void AIGmaker::processBinary()
     for (int i=0; i<game.statebits; i++) mtbdd_unprotect(&state_bdds[i]);
 }
 
-std::unique_ptr<AIGCircuit> AIGmaker::process()
+std::unique_ptr<AIGCircuit> AIGEncoder::encode()
 {
     circuit = std::make_unique<AIGCircuit>();
 

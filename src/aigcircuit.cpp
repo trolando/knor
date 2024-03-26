@@ -16,7 +16,7 @@ AIGCircuit::~AIGCircuit() {
     aiger_reset(a);
 }
 
-unsigned int AIGCircuit::makeand(unsigned int rhs0, unsigned int rhs1) {
+unsigned int AIGCircuit::makeAnd(unsigned int rhs0, unsigned int rhs1) {
     if (rhs1 < rhs0) {
         std::swap(rhs0, rhs1);
     }
@@ -88,14 +88,14 @@ void AIGCircuit::simplify_or(std::deque<unsigned int> &gates) {
     }
 }
 
-unsigned int AIGCircuit::make_and(std::deque<unsigned int> &gates) {
+[[maybe_unused]] unsigned int AIGCircuit::makeMultiAnd(std::deque<unsigned int> &gates) {
     while (!gates.empty()) {
         auto last = gates.front();
         gates.pop_front();
         if (!gates.empty()) {
             auto last2 = gates.front();
             gates.pop_front();
-            auto new_gate = makeand(last, last2);
+            auto new_gate = makeAnd(last, last2);
             gates.push_back(new_gate);
         } else {
             return last;
@@ -104,14 +104,14 @@ unsigned int AIGCircuit::make_and(std::deque<unsigned int> &gates) {
     return aiger_false;
 }
 
-unsigned int AIGCircuit::make_or(std::deque<unsigned int> &gates) {
+unsigned int AIGCircuit::makeMultiOr(std::deque<unsigned int> &gates) {
     while (!gates.empty()) {
         auto last = gates.front();
         gates.pop_front();
         if (!gates.empty()) {
             auto last2 = gates.front();
             gates.pop_front();
-            auto new_gate = aiger_not(makeand(aiger_not(last), aiger_not(last2)));
+            auto new_gate = aiger_not(makeAnd(aiger_not(last), aiger_not(last2)));
             gates.push_back(new_gate);
         } else {
             return last;

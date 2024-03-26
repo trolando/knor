@@ -17,7 +17,7 @@
 #include <knor.hpp>
 #include <symgame.hpp>
 #include <bisim.hpp>
-#include <aigmaker.hpp>
+#include <aigencoder.hpp>
 #include <bddtools.hpp>
 
 extern "C" {
@@ -28,12 +28,11 @@ extern "C" {
 
 using namespace sylvan;
 
-static double
-wctime()
+static double wctime()
 {
-    struct timeval time;
-    gettimeofday(&time, NULL);
-    return time.tv_sec + 1E-6 * time.tv_usec;
+    struct timeval time{};
+    gettimeofday(&time, nullptr);
+    return (double)time.tv_sec + 1E-6 * (double)time.tv_usec;
 }
 
 
@@ -43,31 +42,31 @@ wctime()
  */
 TASK_IMPL_3(MTBDD, evalLabel, BTree*, label, HoaData*, data, uint32_t*, variables)
 {
-    MTBDD left = mtbdd_false;
-    MTBDD right = mtbdd_false;
-    MTBDD result = mtbdd_false;
+    MTBDD left;
+    MTBDD right;
+    MTBDD result;
     switch (label->type) {
         case NT_BOOL:
             return label->id ? mtbdd_true : mtbdd_false;
         case NT_AND:
-            mtbdd_refs_pushptr(&left);
-            mtbdd_refs_pushptr(&right);
             left = CALL(evalLabel, label->left, data, variables);
+            mtbdd_refs_pushptr(&left);
             right = CALL(evalLabel, label->right, data, variables);
+            mtbdd_refs_pushptr(&right);
             result = sylvan_and(left, right);
             mtbdd_refs_popptr(2);
             return result;
         case NT_OR:
-            mtbdd_refs_pushptr(&left);
-            mtbdd_refs_pushptr(&right);
             left = CALL(evalLabel, label->left, data, variables);
+            mtbdd_refs_pushptr(&left);
             right = CALL(evalLabel, label->right, data, variables);
+            mtbdd_refs_pushptr(&right);
             result = sylvan_or(left, right);
             mtbdd_refs_popptr(2);
             return result;
         case NT_NOT:
-            mtbdd_refs_pushptr(&left);
             left = CALL(evalLabel, label->left, data, variables);
+            mtbdd_refs_pushptr(&left);
             result = sylvan_not(left);
             mtbdd_refs_popptr(1);
             return result;
@@ -98,7 +97,7 @@ TASK_IMPL_3(MTBDD, evalLabel, BTree*, label, HoaData*, data, uint32_t*, variable
  */
 static int
 evalLabelNaive(BTree* label, Alias* aliases, int numAliases, int numAPs, int* apIds, uint64_t value) {
-    assert(label != NULL);
+    assert(label != nullptr);
     int left;
     int right;
     uint64_t mask;
@@ -210,12 +209,12 @@ TASK_3(pg::Game*, constructGameNaive, HoaData*, data, bool, isMaxParity, bool, c
     // Set which APs are controllable in the bitset controllable
     pg::bitset controllable(data->noAPs);
     for (int i=0; i<data->noCntAPs; i++) {
-        controllable[data->cntAPs[i]] = 1;
+        controllable[data->cntAPs[i]] = true;
     }
 
     // Count the number of controllable/uncontrollable APs
-    const int cap_count = controllable.count();
-    const int uap_count = data->noAPs - cap_count;
+    const auto cap_count = controllable.count();
+    const auto uap_count = data->noAPs - cap_count;
     const uint64_t numValuations = (1ULL << uap_count);
 
     int ucntAPs[uap_count];
@@ -225,10 +224,10 @@ TASK_3(pg::Game*, constructGameNaive, HoaData*, data, bool, isMaxParity, bool, c
     }
 
     // Now initialize a new parity game
-    pg::Game *game = new pg::Game(data->noStates * 10); // start with 10 the number of states
+    auto *game = new pg::Game(data->noStates * 10); // start with 10 the number of states
     // notice that the number of vertices automatically grows when needed anyway
 
-    int nextIndex = data->noStates; // index of the next vertex to make
+    auto nextIndex = data->noStates; // index of the next vertex to make
 
     std::vector<int> succ_state;  // for current state, the successors
     std::vector<int> succ_inter;  // for current intermediate state, the successors
@@ -244,15 +243,15 @@ TASK_3(pg::Game*, constructGameNaive, HoaData*, data, bool, isMaxParity, bool, c
                 assert(trans->noSucc == 1);
                 // there should be a label at state or transition level
                 BTree* label;
-                if (state->label != NULL) label = state->label;
+                if (state->label != nullptr) label = state->label;
                 else label = trans->label;
-                assert(label != NULL);
+                assert(label != nullptr);
                 // we add a vertex + edges if the transition is compatible with the
                 // valuation we are currently considering
-                int evald = evalLabelNaive(label, data->aliases, data->noAliases, uap_count, ucntAPs, value);
+                int evald = evalLabelNaive(label, data->aliases, data->noAliases, (int)uap_count, ucntAPs, value);
                 if (evald == -1) continue; // not compatible
                 // there should be a priority at state or transition level
-                if (state->accSig == NULL) {
+                if (state->accSig == nullptr) {
                     // there should be exactly one acceptance set!
                     assert(trans->noAccSig == 1);
                     // adjust priority
@@ -269,17 +268,17 @@ TASK_3(pg::Game*, constructGameNaive, HoaData*, data, bool, isMaxParity, bool, c
                 }
             }
 
-            int vinter = nextIndex++;
+            auto vinter = nextIndex++;
             succ_state.push_back(vinter);
             game->init_vertex(vinter, 0, 0);
             game->e_start(vinter);
-            for (int to : succ_inter) game->e_add(vinter, to);
+            for (auto to : succ_inter) game->e_add(vinter, to);
             game->e_finish();
             succ_inter.clear();
         }
 
         int priority;
-        if (state->accSig != NULL) {
+        if (state->accSig != nullptr) {
             priority = adjustPriority(state->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
         } else {
             priority = 0;
@@ -287,7 +286,7 @@ TASK_3(pg::Game*, constructGameNaive, HoaData*, data, bool, isMaxParity, bool, c
 
         game->init_vertex(state->id, priority, 1, state->name ? state->name : std::to_string(state->id));
         game->e_start(state->id);
-        for (int to : succ_state) game->e_add(state->id, to);
+        for (auto to : succ_state) game->e_add(state->id, to);
         game->e_finish();
         succ_state.clear();
     }
@@ -324,10 +323,10 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
     }
 
     // Now initialize a new parity game
-    pg::Game *game = new pg::Game(data->noStates * 10); // start with 10 the number of states
+    auto game = new pg::Game(data->noStates * 10); // start with 10 the number of states
     // The number of vertices automatically grows when needed, but 10xstates is a good start
 
-    int nextIndex = data->noStates; // index of the next vertex to make
+    auto nextIndex = data->noStates; // index of the next vertex to make
 
     // Prepare number of statebits and priobits
     int statebits = 1;
@@ -341,14 +340,14 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
     auto s_vars = mtbdd_set_empty();
     mtbdd_refs_pushptr(&p_vars);
     mtbdd_refs_pushptr(&s_vars);
-    int var = 0;
-    for (int i=0; i<priobits; i++) p_vars = mtbdd_set_add(p_vars, var++);
-    for (int i=0; i<statebits; i++) s_vars = mtbdd_set_add(s_vars, var++);
+    auto var = 0;
+    for (auto i=0; i<priobits; i++) p_vars = mtbdd_set_add(p_vars, var++);
+    for (auto i=0; i<statebits; i++) s_vars = mtbdd_set_add(s_vars, var++);
 
     std::vector<int> succ_state;  // for current state, the successors
     std::vector<int> succ_inter;  // for current intermediate state, the successors
 
-    MTBDD trans_bdd = mtbdd_false;
+    auto trans_bdd = mtbdd_false;
     mtbdd_refs_pushptr(&trans_bdd);
 
     std::set<uint64_t> targets;
@@ -358,8 +357,8 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
 
     // these variables are used deeper in the for loops, however we can
     // push them to mtbdd refs here and avoid unnecessary pushing and popping
-    MTBDD lblbdd = mtbdd_false;
-    MTBDD leaf = mtbdd_false;
+    auto lblbdd = mtbdd_false;
+    auto leaf = mtbdd_false;
     mtbdd_refs_pushptr(&lblbdd);
     mtbdd_refs_pushptr(&leaf);
 
@@ -402,7 +401,7 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
         // TODO: this assumes uap_count is the first non-uap variable index
         auto inter_bdds = BDDTools::collectSubroots(trans_bdd, uap_count);
         for (MTBDD inter_bdd : inter_bdds) {
-            MTBDD targets_bdd = collect_targets(inter_bdd, targets, s_vars, p_vars);
+            auto targets_bdd = collect_targets(inter_bdd, targets, s_vars, p_vars);
 
             int vinter;
             auto it = inter_vertices.find(targets_bdd);
@@ -413,8 +412,8 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
 
                     if (priority != 0) {
                         int vfin;
-                        auto it = target_vertices.find(lval);
-                        if (it == target_vertices.end()) {
+                        auto it2 = target_vertices.find(lval);
+                        if (it2 == target_vertices.end()) {
                             vfin = nextIndex++;
                             game->init_vertex(vfin, priority, 0);
                             game->e_start(vfin);
@@ -422,7 +421,7 @@ TASK_3(pg::Game*, constructGame, HoaData *, data, bool, isMaxParity, bool, contr
                             game->e_finish();
                             target_vertices.insert(std::make_pair(lval, vfin));
                         } else {
-                            vfin = it->second;
+                            vfin = it2->second;
                         }
                         succ_inter.push_back(vfin);
                     } else {
@@ -510,7 +509,7 @@ handleOptions(int &argc, char**& argv)
 
         // Add solvers
         pg::Solvers solvers;
-        for (unsigned id=0; id<solvers.count(); id++) {
+        for (auto id=0; id<solvers.count(); id++) {
             opts.add_options("Explicit solvers")(solvers.label(id), solvers.desc(id));
         }
 
@@ -555,16 +554,16 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
     // First initialize the HOA data structure
     const auto t_before_parsing = wctime();
-    HoaData* data = (HoaData*)malloc(sizeof(HoaData));
+    auto data = (HoaData*)malloc(sizeof(HoaData));
     defaultsHoa(data);
 
-    if (options.unmatched().size() == 0) {
+    if (options.unmatched().empty()) {
         int ret = parseHoa(stdin, data);
         if (ret != 0) return ret;
     } else {
         std::string filename = options.unmatched()[0];
         FILE* f = fopen(filename.c_str(), "r");
-        if (f == NULL) {
+        if (f == nullptr) {
             std::cout << "file not found: " << filename << std::endl;
             return 0;
         }
@@ -598,7 +597,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         if (data->states[i].noAccSig != 0) {
             if (i == 0) {
                 state_priorities = true;
-            } else if (state_priorities == false) {
+            } else if (!state_priorities) {
                 std::cerr << "not every state has a priority!";
                 return -1;
             }
@@ -628,7 +627,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     bool bisim_sol = options["bisim"].count() > 0 or options["bisim-sol"].count() > 0;
 
     std::unique_ptr<SymGame> sym = nullptr;
-    bool realizable = false; // not known yet
+    bool realizable; // not known yet
 
     if (explicit_solver) {
         // Remember the start vertex
@@ -636,17 +635,17 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         std::map<int, MTBDD> vertex_to_bdd;
 
         // Construct the explicit game
-        pg::Game *game = nullptr;
+        std::unique_ptr<pg::Game> game = nullptr;
         if (naive_splitting) {
             const double t_before_splitting = wctime();
-            game = CALL(constructGameNaive, data, isMaxParity, controllerIsOdd);
+            game.reset(CALL(constructGameNaive, data, isMaxParity, controllerIsOdd));
             const double t_after_splitting = wctime();
             if (verbose) {
                 std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
             }
         } else if (explicit_splitting) {
             const double t_before_splitting = wctime();
-            game = CALL(constructGame, data, isMaxParity, controllerIsOdd);
+            game.reset(CALL(constructGame, data, isMaxParity, controllerIsOdd));
             const double t_after_splitting = wctime();
             if (verbose) {
                 std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
@@ -694,8 +693,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
         // we sort now, so we can track the initial state
         double begin = wctime();
-        int *mapping = new int[game->vertexcount()];
-        game->sort(mapping);
+        std::vector<int> mapping(game->vertexcount());
+        game->sort(mapping.data());
 
         // OK, fire up the engine
         std::stringstream log;
@@ -722,8 +721,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
 
         // undo the sorting ## FOR SOME REASON, THIS CAN BE SLOW!
-        game->permute(mapping);
-        delete[] mapping;
+        game->permute(mapping.data());
+        mapping.clear(); // erase result, we don't need it anymore
 
         realizable = game->winner[vstart] == 0;
 
@@ -819,12 +818,14 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             // sym->print_strategies();
         }
 
-        const double t_before = wctime();
-        sym->postprocess(verbose);
-        const double t_after = wctime();
+        {
+            const auto t_before = wctime();
+            sym->postprocess(verbose);
+            const auto t_after = wctime();
 
-        if (verbose) {
-            std::cerr << "\033[1;37mfinished post processing in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+            if (verbose) {
+                std::cerr << "\033[1;37mfinished post processing in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+            }
         }
 
         if (verbose) {
@@ -835,21 +836,21 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         const bool best = options["best"].count() > 0;
 
         if (best) {
-            auto var1 = AIGmaker(data, sym.get()).process();
-            auto var2 = AIGmaker(data, sym.get()).setIsop().process();
-            auto var3 = AIGmaker(data, sym.get()).setOneHot().process();
+            auto var1 = AIGEncoder(*data, *sym).encode();
+            auto var2 = AIGEncoder(*data, *sym).setIsop().encode();
+            auto var3 = AIGEncoder(*data, *sym).setOneHot().encode();
 
-            const double t_before = wctime();
+            const auto t_before = wctime();
             MTBDD partition = RUN(min_lts_strong, sym.get(), true);
             mtbdd_protect(&partition);
             RUN(minimize, sym.get(), partition, verbose);
             mtbdd_unprotect(&partition);
-            const double t_after = wctime();
+            const auto t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
 
-            auto var1b = AIGmaker(data, sym.get()).process();
-            auto var2b = AIGmaker(data, sym.get()).setIsop().process();
-            auto var3b = AIGmaker(data, sym.get()).setOneHot().process();
+            auto var1b = AIGEncoder(*data, *sym).encode();
+            auto var2b = AIGEncoder(*data, *sym).setIsop().encode();
+            auto var3b = AIGEncoder(*data, *sym).setOneHot().encode();
 
             if (verbose) {
                 std::cerr << "no bisim, ite: " << var1->getNumAnds() << std::endl;
@@ -979,24 +980,24 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             exit(10);
         }
 
-        std::unique_ptr<AIGCircuit> circuit = nullptr;
+        std::unique_ptr<AIGCircuit> circuit;
 
         {
-            AIGmaker maker(data, sym.get());
+            AIGEncoder encoder(*data, *sym);
             if (verbose) {
-                maker.setVerbose();
+                encoder.setVerbose();
             }
             if (options["isop"].count() > 0) {
-                maker.setIsop();
+                encoder.setIsop();
             }
             if (options["onehot"].count() > 0) {
-                maker.setOneHot();
+                encoder.setOneHot();
             }
             if (options["sop"].count() > 0) {
-                maker.setSop();
+                encoder.setSop();
             }
             const double t_before = wctime();
-            circuit = maker.process();
+            circuit = encoder.encode();
             const double t_after = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
