@@ -3,6 +3,7 @@
  */
 
 #include <abcminimization.hpp>
+#include <chrono>
 #include <stdexcept>
 #include <iostream>
 #include <cstring>
@@ -35,7 +36,10 @@ const std::vector<std::string> ABCMinimization::compressCommands ({
        "ifraig -C 20",
 });
 
+void ABCMinimization::compress(int timeout)
 {
+    auto start = std::chrono::steady_clock::now();
+
     Abc_Start();
     Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
 
@@ -45,10 +49,14 @@ const std::vector<std::string> ABCMinimization::compressCommands ({
     int new_num_nodes = getAbcNetworkSize(pAbc);
     int old_num_nodes = new_num_nodes + 1;
     while (new_num_nodes > 0 && new_num_nodes < old_num_nodes) {
+        auto start2 = std::chrono::steady_clock::now();
         executeCompressCommands(pAbc);
         old_num_nodes = new_num_nodes;
         new_num_nodes = getAbcNetworkSize(pAbc);
         // if ((old_num_nodes-new_num_nodes)<old_num_nodes/100) break; // 2.5% improvement or better pls
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start2).count();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+        if ((elapsed+duration) >= timeout) break;
     }
 
     readFromAbc(pAbc);
@@ -56,8 +64,9 @@ const std::vector<std::string> ABCMinimization::compressCommands ({
     Abc_Stop();
 }
 
-void ABCMinimization::drewrite()
+void ABCMinimization::drewrite(int timeout)
 {
+    auto start = std::chrono::steady_clock::now();
     Abc_Start();
     Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
 
@@ -67,6 +76,7 @@ void ABCMinimization::drewrite()
     int new_num_nodes = getAbcNetworkSize(pAbc);
     int old_num_nodes = new_num_nodes + 1;
     while (new_num_nodes > 0 && new_num_nodes < old_num_nodes) {
+        auto start2 = std::chrono::steady_clock::now();
         executeAbcCommand(pAbc, "drw");
         executeAbcCommand(pAbc, "balance");
         executeAbcCommand(pAbc, "drf");
@@ -74,6 +84,9 @@ void ABCMinimization::drewrite()
         old_num_nodes = new_num_nodes;
         new_num_nodes = getAbcNetworkSize(pAbc);
         if ((old_num_nodes-new_num_nodes)<old_num_nodes/100) break; // 1% improvement or better pls
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start2).count();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+        if ((elapsed+duration) >= timeout) break;
     }
 
     readFromAbc(pAbc);

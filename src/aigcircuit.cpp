@@ -138,12 +138,12 @@ void AIGCircuit::readFile(FILE* infile) {
     aiger_delete_comments(a);
 }
 
-void AIGCircuit::drewrite(bool verbose) {
+void AIGCircuit::drewrite(int timeout, bool verbose) {
     ABCMinimization min(*this, verbose);
-    min.drewrite();
+    min.drewrite(timeout);
 }
 
-void AIGCircuit::compress(bool verbose) {
+void AIGCircuit::compress(int timeout, bool verbose) {
     ABCMinimization min(*this, verbose);
-    min.compress();
+    min.compress(timeout);
 }

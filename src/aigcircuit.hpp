@@ -58,8 +58,8 @@ public:
     int writeBinary(FILE* outfile);
     void readFile(FILE* infile);
 
-    void drewrite(bool verbose);
-    void compress(bool verbose);
+    void drewrite(int timeout, bool verbose);
+    void compress(int timeout, bool verbose);
 
 private:
     aiger *a;

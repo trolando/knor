@@ -20,8 +20,8 @@ class ABCMinimization final {
 public:
     explicit ABCMinimization(AIGCircuit& circuit, bool verbose = false)
         : circuit(circuit), verbose(verbose) {}
-    void drewrite();
-    void compress();
+    void drewrite(int timeout);
+    void compress(int timeout);
 
 private:
     AIGCircuit& circuit;

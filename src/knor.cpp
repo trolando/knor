@@ -628,6 +628,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
     std::unique_ptr<SymGame> sym = nullptr;
     bool realizable; // not known yet
+    int compress_timeout = 30*60*1000; // 30 minutes x 60 seconds x 1000 milliseconds
 
     if (explicit_solver) {
         // Remember the start vertex
@@ -836,10 +837,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         const bool best = options["best"].count() > 0;
 
         if (best) {
-            auto var1 = AIGEncoder(*data, *sym).encode();
-            auto var2 = AIGEncoder(*data, *sym).setIsop().encode();
-            auto var3 = AIGEncoder(*data, *sym).setOneHot().encode();
-
+            // always apply bisimulation minimisation, it's essentially free and reduced the number of states
             const auto t_before = wctime();
             MTBDD partition = RUN(min_lts_strong, sym.get(), true);
             mtbdd_protect(&partition);
@@ -849,90 +847,56 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
 
             auto var1b = AIGEncoder(*data, *sym).encode();
-            auto var2b = AIGEncoder(*data, *sym).setIsop().encode();
+            auto var2b = AIGEncoder(*data, *sym).setOneHot().setIsop().encode();
             auto var3b = AIGEncoder(*data, *sym).setOneHot().encode();
+            auto var4b = AIGEncoder(*data, *sym).setSop().encode();
 
             if (verbose) {
-                std::cerr << "no bisim, ite: " << var1->getNumAnds() << std::endl;
-                std::cerr << "no bisim, isop: " << var2->getNumAnds() << std::endl;
-                std::cerr << "no bisim, oh: " << var3->getNumAnds() << std::endl;
-                std::cerr << "bisim, ite: " << var1b->getNumAnds() << std::endl;
-                std::cerr << "bisim, isop: " << var2b->getNumAnds() << std::endl;
-                std::cerr << "bisim, oh: " << var3b->getNumAnds() << std::endl;
-            }
-
-            if (options["drewrite"].count() > 0) {
-                var1->drewrite(verbose);
-                var2->drewrite(verbose);
-                var3->drewrite(verbose);
-                var1b->drewrite(verbose);
-                var2b->drewrite(verbose);
-                var3b->drewrite(verbose);
-
-                if (verbose) {
-                    std::cerr << "sizes after drw+drf with ABC:" << std::endl;
-                    std::cerr << "no bisim, ite: " << var1->getNumAnds() << std::endl;
-                    std::cerr << "no bisim, isop: " << var2->getNumAnds() << std::endl;
-                    std::cerr << "no bisim, oh: " << var3->getNumAnds() << std::endl;
-                    std::cerr << "bisim, ite: " << var1b->getNumAnds() << std::endl;
-                    std::cerr << "bisim, isop: " << var2b->getNumAnds() << std::endl;
-                    std::cerr << "bisim, oh: " << var3b->getNumAnds() << std::endl;
-                }
+                std::cerr << "bisim, binary+ite: " << var1b->getNumAnds() << " gates and " << var1b->getNumLatches() << " latches" << std::endl;
+                std::cerr << "bisim, onehot+isop: " << var2b->getNumAnds() << " gates and " << var2b->getNumLatches() << " latches" << std::endl;
+                std::cerr << "bisim, onehot+ite: " << var3b->getNumAnds() << " gates and " << var3b->getNumLatches() << " latches" << std::endl;
+                std::cerr << "bisim, sop: " << var3b->getNumAnds() << " gates and " << var4b->getNumLatches() << " latches" << std::endl;
             }
 
             if (options["compress"].count() > 0) {
-                var1->compress(verbose);
-                var2->compress(verbose);
-                var3->compress(verbose);
-                var1b->compress(verbose);
-                var2b->compress(verbose);
-                var3b->compress(verbose);
+                var1b->compress(compress_timeout/4, verbose);
+                var2b->compress(compress_timeout/4, verbose);
+                var3b->compress(compress_timeout/4, verbose);
+                var4b->compress(compress_timeout/4, verbose);
 
                 if (verbose) {
                     std::cerr << "sizes after compressing with ABC:" << std::endl;
-                    std::cerr << "no bisim, ite: " << var1->getNumAnds() << std::endl;
-                    std::cerr << "no bisim, isop: " << var2->getNumAnds() << std::endl;
-                    std::cerr << "no bisim, oh: " << var3->getNumAnds() << std::endl;
-                    std::cerr << "bisim, ite: " << var1b->getNumAnds() << std::endl;
-                    std::cerr << "bisim, isop: " << var2b->getNumAnds() << std::endl;
-                    std::cerr << "bisim, oh: " << var3b->getNumAnds() << std::endl;
+                    std::cerr << "bisim, binary+ite: " << var1b->getNumAnds() << " gates and " << var1b->getNumLatches() << " latches" << std::endl;
+                    std::cerr << "bisim, onehot+isop: " << var2b->getNumAnds() << " gates and " << var2b->getNumLatches() << " latches" << std::endl;
+                    std::cerr << "bisim, onehot+ite: " << var3b->getNumAnds() << " gates and " << var3b->getNumLatches() << " latches" << std::endl;
+                    std::cerr << "bisim, sop: " << var3b->getNumAnds() << " gates and " << var4b->getNumLatches() << " latches" << std::endl;
                 }
             }
 
-            auto smallest = var1->getNumAnds();
-            smallest = std::min(smallest, var2->getNumAnds());
-            smallest = std::min(smallest, var3->getNumAnds());
-            smallest = std::min(smallest, var1b->getNumAnds());
-            smallest = std::min(smallest, var2b->getNumAnds());
-            smallest = std::min(smallest, var3b->getNumAnds());
+            auto smallest = var1b->getNumAnds() + var1b->getNumLatches();
+            smallest = std::min(smallest, var2b->getNumAnds() + var2b->getNumLatches());
+            smallest = std::min(smallest, var3b->getNumAnds() + var3b->getNumLatches());
+            smallest = std::min(smallest, var4b->getNumAnds() + var4b->getNumLatches());
 
             if (options.count("write-binary")) {
-                if (var1->getNumAnds() == smallest) {
-                    var1->writeBinary(stdout);
-                } else if (var2->getNumAnds() == smallest) {
-                    var2->writeBinary(stdout);
-                } else if (var3->getNumAnds() == smallest) {
-                    var3->writeBinary(stdout);
-                } else if (var1b->getNumAnds() == smallest) {
+                if ((var1b->getNumAnds() + var1b->getNumLatches()) == smallest) {
                     var1b->writeBinary(stdout);
-                } else if (var2b->getNumAnds() == smallest) {
+                } else if ((var2b->getNumAnds() + var2b->getNumLatches()) == smallest) {
                     var2b->writeBinary(stdout);
-                } else if (var3b->getNumAnds() == smallest) {
+                } else if ((var3b->getNumAnds() + var3b->getNumLatches()) == smallest) {
                     var3b->writeBinary(stdout);
+                } else if ((var4b->getNumAnds() + var4b->getNumLatches()) == smallest) {
+                    var4b->writeBinary(stdout);
                 }
             } else if (options["write-ascii"].count() > 0) {
-                if (var1->getNumAnds() == smallest) {
-                    var1->writeAscii(stdout);
-                } else if (var2->getNumAnds() == smallest) {
-                    var2->writeAscii(stdout);
-                } else if (var3->getNumAnds() == smallest) {
-                    var3->writeAscii(stdout);
-                } else if (var1b->getNumAnds() == smallest) {
+                if ((var1b->getNumAnds() + var1b->getNumLatches()) == smallest) {
                     var1b->writeAscii(stdout);
-                } else if (var2b->getNumAnds() == smallest) {
+                } else if ((var2b->getNumAnds() + var2b->getNumLatches()) == smallest) {
                     var2b->writeAscii(stdout);
-                } else if (var3b->getNumAnds() == smallest) {
+                } else if ((var3b->getNumAnds() + var3b->getNumLatches()) == smallest) {
                     var3b->writeAscii(stdout);
+                } else if ((var4b->getNumAnds() + var4b->getNumLatches()) == smallest) {
+                    var4b->writeAscii(stdout);
                 }
             }
             if (verbose) {
@@ -1008,7 +972,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         if (options["drewrite"].count() > 0) {
             if (verbose) std::cerr << "size of AIG before drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
             const double t_before = wctime();
-            circuit->drewrite(verbose);
+            circuit->drewrite(compress_timeout, verbose);
             const double t_after = wctime();
             if (verbose) std::cerr << "size of AIG after drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
             if (verbose) std::cerr << "\033[1;37mfinished drw+drf in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
@@ -1017,7 +981,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         if (options["compress"].count() > 0) {
             if (verbose) std::cerr << "size of AIG before compression: " << circuit->getNumAnds() << " gates." << std::endl;
             const double t_before = wctime();
-            circuit->compress(verbose);
+            circuit->compress(compress_timeout, verbose);
             const double t_after = wctime();
             if (verbose) std::cerr << "size of AIG after compression: " << circuit->getNumAnds() << " gates." << std::endl;
             if (verbose) std::cerr << "\033[1;37mfinished compression in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
