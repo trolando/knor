@@ -8,12 +8,9 @@
 #include <cstring>
 #include <sstream>
 
-// commands taken from 'alias compress2rs' from 'abc.rc' file
+// slightly modified version of 'alias compress2rs' from 'abc.rc' file
 const std::vector<std::string> ABCMinimization::compressCommands ({
        "dc2",
-       "dc2",
-       "drw -z -r -C 100 -N 10000",
-       "drf -z -C 10000 -K 15",
        "balance -l",
        "resub -K 6 -l",
        "rewrite -l",
@@ -33,51 +30,16 @@ const std::vector<std::string> ABCMinimization::compressCommands ({
        "balance -l",
        "rewrite -z -l",
        "balance -l",
+       "drw -z -r -C 100 -N 10000",
+       "drf -z -C 10000 -K 15",
+       "ifraig -C 20",
 });
 
-// commands taken from 'alias compress2' from 'abc.rc' file
-/*
-const std::vector<std::string> AIGEncoder::compressCommands ({
-    "balance -l",
-    "rewrite -l",
-    "refactor -l",
-    "balance -l",
-    "rewrite -l",
-    "rewrite -z -l",
-    "balance -l",
-    "refactor -z -l",
-    "rewrite -z -l",
-    "balance -l"
-});
-*/
-
-void ABCMinimization::compress()
 {
     Abc_Start();
     Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
 
     writeToAbc(pAbc);
-
-    /*
-    //executeAbcCommand(pAbc, "ssweep");
-    //executeAbcCommand(pAbc, "balance");
-    executeAbcCommand(pAbc, "dc2");
-    executeAbcCommand(pAbc, "dc2");
-    //executeAbcCommand(pAbc, "balance");
-    executeAbcCommand(pAbc, "dc2");
-    executeAbcCommand(pAbc, "dc2");
-    executeAbcCommand(pAbc, "dc2");
-    executeAbcCommand(pAbc, "dc2");
-    executeAbcCommand(pAbc, "dc2");
-    executeAbcCommand(pAbc, "dc2");
-    executeAbcCommand(pAbc, "dc2");
-    */
-    /*
-    for (int i=0; i<2; i++) {
-        executeAbcCommand(pAbc, "balance");
-        executeAbcCommand(pAbc, "dc2");
-        executeAbcCommand(pAbc, "dc2");
-    }*/
 
     // compress until convergence
     int new_num_nodes = getAbcNetworkSize(pAbc);
@@ -86,7 +48,6 @@ void ABCMinimization::compress()
         executeCompressCommands(pAbc);
         old_num_nodes = new_num_nodes;
         new_num_nodes = getAbcNetworkSize(pAbc);
-        // std::cerr << "nodes after compress run: " << new_num_nodes << std::endl;
         // if ((old_num_nodes-new_num_nodes)<old_num_nodes/100) break; // 2.5% improvement or better pls
     }
 
@@ -112,7 +73,6 @@ void ABCMinimization::drewrite()
         executeAbcCommand(pAbc, "dc2");
         old_num_nodes = new_num_nodes;
         new_num_nodes = getAbcNetworkSize(pAbc);
-        // std::cerr << "nodes after compress run: " << new_num_nodes << std::endl;
         if ((old_num_nodes-new_num_nodes)<old_num_nodes/100) break; // 1% improvement or better pls
     }
 
