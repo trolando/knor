@@ -31,7 +31,7 @@ const std::vector<std::string> ABCMinimization::compressCommands ({
        "balance -l",
        "rewrite -z -l",
        "balance -l",
-       "drw -z -r -C 100 -N 10000",
+       "drw -z -C 100 -N 10000",
        "drf -z -C 10000 -K 15",
        "ifraig -C 20",
 });
@@ -162,4 +162,3 @@ void ABCMinimization::readFromAbc(Abc_Frame_t* pAbc) {
     fclose(file);
     std::remove(tmp_filename);
 }
-

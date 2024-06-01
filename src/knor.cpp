@@ -806,215 +806,192 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
     }
 
-    if (realizable) {
-        if (verbose) std::cerr << "\033[1;38;5;10mgame is realizable!\033[m" << std::endl;
-
-        if (naive_splitting or explicit_splitting) {
-            std::cerr << "--naive and --explicit are incompatible with generating the AIG!" << std::endl;
-            exit(10);
-        }
-
+    if (!realizable) {
         if (verbose) {
-            // sym->print_trans(true);
-            // sym->print_strategies();
-        }
-
-        {
-            const auto t_before = wctime();
-            sym->postprocess(verbose);
-            const auto t_after = wctime();
-
-            if (verbose) {
-                std::cerr << "\033[1;37mfinished post processing in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
-            }
-        }
-
-        if (verbose) {
-            // sym->print_trans();
-            // sym->print_strategies();
-        }
-
-        const bool best = options["best"].count() > 0;
-
-        if (best) {
-            // always apply bisimulation minimisation, it's essentially free and reduced the number of states
-            const auto t_before = wctime();
-            MTBDD partition = RUN(min_lts_strong, sym.get(), true);
-            mtbdd_protect(&partition);
-            RUN(minimize, sym.get(), partition, verbose);
-            mtbdd_unprotect(&partition);
-            const auto t_after = wctime();
-            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
-
-            auto var1b = AIGEncoder(*data, *sym).encode();
-            auto var2b = AIGEncoder(*data, *sym).setOneHot().setIsop().encode();
-            auto var3b = AIGEncoder(*data, *sym).setOneHot().encode();
-            auto var4b = AIGEncoder(*data, *sym).setSop().encode();
-
-            if (verbose) {
-                std::cerr << "bisim, binary+ite: " << var1b->getNumAnds() << " gates and " << var1b->getNumLatches() << " latches" << std::endl;
-                std::cerr << "bisim, onehot+isop: " << var2b->getNumAnds() << " gates and " << var2b->getNumLatches() << " latches" << std::endl;
-                std::cerr << "bisim, onehot+ite: " << var3b->getNumAnds() << " gates and " << var3b->getNumLatches() << " latches" << std::endl;
-                std::cerr << "bisim, sop: " << var3b->getNumAnds() << " gates and " << var4b->getNumLatches() << " latches" << std::endl;
-            }
-
-            if (options["compress"].count() > 0) {
-                var1b->compress(compress_timeout/4, verbose);
-                var2b->compress(compress_timeout/4, verbose);
-                var3b->compress(compress_timeout/4, verbose);
-                var4b->compress(compress_timeout/4, verbose);
-
-                if (verbose) {
-                    std::cerr << "sizes after compressing with ABC:" << std::endl;
-                    std::cerr << "bisim, binary+ite: " << var1b->getNumAnds() << " gates and " << var1b->getNumLatches() << " latches" << std::endl;
-                    std::cerr << "bisim, onehot+isop: " << var2b->getNumAnds() << " gates and " << var2b->getNumLatches() << " latches" << std::endl;
-                    std::cerr << "bisim, onehot+ite: " << var3b->getNumAnds() << " gates and " << var3b->getNumLatches() << " latches" << std::endl;
-                    std::cerr << "bisim, sop: " << var3b->getNumAnds() << " gates and " << var4b->getNumLatches() << " latches" << std::endl;
-                }
-            }
-
-            auto smallest = var1b->getNumAnds() + var1b->getNumLatches();
-            smallest = std::min(smallest, var2b->getNumAnds() + var2b->getNumLatches());
-            smallest = std::min(smallest, var3b->getNumAnds() + var3b->getNumLatches());
-            smallest = std::min(smallest, var4b->getNumAnds() + var4b->getNumLatches());
-
-            if (options.count("write-binary")) {
-                if ((var1b->getNumAnds() + var1b->getNumLatches()) == smallest) {
-                    var1b->writeBinary(stdout);
-                } else if ((var2b->getNumAnds() + var2b->getNumLatches()) == smallest) {
-                    var2b->writeBinary(stdout);
-                } else if ((var3b->getNumAnds() + var3b->getNumLatches()) == smallest) {
-                    var3b->writeBinary(stdout);
-                } else if ((var4b->getNumAnds() + var4b->getNumLatches()) == smallest) {
-                    var4b->writeBinary(stdout);
-                }
-            } else if (options["write-ascii"].count() > 0) {
-                if ((var1b->getNumAnds() + var1b->getNumLatches()) == smallest) {
-                    var1b->writeAscii(stdout);
-                } else if ((var2b->getNumAnds() + var2b->getNumLatches()) == smallest) {
-                    var2b->writeAscii(stdout);
-                } else if ((var3b->getNumAnds() + var3b->getNumLatches()) == smallest) {
-                    var3b->writeAscii(stdout);
-                } else if ((var4b->getNumAnds() + var4b->getNumLatches()) == smallest) {
-                    var4b->writeAscii(stdout);
-                }
-            }
-            if (verbose) {
-                std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
-            }
-            exit(10);
-        }
-
-        if (bisim_sol) {
-            const auto t_before = wctime();
-            MTBDD partition = CALL(min_lts_strong, sym.get(), true);
-            mtbdd_protect(&partition);
-            if (verbose) {
-                // CALL(print_partition, sym, partition);
-            }
-            CALL(minimize, sym.get(), partition, verbose);
-            mtbdd_unprotect(&partition);
-            const auto t_after = wctime();
-            if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
-        }
-
-        if (verbose) {
-            // sym->print_trans(true);
-            // sym->print_strategies();
-        }
-
-        if (options["print-kiss"].count() > 0) {
-            sym->print_kiss(true);
-            if (verbose) {
-                std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
-            }
-            exit(10);
-        }
-
-        /**
-         * maybe print witness parity game, which should be fully won by even
-         */
-
-        if (options["print-witness"].count() > 0) {
-            auto pargame = sym->strategyToPG();
-            pargame->write_pgsolver(std::cout);
-            if (verbose) {
-                std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
-            }
-            exit(10);
-        }
-
-        std::unique_ptr<AIGCircuit> circuit;
-
-        {
-            AIGEncoder encoder(*data, *sym);
-            if (verbose) {
-                encoder.setVerbose();
-            }
-            if (options["isop"].count() > 0) {
-                encoder.setIsop();
-            }
-            if (options["onehot"].count() > 0) {
-                encoder.setOneHot();
-            }
-            if (options["sop"].count() > 0) {
-                encoder.setSop();
-            }
-            const double t_before = wctime();
-            circuit = encoder.encode();
-            const double t_after = wctime();
-            if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
-        }
-
-        /**
-         * maybe compress with ABC
-         */
-        if (options["drewrite"].count() > 0) {
-            if (verbose) std::cerr << "size of AIG before drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
-            const double t_before = wctime();
-            circuit->drewrite(compress_timeout, verbose);
-            const double t_after = wctime();
-            if (verbose) std::cerr << "size of AIG after drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
-            if (verbose) std::cerr << "\033[1;37mfinished drw+drf in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
-        }
-
-        if (options["compress"].count() > 0) {
-            if (verbose) std::cerr << "size of AIG before compression: " << circuit->getNumAnds() << " gates." << std::endl;
-            const double t_before = wctime();
-            circuit->compress(compress_timeout, verbose);
-            const double t_after = wctime();
-            if (verbose) std::cerr << "size of AIG after compression: " << circuit->getNumAnds() << " gates." << std::endl;
-            if (verbose) std::cerr << "\033[1;37mfinished compression in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
-        }
-
-        if (verbose) std::cerr << "final size of AIG: " << circuit->getNumAnds() << " gates." << std::endl;
-
-        if (options["write-binary"].count() > 0) {
-            circuit->writeBinary(stdout);
-        } else if (options["write-ascii"].count() > 0) {
-            circuit->writeAscii(stdout);
-        }
-        if (verbose) {
-            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
-            sylvan_stats_report(stdout);
-        }
-        return 10;
-    } else {
-        if (verbose) {
-            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m"
+                      << std::endl;
             std::cerr << "\033[1;31mgame is unrealizable!\033[m" << std::endl;
             sylvan_stats_report(stdout);
         }
         return 20;
     }
 
+    if (verbose) std::cerr << "\033[1;38;5;10mgame is realizable!\033[m" << std::endl;
+
+    if (naive_splitting or explicit_splitting) {
+        std::cerr << "--naive and --explicit are incompatible with generating the AIG!" << std::endl;
+        exit(10);
+    }
+
+    if (verbose) {
+        // sym->print_trans(true);
+        // sym->print_strategies();
+    }
+
+    {
+        const auto t_before = wctime();
+        sym->postprocess(verbose);
+        const auto t_after = wctime();
+
+        if (verbose) {
+            std::cerr << "\033[1;37mfinished post processing in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+        }
+    }
+
+    if (verbose) {
+        // sym->print_trans();
+        // sym->print_strategies();
+    }
+
+    const bool best = options["best"].count() > 0;
+
+    if (bisim_sol || best) {
+        const auto t_before = wctime();
+        MTBDD partition = CALL(min_lts_strong, sym.get(), true);
+        mtbdd_protect(&partition);
+        if (verbose) {
+            // CALL(print_partition, sym, partition);
+        }
+        CALL(minimize, sym.get(), partition, verbose);
+        mtbdd_unprotect(&partition);
+        const auto t_after = wctime();
+        if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+    }
+
+    if (options["print-kiss"].count() > 0) {
+        sym->print_kiss(true);
+        if (verbose) {
+            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+        }
+        exit(10);
+    }
+
+    /**
+     * maybe print witness parity game, which should be fully won by even
+     */
+
+    if (options["print-witness"].count() > 0) {
+        auto pargame = sym->strategyToPG();
+        pargame->write_pgsolver(std::cout);
+        if (verbose) {
+            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+        }
+        exit(10);
+    }
+
+    if (best) {
+        auto var1b = AIGEncoder(*data, *sym).setSop().encode();
+        auto var2b = AIGEncoder(*data, *sym).setOneHot().setIsop().encode();
+        auto var3b = AIGEncoder(*data, *sym).setOneHot().encode();
+        auto var4b = AIGEncoder(*data, *sym).encode();
+
+        if (verbose) {
+            std::cerr << "bisim, sop: " << var1b->getNumAnds() << " gates and " << var1b->getNumLatches() << " latches" << std::endl;
+            std::cerr << "bisim, onehot+isop: " << var2b->getNumAnds() << " gates and " << var2b->getNumLatches() << " latches" << std::endl;
+            std::cerr << "bisim, onehot+ite: " << var3b->getNumAnds() << " gates and " << var3b->getNumLatches() << " latches" << std::endl;
+            std::cerr << "bisim, binary+ite: " << var4b->getNumAnds() << " gates and " << var4b->getNumLatches() << " latches" << std::endl;
+        }
+
+        if (options["compress"].count() > 0) {
+            var1b->compress(compress_timeout/4, verbose);
+            var2b->compress(compress_timeout/4, verbose);
+            var3b->compress(compress_timeout/4, verbose);
+            var4b->compress(compress_timeout/4, verbose);
+
+            if (verbose) {
+                std::cerr << "sizes after compressing with ABC:" << std::endl;
+                std::cerr << "bisim, sop: " << var1b->getNumAnds() << " gates and " << var1b->getNumLatches() << " latches" << std::endl;
+                std::cerr << "bisim, onehot+isop: " << var2b->getNumAnds() << " gates and " << var2b->getNumLatches() << " latches" << std::endl;
+                std::cerr << "bisim, onehot+ite: " << var3b->getNumAnds() << " gates and " << var3b->getNumLatches() << " latches" << std::endl;
+                std::cerr << "bisim, binary+ite: " << var4b->getNumAnds() << " gates and " << var4b->getNumLatches() << " latches" << std::endl;
+            }
+        }
+
+        auto var1bsize = var1b->getNumAnds() + var1b->getNumLatches();
+        auto var2bsize = var2b->getNumAnds() + var2b->getNumLatches();
+        auto var3bsize = var3b->getNumAnds() + var3b->getNumLatches();
+        auto var4bsize = var4b->getNumAnds() + var4b->getNumLatches();
+
+        auto smallest_size = var1bsize;
+        auto * smallest = &var1b;
+        if (smallest_size > var2bsize) {
+            smallest_size = var2bsize;
+            smallest = &var2b;
+        }
+        if (smallest_size > var3bsize) {
+            smallest_size = var3bsize;
+            smallest = &var3b;
+        }
+        if (smallest_size > var4bsize) {
+            smallest_size = var4bsize;
+            smallest = &var4b;
+        }
+
+        if (options.count("write-binary")) {
+            (*smallest)->writeBinary(stdout);
+        } else if (options["write-ascii"].count() > 0) {
+            (*smallest)->writeAscii(stdout);
+        }
+
+        if (verbose) {
+            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+        }
+        exit(10);
+    }
+
+    AIGEncoder encoder(*data, *sym);
+    //if (verbose) encoder.setVerbose();
+    if (options["isop"].count() > 0) encoder.setIsop();
+    if (options["onehot"].count() > 0) encoder.setOneHot();
+    if (options["sop"].count() > 0) encoder.setSop();
+    const double t_before_enc = wctime();
+    auto circuit = encoder.encode();
+    const double t_after_enc = wctime();
+    if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after_enc - t_before_enc) << " sec.\033[m" << std::endl;
+
+    /**
+     * maybe compress with ABC
+     */
+    if (options["drewrite"].count() > 0) {
+        if (verbose) std::cerr << "size of AIG before drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
+        const double t_before = wctime();
+        circuit->drewrite(compress_timeout, verbose);
+        const double t_after = wctime();
+        if (verbose) std::cerr << "size of AIG after drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
+        if (verbose) std::cerr << "\033[1;37mfinished drw+drf in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+    }
+
+    if (options["compress"].count() > 0) {
+        if (verbose) std::cerr << "size of AIG before compression: " << circuit->getNumAnds() << " gates." << std::endl;
+        const double t_before = wctime();
+        circuit->compress(compress_timeout, verbose);
+        const double t_after = wctime();
+        if (verbose) std::cerr << "size of AIG after compression: " << circuit->getNumAnds() << " gates." << std::endl;
+        if (verbose) std::cerr << "\033[1;37mfinished compression in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
+    }
+
+    if (verbose) {
+        std::cerr << "final size of AIG: " << circuit->getNumAnds() << " gates." << std::endl;
+    }
+
+    if (options["write-binary"].count() > 0) {
+        circuit->writeBinary(stdout);
+    } else if (options["write-ascii"].count() > 0) {
+        circuit->writeAscii(stdout);
+    }
+
+    if (verbose) {
+        std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
+        sylvan_stats_report(stdout);
+    }
+
+    return 10;
+
     // We don't need Sylvan anymore at this point
-    sylvan_quit();
-
+    // sylvan_quit();
     // free HOA allocated data structure
-    resetHoa(data);
+    // resetHoa(data);
 }
-
 
 
 /**
