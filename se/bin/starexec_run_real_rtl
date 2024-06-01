@@ -1,0 +1,3 @@
+#!/bin/bash
+./knor $1 --rtl --real 2>/dev/null
+
