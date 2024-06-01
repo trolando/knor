@@ -1,0 +1,21 @@
+find_package(lace QUIET)
+if(NOT lace_FOUND)
+    add_subdirectory(lace)
+endif()
+
+find_package(sylvan QUIET)
+if(NOT sylvan_FOUND)
+    add_subdirectory(sylvan)
+endif()
+
+find_package(oink QUIET)
+if(NOT oink_FOUND)
+    add_subdirectory(oink)
+endif()
+
+find_package(abc QUIET)
+if(NOT abc_FOUND)
+    set (READLINE_FOUND FALSE)
+    add_definitions (-DABC_USE_STDINT_H)
+    add_subdirectory(abc)
+endif()

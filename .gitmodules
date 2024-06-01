@@ -1,0 +1,12 @@
+[submodule "libs/sylvan"]
+	path = libs/sylvan
+	url = https://www.github.com/trolando/sylvan
+[submodule "libs/lace"]
+	path = libs/lace
+	url = https://www.github.com/trolando/lace
+[submodule "libs/oink"]
+	path = libs/oink
+	url = https://www.github.com/trolando/oink
+[submodule "libs/abc"]
+	path = libs/abc
+	url = https://www.github.com/berkeley-abc/abc

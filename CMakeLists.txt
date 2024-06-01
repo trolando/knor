@@ -7,38 +7,8 @@ project(knor
     LANGUAGES C CXX
 )
 
-# Dependencies
-include(FetchContent)
-FetchContent_Declare(
-    lace
-    GIT_REPOSITORY https://github.com/trolando/lace.git
-    GIT_TAG        v1.4.2
-    FIND_PACKAGE_ARGS
-)
-FetchContent_Declare(
-    sylvan
-    GIT_REPOSITORY https://github.com/trolando/sylvan.git
-    GIT_TAG        v1.7.1
-    FIND_PACKAGE_ARGS
-)
-FetchContent_Declare(
-    oink
-    GIT_REPOSITORY https://github.com/trolando/oink.git
-    GIT_TAG        6f849c74bdaa3dbf44c808654f29864df45dcaa4
-    FIND_PACKAGE_ARGS
-)
-FetchContent_Declare(
-    abc
-    GIT_REPOSITORY https://github.com/berkeley-abc/abc.git
-    GIT_TAG        0ed81b34f1048a10aa1b6785c2fb65b526c77b5a
-    FIND_PACKAGE_ARGS
-)
-FetchContent_MakeAvailable(lace)
-FetchContent_MakeAvailable(sylvan)
-FetchContent_MakeAvailable(oink)
-set (READLINE_FOUND FALSE)
-add_definitions (-DABC_USE_STDINT_H)
-FetchContent_MakeAvailable(abc)
+add_subdirectory(libs)
+
 
 # Parser generator
 find_package(FLEX)
