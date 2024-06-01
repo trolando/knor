@@ -31,6 +31,10 @@ public:
         return this->a->num_ands;
     }
 
+    long getNumLatches() {
+        return this->a->num_latches;
+    }
+
     unsigned int makeInput(const std::string& label) {
         aiger_add_input(a, lit, label.c_str());
         lit += 2;
