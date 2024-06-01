@@ -6,6 +6,7 @@
 #include <aigencoder.hpp>
 #include <bddtools.hpp>
 #include <knor.hpp>
+#include <algorithm>
 #include <set>
 
 using namespace sylvan;
