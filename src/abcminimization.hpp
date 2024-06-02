@@ -8,6 +8,7 @@
 #include <vector>
 #include <string>
 #include <aigcircuit.hpp>
+#include <memory>
 
 extern "C" {
 #include "misc/util/abc_namespaces.h"

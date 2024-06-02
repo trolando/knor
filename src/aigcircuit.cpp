@@ -3,7 +3,6 @@
  */
 
 #include <aigcircuit.hpp>
-#include <abcminimization.hpp>
 #include <stdexcept>
 
 AIGCircuit::AIGCircuit() {
@@ -38,7 +37,7 @@ unsigned int AIGCircuit::makeAnd(unsigned int rhs0, unsigned int rhs1) {
     }
 }
 
-void AIGCircuit::simplify_and(std::deque<unsigned int> &gates) {
+void AIGCircuit::simplifyAnd(std::deque<unsigned int> &gates) {
     // TODO make non recursive
     // TODO: this should check all pairs first, before actually creating a gate??
     // for each pair of gates in gates, check the cache
@@ -57,14 +56,14 @@ void AIGCircuit::simplify_and(std::deque<unsigned int> &gates) {
                 gates.erase(second);
                 gates.erase(first);
                 gates.push_back(c->second);
-                simplify_and(gates);
+                simplifyAnd(gates);
                 return;
             }
         }
     }
 }
 
-void AIGCircuit::simplify_or(std::deque<unsigned int> &gates) {
+void AIGCircuit::simplifyOr(std::deque<unsigned int> &gates) {
     // TODO make non recursive
     // TODO: this should check all pairs first, before actually creating a gate??
     // for each pair of gates in gates, check the cache
@@ -81,7 +80,7 @@ void AIGCircuit::simplify_or(std::deque<unsigned int> &gates) {
                 gates.erase(second);
                 gates.erase(first);
                 gates.push_back(aiger_not(c->second));
-                simplify_or(gates);
+                simplifyOr(gates);
                 return;
             }
         }
@@ -136,14 +135,4 @@ void AIGCircuit::readFile(FILE* infile) {
         throw std::runtime_error("Could not read AIGER circuit from file: " + std::string(read_result));
     }
     aiger_delete_comments(a);
-}
-
-void AIGCircuit::drewrite(int timeout, bool verbose) {
-    ABCMinimization min(*this, verbose);
-    min.drewrite(timeout);
-}
-
-void AIGCircuit::compress(int timeout, bool verbose) {
-    ABCMinimization min(*this, verbose);
-    min.compress(timeout);
 }

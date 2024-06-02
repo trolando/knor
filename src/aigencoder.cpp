@@ -56,7 +56,7 @@ unsigned int AIGEncoder::bddToAigCoverSop(ZDD cover)
             gates.push_back(the_lit);
         }
 
-        // simplify_and(gates);
+        // simplifyAnd(gates);
 
         // while we still have subproducts we need to AND together
         while (!gates.empty()) {
@@ -76,7 +76,7 @@ unsigned int AIGEncoder::bddToAigCoverSop(ZDD cover)
 
     // products queue should now be full of complete products that need to be summed
 
-    // simplify_or(products);
+    // simplifyOr(products);
 
     while (products.size() > 1) {
         auto product1 = products.front();

@@ -24,8 +24,8 @@ public:
     [[maybe_unused]] unsigned int makeMultiAnd(std::deque<unsigned int> &gates);
     [[maybe_unused]] unsigned int makeMultiOr(std::deque<unsigned int> &gates);
 
-    void simplify_and(std::deque<unsigned int> &gates);
-    void simplify_or(std::deque<unsigned int> &gates);
+    void simplifyAnd(std::deque<unsigned int> &gates);
+    void simplifyOr(std::deque<unsigned int> &gates);
 
     long getNumAnds() {
         return this->a->num_ands;
@@ -57,9 +57,6 @@ public:
     int writeAscii(FILE* outfile);
     int writeBinary(FILE* outfile);
     void readFile(FILE* infile);
-
-    void drewrite(int timeout, bool verbose);
-    void compress(int timeout, bool verbose);
 
 private:
     aiger *a;

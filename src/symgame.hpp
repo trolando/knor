@@ -58,6 +58,8 @@ public:
      */
     static sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, sylvan::MTBDD statevars, sylvan::MTBDD priovars);
 
+    static sylvan::MTBDD evalLabel(BTree* label, HoaData* data, uint32_t* variables);
+
     /**
      * Translate symbolic PG to explicit game in Oink, that can then be solved.
      */

@@ -12,6 +12,7 @@
 #include <sylvan.h>
 #include <knor.hpp>
 #include <symgame.hpp>
+#include <explicitgame.hpp>
 
 extern "C" {
 #include "simplehoa.h"
@@ -158,6 +159,57 @@ MTBDD SymGame::encode_priostate(uint32_t state, uint32_t priority, MTBDD stateva
 }
 
 /**
+ * Convert a transition label (Btree) to a BDD encoding the label
+ * a label is essentially a boolean combination of atomic propositions and aliases
+ */
+TASK_3(MTBDD, evalLabel, BTree*, label, HoaData*, data, uint32_t*, variables)
+{
+    MTBDD left;
+    MTBDD right;
+    MTBDD result;
+    switch (label->type) {
+        case NT_BOOL:
+            return label->id ? mtbdd_true : mtbdd_false;
+        case NT_AND:
+            left = CALL(evalLabel, label->left, data, variables);
+            mtbdd_refs_pushptr(&left);
+            right = CALL(evalLabel, label->right, data, variables);
+            mtbdd_refs_pushptr(&right);
+            result = sylvan_and(left, right);
+            mtbdd_refs_popptr(2);
+            return result;
+        case NT_OR:
+            left = CALL(evalLabel, label->left, data, variables);
+            mtbdd_refs_pushptr(&left);
+            right = CALL(evalLabel, label->right, data, variables);
+            mtbdd_refs_pushptr(&right);
+            result = sylvan_or(left, right);
+            mtbdd_refs_popptr(2);
+            return result;
+        case NT_NOT:
+            left = CALL(evalLabel, label->left, data, variables);
+            mtbdd_refs_pushptr(&left);
+            result = sylvan_not(left);
+            mtbdd_refs_popptr(1);
+            return result;
+        case NT_AP:
+            return mtbdd_ithvar(variables[label->id]);
+        case NT_ALIAS:
+            // apply the alias
+            for (int i=0; i<data->noAliases; i++) {
+                Alias *a = data->aliases+i;
+                if (strcmp(a->alias, label->alias) == 0) {
+                    return CALL(evalLabel, a->labelExpr, data, variables);
+                }
+            }
+            return mtbdd_invalid;
+        default:
+            assert(false);  // all cases should be covered above
+            return mtbdd_invalid;
+    }
+}
+
+/**
  * Construct the symbolic game
  */
 std::unique_ptr<SymGame> SymGame::constructSymGame(HoaData *data, bool isMaxParity, bool controllerIsOdd) {
@@ -228,11 +280,11 @@ std::unique_ptr<SymGame> SymGame::constructSymGame(HoaData *data, bool isMaxPari
                 // there should be exactly one acceptance set!
                 assert(trans->noAccSig == 1);
                 // adjust priority
-                priority = adjustPriority(trans->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
+                priority = ExplicitGame::adjustPriority(trans->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
             } else {
                 auto id = trans->successors[0];
                 assert(data->states[id].noAccSig == 1);
-                priority = adjustPriority(data->states[id].accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
+                priority = ExplicitGame::adjustPriority(data->states[id].accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
             }
             if (priority > res->maxprio) res->maxprio = priority;
             // swap with initial if needed
@@ -1189,4 +1241,9 @@ void SymGame::print_kiss(bool only_strategy)
         lf = mtbdd_enum_all_next(this->strategies, vars, arr, nullptr);
     }
     mtbdd_unprotect(&vars);
+}
+
+
+sylvan::MTBDD SymGame::evalLabel(BTree* label, HoaData* data, uint32_t* variables) {
+    return RUN(evalLabel, label, data, variables);
 }

@@ -26,9 +26,10 @@ target_sources(knor
     src/aigcircuit.cpp
     src/aiger.c
     src/abcminimization.cpp
-        src/aigencoder.cpp
+    src/aigencoder.cpp
     src/bddtools.cpp
     src/bisim.cpp
+    src/explicitgame.cpp
     src/knor.cpp
     src/simplehoa.c
     src/symgame.cpp
