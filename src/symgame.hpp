@@ -39,27 +39,6 @@ public:
     SymGame(const SymGame&) = delete;
     ~SymGame();
 
-    static std::unique_ptr<SymGame> constructSymGame(HoaData* data, bool isMaxParity, bool controllerIsOdd);
-
-    /**
-     * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
-     * High-significant bits come before low-significant bits in the BDD
-     */
-    static sylvan::MTBDD encode_state(uint32_t state, sylvan::MTBDD state_vars);
-
-    /**
-     * Encode priority i.e. all states via priority <priority>
-     */
-    static sylvan::MTBDD encode_prio(int priority, int priobits);
-
-    /**
-     * Encode a priostate as a BDD, using priobits before statebits
-     * High-significant bits come before low-significant bits in the BDD
-     */
-    static sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, sylvan::MTBDD statevars, sylvan::MTBDD priovars);
-
-    static sylvan::MTBDD evalLabel(BTree* label, HoaData* data, uint32_t* variables);
-
     /**
      * Translate symbolic PG to explicit game in Oink, that can then be solved.
      */

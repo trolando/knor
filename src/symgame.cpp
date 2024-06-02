@@ -12,7 +12,8 @@
 #include <sylvan.h>
 #include <knor.hpp>
 #include <symgame.hpp>
-#include <explicitgame.hpp>
+#include <gameconstructor.hpp>
+#include "bddtools.hpp"
 
 extern "C" {
 #include "simplehoa.h"
@@ -81,240 +82,6 @@ SymGame::~SymGame()
     mtbdd_unprotect(&ps_vars);
     mtbdd_unprotect(&pns_vars);
     mtbdd_unprotect(&uns_vars);
-}
-
-/**
- * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
- * High-significant bits come before low-significant bits in the BDD
- */
-MTBDD SymGame::encode_state(uint32_t state, MTBDD statevars)
-{
-    // convert statevars to stack
-    std::vector<unsigned int> vars;
-    while (statevars != mtbdd_set_empty()) {
-        vars.push_back(mtbdd_set_first(statevars));
-        statevars = mtbdd_set_next(statevars);
-    }
-    // create a cube
-    auto cube = mtbdd_true;
-    while (!vars.empty()) {
-        auto var = vars.back();
-        vars.pop_back();
-        if (state & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
-        else cube = mtbdd_makenode(var, cube, mtbdd_false);
-        state >>= 1;
-    }
-    return cube;
-}
-
-/**
- * Encode priority i.e. all states via priority <priority>
- */
-MTBDD SymGame::encode_prio(int priority, int priobits)
-{
-    MTBDD cube = mtbdd_true;
-    for (int i=0; i<priobits; i++) {
-        if (priority & 1) cube = mtbdd_makenode(priobits-i-1, mtbdd_false, cube);
-        else cube = mtbdd_makenode(priobits-i-1, cube, mtbdd_false);
-        priority >>= 1;
-    }
-    return cube;
-}
-
-/**
-* Encode a priostate as a BDD, with priobits before statebits
-* High-significant bits come before low-significant bits in the BDD
-*/
-MTBDD SymGame::encode_priostate(uint32_t state, uint32_t priority, MTBDD statevars, MTBDD priovars)
-{
-    // convert statevars to stack
-    std::vector<unsigned int> vars;
-    while (statevars != mtbdd_set_empty()) {
-        vars.push_back(mtbdd_set_first(statevars));
-        statevars = mtbdd_set_next(statevars);
-    }
-    // create the cube
-    auto cube = mtbdd_true;
-    while (!vars.empty()) {
-        auto var = vars.back();
-        vars.pop_back();
-        if (state & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
-        else cube = mtbdd_makenode(var, cube, mtbdd_false);
-        state >>= 1;
-    }
-    // convert priovars to stack
-    while (priovars != mtbdd_set_empty()) {
-        vars.push_back(mtbdd_set_first(priovars));
-        priovars = mtbdd_set_next(priovars);
-    }
-    // create the rest of the cube
-    while (!vars.empty()) {
-        auto var = vars.back();
-        vars.pop_back();
-        if (priority & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
-        else cube = mtbdd_makenode(var, cube, mtbdd_false);
-        priority >>= 1;
-    }
-    return cube;
-}
-
-/**
- * Convert a transition label (Btree) to a BDD encoding the label
- * a label is essentially a boolean combination of atomic propositions and aliases
- */
-TASK_3(MTBDD, evalLabel, BTree*, label, HoaData*, data, uint32_t*, variables)
-{
-    MTBDD left;
-    MTBDD right;
-    MTBDD result;
-    switch (label->type) {
-        case NT_BOOL:
-            return label->id ? mtbdd_true : mtbdd_false;
-        case NT_AND:
-            left = CALL(evalLabel, label->left, data, variables);
-            mtbdd_refs_pushptr(&left);
-            right = CALL(evalLabel, label->right, data, variables);
-            mtbdd_refs_pushptr(&right);
-            result = sylvan_and(left, right);
-            mtbdd_refs_popptr(2);
-            return result;
-        case NT_OR:
-            left = CALL(evalLabel, label->left, data, variables);
-            mtbdd_refs_pushptr(&left);
-            right = CALL(evalLabel, label->right, data, variables);
-            mtbdd_refs_pushptr(&right);
-            result = sylvan_or(left, right);
-            mtbdd_refs_popptr(2);
-            return result;
-        case NT_NOT:
-            left = CALL(evalLabel, label->left, data, variables);
-            mtbdd_refs_pushptr(&left);
-            result = sylvan_not(left);
-            mtbdd_refs_popptr(1);
-            return result;
-        case NT_AP:
-            return mtbdd_ithvar(variables[label->id]);
-        case NT_ALIAS:
-            // apply the alias
-            for (int i=0; i<data->noAliases; i++) {
-                Alias *a = data->aliases+i;
-                if (strcmp(a->alias, label->alias) == 0) {
-                    return CALL(evalLabel, a->labelExpr, data, variables);
-                }
-            }
-            return mtbdd_invalid;
-        default:
-            assert(false);  // all cases should be covered above
-            return mtbdd_invalid;
-    }
-}
-
-/**
- * Construct the symbolic game
- */
-std::unique_ptr<SymGame> SymGame::constructSymGame(HoaData *data, bool isMaxParity, bool controllerIsOdd) {
-    int vstart = data->start[0];
-
-    // Set which APs are controllable in the bitset controllable
-    pg::bitset controllable(data->noAPs);
-    for (int i=0; i<data->noCntAPs; i++) {
-        controllable[data->cntAPs[i]] = true;
-    }
-
-    // Count the number of controllable/uncontrollable APs
-    const auto cap_count = controllable.count();
-    const auto uap_count = data->noAPs - cap_count;
-
-    // Prepare number of statebits and priobits
-    int statebits = 1;
-    while ((1ULL<<(statebits)) < (uint64_t)data->noStates) statebits++;
-
-    const int evenMax = 2 + 2*((data->noAccSets+1)/2); // should be enough...
-    int priobits = 1;
-    while ((1ULL<<(priobits)) <= (unsigned)evenMax) priobits++;
-
-    // Initially, set maxprio to 0, will be updated later
-    auto res = std::make_unique<SymGame>(statebits, priobits, uap_count, cap_count, 0);
-
-    // first <priobits, statebits> will be state variables
-
-    // Initialize the BDD variable indices
-    // Variable order uncontrollable < controllable
-    uint32_t variables[data->noAPs];
-    uint32_t uidx = statebits + priobits;
-    uint32_t oidx = statebits + priobits + data->noAPs - controllable.count();
-    for (int i=0; i<data->noAPs; i++) {
-        if (controllable[i]) variables[i] = oidx++;
-        else variables[i] = uidx++;
-    }
-
-    // only if verbose: std::cout << "prio bits: " << priobits << " and state bits: " << statebits << std::endl;
-
-    // these variables are used deeper in the for loops, however we can
-    // push them to mtbdd refs here and avoid unnecessary pushing and popping
-    MTBDD transbdd = mtbdd_false;
-    MTBDD statebdd = mtbdd_false;
-    MTBDD lblbdd = mtbdd_false;
-    MTBDD leaf = mtbdd_false;
-
-    mtbdd_refs_pushptr(&transbdd);
-    mtbdd_refs_pushptr(&statebdd);
-    mtbdd_refs_pushptr(&lblbdd);
-    mtbdd_refs_pushptr(&leaf);
-
-    // Loop over every state
-    for (int i=0; i<data->noStates; i++) {
-        auto state = data->states+i;
-
-        for (int j=0; j<state->noTrans; j++) {
-            auto trans = state->transitions+j;
-
-            // there should be a single successor per transition
-            assert(trans->noSucc == 1);
-            // there should be a label at state or transition level
-            BTree* label = state->label != nullptr ? state->label : trans->label;
-            assert(label != nullptr);
-            // there should be a priority at state or transition level
-            int priority;
-            if (trans->noAccSig != 0) {
-                // there should be exactly one acceptance set!
-                assert(trans->noAccSig == 1);
-                // adjust priority
-                priority = ExplicitGame::adjustPriority(trans->accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
-            } else {
-                auto id = trans->successors[0];
-                assert(data->states[id].noAccSig == 1);
-                priority = ExplicitGame::adjustPriority(data->states[id].accSig[0], isMaxParity, controllerIsOdd, data->noAccSets);
-            }
-            if (priority > res->maxprio) res->maxprio = priority;
-            // swap with initial if needed
-            int succ = trans->successors[0];
-            if (succ == 0) succ = vstart;
-            else if (succ == vstart) succ = 0;
-            // encode the label as a MTBDD
-            lblbdd = RUN(evalLabel, label, data, variables);
-            // encode priostate (leaf) and update transition relation
-            leaf = encode_priostate(succ, priority, res->ns_vars, res->np_vars);
-            // trans := lbl THEN leaf ELSE trans
-            transbdd = mtbdd_ite(lblbdd, leaf, transbdd);
-            // deref lblbdd and leaf
-            lblbdd = leaf = mtbdd_false;
-        }
-
-        // encode source state and add to full transition relation
-        int src = state->id;
-        if (src == 0) src = vstart;
-        else if (src == vstart) src = 0;
-        statebdd = encode_state(src, res->s_vars);
-        // update full trans with <statebdd> then <transbdd>
-        res->trans = mtbdd_ite(statebdd, transbdd, res->trans);
-        // deref statebdd and transbdd
-        statebdd = transbdd = mtbdd_false;
-    }
-
-    mtbdd_refs_popptr(4);
-
-    return res;
 }
 
 
@@ -739,7 +506,7 @@ bool SymGame::solve(bool verbose)
 
     MTBDD priostates[this->maxprio+1];
     for (int i=0; i<=this->maxprio; i++) {
-        priostates[i] = encode_prio(i, this->priobits);
+        priostates[i] = BDDTools::encode_prio(i, this->priobits);
         mtbdd_refs_pushptr(&priostates[i]);
     }
 
@@ -923,7 +690,7 @@ bool SymGame::solve(bool verbose)
 
     // we now know if the initial state is distracting or not
     // We force initial state to be state 0 in construction
-    auto initial = encode_priostate(0, 0, s_vars, p_vars);
+    auto initial = BDDTools::encode_priostate(0, 0, s_vars, p_vars);
     mtbdd_refs_pushptr(&initial);
 
     if (sylvan_and(initial, distractions) != sylvan_false) {
@@ -981,7 +748,7 @@ void SymGame::postprocess(bool verbose)
             mtbdd_refs_popptr(1);
         }
 
-        auto visited = encode_state(0, s_vars);
+        auto visited = BDDTools::encode_state(0, s_vars);
         mtbdd_refs_pushptr(&visited);
 
         auto old = mtbdd_false;
@@ -1241,9 +1008,4 @@ void SymGame::print_kiss(bool only_strategy)
         lf = mtbdd_enum_all_next(this->strategies, vars, arr, nullptr);
     }
     mtbdd_unprotect(&vars);
-}
-
-
-sylvan::MTBDD SymGame::evalLabel(BTree* label, HoaData* data, uint32_t* variables) {
-    return RUN(evalLabel, label, data, variables);
 }

@@ -374,7 +374,7 @@ AIGEncoder::processSOP()
         states_vec.push_back(state);
 
         // encode state using NS vars
-        cap_bdd = SymGame::encode_state(state, game.ns_vars);
+        cap_bdd = BDDTools::encode_state(state, game.ns_vars);
         // keep s > u of this state
         cap_bdd = sylvan_and_exists(full, cap_bdd, game.ns_vars);
 
@@ -599,7 +599,7 @@ void AIGEncoder::processOnehot()
         }
 
         // encode state using NS vars
-        cap_bdd = SymGame::encode_state(state, game.ns_vars);
+        cap_bdd = BDDTools::encode_state(state, game.ns_vars);
         // keep s > u of this state
         cap_bdd = sylvan_and_exists(full, cap_bdd, game.ns_vars);
 

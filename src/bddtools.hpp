@@ -32,6 +32,24 @@ public:
      * @return a BDD with all paths to the given subroot.
      */
     static sylvan::MTBDD pathsToSubroot(sylvan::MTBDD root, uint32_t firstVar, sylvan::MTBDD subroot);
+
+    /**
+     * Encode a priostate as a BDD, using priobits before statebits
+     * High-significant bits come before low-significant bits in the BDD
+     */
+    static sylvan::MTBDD encode_priostate(uint32_t state, uint32_t priority, sylvan::MTBDD statevars, sylvan::MTBDD priovars);
+
+    /**
+     * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
+     * High-significant bits come before low-significant bits in the BDD
+     */
+    static sylvan::MTBDD encode_state(uint32_t state, sylvan::MTBDD state_vars);
+
+    /**
+     * Encode priority i.e. all states via priority <priority>
+     */
+    static sylvan::MTBDD encode_prio(int priority, int priobits);
+
 };
 
 #endif //KNOR_BDDTOOLS_HPP

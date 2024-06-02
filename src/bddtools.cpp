@@ -56,3 +56,79 @@ MTBDD BDDTools::pathsToSubroot(MTBDD root, uint32_t firstVar, MTBDD subroot)
 {
     return RUN(paths_to_subroot, root, firstVar, subroot);
 }
+
+/**
+ * Encode a state as a BDD, using statebits 0..<statebits>, offsetted by <offset>+<priobits>
+ * High-significant bits come before low-significant bits in the BDD
+ */
+MTBDD BDDTools::encode_state(uint32_t state, MTBDD statevars)
+{
+    // convert statevars to stack
+    std::vector<unsigned int> vars;
+    while (statevars != mtbdd_set_empty()) {
+        vars.push_back(mtbdd_set_first(statevars));
+        statevars = mtbdd_set_next(statevars);
+    }
+    // create a cube
+    auto cube = mtbdd_true;
+    while (!vars.empty()) {
+        auto var = vars.back();
+        vars.pop_back();
+        if (state & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
+        else cube = mtbdd_makenode(var, cube, mtbdd_false);
+        state >>= 1;
+    }
+    return cube;
+}
+
+/**
+ * Encode priority i.e. all states via priority <priority>
+ */
+MTBDD BDDTools::encode_prio(int priority, int priobits)
+{
+    MTBDD cube = mtbdd_true;
+    for (int i=0; i<priobits; i++) {
+        if (priority & 1) cube = mtbdd_makenode(priobits-i-1, mtbdd_false, cube);
+        else cube = mtbdd_makenode(priobits-i-1, cube, mtbdd_false);
+        priority >>= 1;
+    }
+    return cube;
+}
+
+
+/**
+* Encode a priostate as a BDD, with priobits before statebits
+* High-significant bits come before low-significant bits in the BDD
+*/
+MTBDD BDDTools::encode_priostate(uint32_t state, uint32_t priority, MTBDD statevars, MTBDD priovars)
+{
+    // convert statevars to stack
+    std::vector<unsigned int> vars;
+    while (statevars != mtbdd_set_empty()) {
+        vars.push_back(mtbdd_set_first(statevars));
+        statevars = mtbdd_set_next(statevars);
+    }
+    // create the cube
+    auto cube = mtbdd_true;
+    while (!vars.empty()) {
+        auto var = vars.back();
+        vars.pop_back();
+        if (state & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
+        else cube = mtbdd_makenode(var, cube, mtbdd_false);
+        state >>= 1;
+    }
+    // convert priovars to stack
+    while (priovars != mtbdd_set_empty()) {
+        vars.push_back(mtbdd_set_first(priovars));
+        priovars = mtbdd_set_next(priovars);
+    }
+    // create the rest of the cube
+    while (!vars.empty()) {
+        auto var = vars.back();
+        vars.pop_back();
+        if (priority & 1) cube = mtbdd_makenode(var, mtbdd_false, cube);
+        else cube = mtbdd_makenode(var, cube, mtbdd_false);
+        priority >>= 1;
+    }
+    return cube;
+}

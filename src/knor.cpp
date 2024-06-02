@@ -17,7 +17,7 @@
 #include <bisim.hpp>
 #include <aigencoder.hpp>
 #include <abcminimization.hpp>
-#include <explicitgame.hpp>
+#include <gameconstructor.hpp>
 
 extern "C" {
     #include <sylvan.h>
@@ -200,14 +200,14 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         std::unique_ptr<pg::Game> game = nullptr;
         if (naive_splitting) {
             const double t_before_splitting = wctime();
-            game.reset(ExplicitGame::constructGameNaive(data, isMaxParity, controllerIsOdd));
+            game.reset(GameConstructor::constructGameNaive(data, isMaxParity, controllerIsOdd));
             const double t_after_splitting = wctime();
             if (verbose) {
                 std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
             }
         } else if (explicit_splitting) {
             const double t_before_splitting = wctime();
-            game.reset(ExplicitGame::constructGame(data, isMaxParity, controllerIsOdd));
+            game.reset(GameConstructor::constructGame(data, isMaxParity, controllerIsOdd));
             const double t_after_splitting = wctime();
             if (verbose) {
                 std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
@@ -215,7 +215,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         } else {
             const double t_1 = wctime();
             vstart = 0; // always set to 0 by constructSymGame
-            sym = SymGame::constructSymGame(data, isMaxParity, controllerIsOdd);
+            sym = GameConstructor::constructSymGame(data, isMaxParity, controllerIsOdd);
             const double t_2 = wctime();
             if (verbose) std::cerr << "\033[1;37mfinished constructing symbolic game in " << std::fixed << (t_2 - t_1) << " sec.\033[m" << std::endl;
             if (bisim_game) {
@@ -310,7 +310,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     } else {
         // Construct the game
         const double t_before_construct = wctime();
-        sym = SymGame::constructSymGame(data, isMaxParity, controllerIsOdd);
+        sym = GameConstructor::constructSymGame(data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
 
         if (verbose) {
@@ -501,7 +501,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     }
 
     AIGEncoder encoder(*data, *sym);
-    //if (verbose) encoder.setVerbose();
+    if (verbose) encoder.setVerbose();
     if (options["isop"].count() > 0) encoder.setIsop();
     if (options["onehot"].count() > 0) encoder.setOneHot();
     if (options["sop"].count() > 0) encoder.setSop();
