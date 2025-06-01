@@ -69,9 +69,8 @@ handleOptions(int &argc, char**& argv)
             ;
 
         // Add solvers
-        pg::Solvers solvers;
-        for (auto id=0; id<solvers.count(); id++) {
-            opts.add_options("Explicit solvers")(solvers.label(id), solvers.desc(id));
+        for (const auto & id : pg::Solvers::getSolverIDs()) {
+            opts.add_options()(id, pg::Solvers::desc(id));
         }
 
         // Parse command line
@@ -83,7 +82,7 @@ handleOptions(int &argc, char**& argv)
         }
 
         if (options.count("solvers")) {
-            solvers.list(std::cout);
+            pg::Solvers::list(std::cout);
             exit(0);
         }
 
@@ -262,9 +261,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         std::stringstream log;
 
         std::string solver = "tl";
-        pg::Solvers solvers;
-        for (unsigned id=0; id<solvers.count(); id++) {
-            if (options.count(solvers.label(id))) solver = solvers.label(id);
+        for (const auto & id : pg::Solvers::getSolverIDs()) {
+            if (options.count(id)) solver = id;
         }
 
         pg::Oink engine(*game, verbose ? std::cerr : log);
@@ -286,7 +284,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         game->permute(mapping.data());
         mapping.clear(); // erase result, we don't need it anymore
 
-        realizable = game->winner[vstart] == 0;
+        realizable = game->getWinner(vstart) == 0;
 
         // finally, check if the initial vertex is won by controller or environment
         if (realizable) {
@@ -295,9 +293,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                 std::map<MTBDD, MTBDD> str;  // cap to priostate
                 for (int v=0; v<game->vertexcount(); v++) {
                     // good cap states are owned and won by 0
-                    if (game->owner(v) == 0 && game->winner[v] == 0) {
+                    if (game->owner(v) == 0 && game->getWinner(v) == 0) {
                         auto a = vertex_to_bdd.at(v);
-                        auto b = vertex_to_bdd.at(game->strategy[v]);
+                        auto b = vertex_to_bdd.at(game->getStrategy(v));
                         str[a] = b;
                     }
                 }
