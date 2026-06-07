@@ -141,8 +141,12 @@ std::unique_ptr<pg::Game> SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bd
     // mapper will store for each [decoded] state in the symbolic game, the parity game node id
     std::map<int, int> mapper;
 
-    // Start constructing the parity game for given number of states (auto-grows)
-    auto pargame = std::make_unique<pg::Game>(noStates);
+    // Start constructing the parity game (auto-grows as we add uap/cap vertices).
+    // The initial capacity must be at least 2: pg::Game::v_sizeup() grows by
+    // v_allocated += v_allocated/2, which cannot increase from 0 or 1, so a game
+    // created with capacity <= 1 would loop forever in init_vertex once we add
+    // the first vertex beyond the states (e.g. for a single-state automaton).
+    auto pargame = std::make_unique<pg::Game>(noStates < 2 ? 2 : noStates);
 
     // index of next parity game vertex
     auto vidx = 0;
