@@ -276,6 +276,15 @@ count_blocks()
 void
 set_signatures_size(size_t count)
 {
+    // Release any existing mapping using the size it was actually created with — i.e. the
+    // CURRENT signatures_size, before we overwrite it. Otherwise a later prepare_refine would
+    // munmap this same pointer using the NEW size; when the size grows between bisimulations
+    // (e.g. a small spot game then a larger paritiser-product decomp game) that unmaps past the
+    // old mapping into adjacent heap, corrupting it (a subsequent malloc then faults).
+    if (signatures != NULL) {
+        munmap(signatures, sizeof(signature_elem)*signatures_size);
+        signatures = NULL;
+    }
     signatures_size = count;
 }
 
