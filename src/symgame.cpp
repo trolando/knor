@@ -380,7 +380,9 @@ std::unique_ptr<pg::Game> SymGame::strategyToPG()
     MTBDD states = sylvan_project(this->strategies, s_vars);
     auto noStates = (long)sylvan_satcount(states, s_vars);
 
-    auto pargame = std::make_unique<pg::Game>(noStates);
+    // floor the initial capacity at 2: pg::Game::v_sizeup grows by v_allocated += v_allocated/2,
+    // which cannot increase from 0 or 1, so capacity <= 1 loops forever (as in toExplicit).
+    auto pargame = std::make_unique<pg::Game>(noStates < 2 ? 2 : noStates);
 
     std::map<int, int> mapper;
     {
