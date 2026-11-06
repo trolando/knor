@@ -88,5 +88,6 @@ For the [SYNTCOMP competition](http://www.syntcomp.org/), the `prepare_se.sh` sc
 
 ## License
 
-HOA-TOOLS is licensed under GPL v3. Sylvan and Oink are licensed under Apache 2.0.
-Thus Knor is licensed under GPL v3.
+Knor is licensed under the [Apache License 2.0](LICENSE).
+Its dependencies Lace, Sylvan and Oink are licensed under Apache 2.0 as well, ABC under a BSD-style license, and the bundled AIGER library (`src/aiger.c`) and cxxopts (`src/cxxopts.hpp`) under MIT-style licenses.
+The third-party test tools in `test/` keep their own licenses, see [test/README.md](test/README.md).
