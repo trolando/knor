@@ -30,6 +30,8 @@ cmake -DCMAKE_BUILD_TYPE=Release ..
 make
 ```
 
+Run the regression tests (verdicts of all examples, parser, acceptance conditions) with `make test` in the build directory.
+
 ## Using Knor
 
 Use `knor --help` to get a list of parameters.

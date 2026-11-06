@@ -35,3 +35,12 @@ if(CMAKE_HOST_SYSTEM MATCHES Linux)
     target_link_libraries(knor PRIVATE "-static")
 endif()
 target_include_directories(knor PRIVATE src)
+
+# Tests (ctest / make test)
+enable_testing()
+add_test(NAME verdict_regression
+    COMMAND bash ${CMAKE_SOURCE_DIR}/test/verdict_regression.sh $<TARGET_FILE:knor>)
+add_test(NAME parser
+    COMMAND bash ${CMAKE_SOURCE_DIR}/test/parser.sh $<TARGET_FILE:knor>)
+add_test(NAME acceptance
+    COMMAND bash ${CMAKE_SOURCE_DIR}/test/acceptance.sh $<TARGET_FILE:knor>)
