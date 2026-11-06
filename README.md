@@ -6,7 +6,7 @@ Knor, a symbolic synthesis tool for HOA parity automata.
 
 | Feature | Description |
 |---------|-------------|
-| eHOA parser | Reading eHOA files, parser based on [HOA-TOOLS](https://github.com/gaperez64/hoa-tools/) by [Guillermo Perez](https://github.com/gaperez64/) |
+| eHOA parser | Reading eHOA files: the [HOA format](https://adl.github.io/hoaf/) extended with `controllable-AP`, using a fast hand-written parser |
 | Conversion to game | Three different methods to convert the parity automaton into a parity game: (1) a naive explicit construction, (2) a BDD-supported explicit construction, (3) a fully symbolic construction |
 | Explicit solving | Solving the symbolic parity game explicitly using [Oink](https://github.com/trolando/oink/) |
 | Symbolic solving | Solving the symbolic parity game symbolically using an internal solver based on [Sylvan](https://github.com/trolando/sylvan/) |
@@ -16,7 +16,7 @@ Knor, a symbolic synthesis tool for HOA parity automata.
 
 ## Building Knor
 
-Knor depends on `flex` and `bison` to generate the eHOA parser, as well as on the `boost` libraries for C++.
+Knor depends on the `boost` libraries for C++.
 
 Knor also downloads and builds [Oink](https://github.com/trolando/oink), [Sylvan](https://github.com/trolando/sylvan) and [ABC](https://github.com/berkeley-abc/abc) automatically.
 
@@ -35,6 +35,7 @@ Use `knor --help` to get a list of parameters.
 With `-v` or `--verbose`, Knor will write some information to standard error, such as the time it takes for each step of the process.
 If invoked without a filename, Knor will attempt to read an eHOA file from `stdin`.
 Knor returns value 10 if the specification is realizable, and value 20 if the specification is unrealizable.
+
 
 Example command line:
 ```bash

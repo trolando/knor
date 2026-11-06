@@ -1,0 +1,18 @@
+HOA: v1
+States: 2
+Start: 0
+AP: 3 "a" "b" "c"
+Alias: @a 0
+Alias: @nb !1
+Alias: @ab @a & @nb
+controllable-AP: 2
+acc-name: parity min odd 3
+Acceptance: 3 Fin(0) & (Inf(1) | Fin(2))
+properties: trans-labels explicit-labels trans-acc colored complete deterministic
+--BODY--
+State: 0 "zero"
+[@ab & 2] 1 {0}
+[!@ab | !2] 0 {1}
+State: 1 "one" {2}
+[(((t)))] 0 {2}
+--END--

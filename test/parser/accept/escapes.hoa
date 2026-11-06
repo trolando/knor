@@ -1,0 +1,10 @@
+HOA: v1
+States: 1
+Start: 0
+AP: 3 "q\"uote" "back\\slash" "new\nline"
+tool: "t\"x\"" "v\\1"
+Acceptance: 0 t
+--BODY--
+State: 0 "st\"ate"
+[t] 0
+--END--

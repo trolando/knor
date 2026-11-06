@@ -1,0 +1,18 @@
+HOA: v1
+States: 1
+Start: 0
+AP: 1 "first"
+Acceptance: 1 Inf(0)
+--BODY--
+State: 0
+[0] 0 {0}
+--END--
+HOA: v1
+States: 1
+Start: 0
+AP: 1 "second"
+Acceptance: 1 Inf(0)
+--BODY--
+State: 0
+[0] 0 {0}
+--END--

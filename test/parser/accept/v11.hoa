@@ -1,0 +1,15 @@
+HOA: v1.1
+States: 2
+Start: 0
+AP: 1 "a"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+properties: trans-labels explicit-labels !complete deterministic !stutter-invariant
+spot.highlight.edges: 1 2
+spot.state-player: 0 1
+--BODY--
+State: 0
+[0] 1 {0}
+State: 1
+[t] 1
+--END--

@@ -1,0 +1,12 @@
+HOA: v1
+States: 2
+Start: 0
+AP: 2 "a" "b"
+Acceptance: 2 Inf(0) | Inf(1)
+--BODY--
+State: 0
+[0] 1 {0}
+[!0] 0
+State: 4
+[t] 1
+--END--

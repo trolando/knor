@@ -1,0 +1,13 @@
+HOA: v1
+States: 1
+Start: 0
+AP: 2 "Fin" "Inf"
+name: "State: --BODY-- /* not a comment */"
+acc-name: Final Infinite tt ff
+Acceptance: 1 Inf(0)
+properties: Fin-like a--b
+--BODY--
+State: 0 "--END--"
+[0|1&!0] 0 {0}
+[!(0|1)] 0
+--END--

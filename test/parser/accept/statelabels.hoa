@@ -1,0 +1,19 @@
+HOA: v1
+States: 3
+Start: 0
+Start: 2
+AP: 1 "p"
+Acceptance: 2 Inf(0) & Inf(1)
+acc-name: generalized-Buchi 2
+tool: "mytool" "1.2.3"
+name: "an \"escaped\" name"
+properties: state-labels
+properties: explicit-labels state-acc univ-branch
+--BODY--
+State: [0] 0 "s0" {0 1}
+1 2
+0&1
+State: [!0] 1 {}
+0
+State: [t] 2
+--END--

@@ -1,0 +1,15 @@
+/* leading */ HOA: /*x*/ v1 /* c */
+States: 2 /* two */
+Start: 0
+AP: 2 "a" /* mid */ "b"
+controllable-AP: 1
+acc-name: parity max even 2
+Acceptance: 2 Inf(1) | Fin(0)
+properties: trans-labels explicit-labels trans-acc colored complete deterministic
+--BODY--
+State: 0 /* s0 */
+[0 & 1] 1 {1}
+[!0 | !1] /* c */ 0 {0}
+State: 1
+[t] 0 {1}
+--END--

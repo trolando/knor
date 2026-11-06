@@ -1,0 +1,15 @@
+HOA: v1
+States: 1
+Start: 0
+AP: 1 "a"
+my-header: t f 1 "str" ident
+t: 1
+f: f
+x-weird_name-: "a" "b"
+acc-name: Rabin 1 t f foo
+Acceptance: 2 (Fin(0) & Inf(1))
+properties: deterministic
+--BODY--
+State: 0
+[t] 0 {0 1}
+--END--
