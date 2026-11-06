@@ -1,0 +1,18 @@
+/* expect: 20 --paritize */
+HOA: v1
+States: 2
+Start: 0
+AP: 2 "u" "c"
+controllable-AP: 1
+Acceptance: 4 (Fin(0) & Inf(1)) | (Fin(2) & Inf(3))
+acc-name: Rabin 2
+properties: deterministic complete
+--BODY--
+State: 0
+[0&1] 0 {1 2}
+[0&!1] 0 {0 2}
+[!0&1] 0 {0 3}
+[!0&!1] 0 {0 2}
+State: 1
+[t] 1
+--END--

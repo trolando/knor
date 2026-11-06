@@ -147,6 +147,26 @@ void resetHoa(HoaData* data);
 void printHoa(const HoaData* data);
 
 /*
+ * Rewrite the acceptance condition into an equivalent "parity max even"
+ * condition with exactly one acceptance set per edge. Without memory, this
+ * works for every parity condition in disguise, i.e., one that a priority per
+ * edge expresses on the same automaton (its Zielonka tree over the
+ * combinations of acceptance sets on edges is a chain): t and f, Buchi and
+ * co-Buchi, Rabin and Streett with one pair, parity conditions in any order
+ * or notation, edges in zero or several acceptance sets, and state-based
+ * acceptance. With addMemory, any acceptance condition (generalized Buchi,
+ * Rabin, Streett, Muller, ...) is converted, by replacing the automaton with
+ * its product with the Zielonka tree automaton of the condition (this needs
+ * an automaton read by the parser, without alternation).
+ * An automaton that already has a canonical parity condition (as checked by
+ * isParityGFG) with one acceptance set per edge or per state is left as it is,
+ * except that the property "colored" is added if missing. Returns 0 on
+ * success; otherwise prints the reason to stderr and returns 104 if the
+ * condition needs memory but addMemory is false, or 100 otherwise.
+ */
+int paritizeHoa(HoaData* data, bool addMemory);
+
+/*
  * Check that the automaton is a complete deterministic colored parity
  * automaton with a unique initial state, and determine its parity
  * condition. Returns 0 if so; otherwise prints the reason to stderr and

@@ -7,6 +7,7 @@ Knor, a symbolic synthesis tool for HOA parity automata.
 | Feature | Description |
 |---------|-------------|
 | eHOA parser | Reading eHOA files: the [HOA format](https://adl.github.io/hoaf/) extended with `controllable-AP`, using a fast hand-written parser |
+| Conversion to parity | Deterministic automata with other acceptance conditions are converted to parity automata: conditions that are parity conditions in disguise (Büchi, co-Büchi, Rabin/Streett with one pair, ...) automatically, and all others (generalized Büchi, Rabin, Streett, Muller, ...) with `--paritize`, via a product with the Zielonka tree of the condition |
 | Conversion to game | Three different methods to convert the parity automaton into a parity game: (1) a naive explicit construction, (2) a BDD-supported explicit construction, (3) a fully symbolic construction |
 | Explicit solving | Solving the symbolic parity game explicitly using [Oink](https://github.com/trolando/oink/) |
 | Symbolic solving | Solving the symbolic parity game symbolically using an internal solver based on [Sylvan](https://github.com/trolando/sylvan/) |
@@ -36,6 +37,10 @@ With `-v` or `--verbose`, Knor will write some information to standard error, su
 If invoked without a filename, Knor will attempt to read an eHOA file from `stdin`.
 Knor returns value 10 if the specification is realizable, and value 20 if the specification is unrealizable.
 
+### Input automata
+- The input must be a complete deterministic automaton with a single initial state.
+- Acceptance conditions that a priority per edge can express on the same automaton are converted to `parity max even` automatically, for example Büchi, co-Büchi, `t`, `f`, Rabin and Streett with one pair, parity conditions in any notation, and edges in zero or several acceptance sets.
+- Use `--paritize` to also convert all other acceptance conditions, such as generalized Büchi or Rabin and Streett with several pairs. This multiplies the automaton with the Zielonka tree automaton of the acceptance condition. Without `--paritize`, such inputs are rejected with exit code 104.
 
 Example command line:
 ```bash

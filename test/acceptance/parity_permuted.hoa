@@ -1,0 +1,15 @@
+/* expect: 10 */
+HOA: v1
+States: 2
+Start: 0
+AP: 1 "c"
+controllable-AP: 0
+Acceptance: 3 Inf(1) | (Fin(0) & Inf(2))
+properties: deterministic complete
+--BODY--
+State: 0
+[0] 0 {0}
+[!0] 0 {2}
+State: 1
+[t] 1
+--END--

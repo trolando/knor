@@ -1,0 +1,14 @@
+/* expect: 20 */
+HOA: v1
+States: 2
+Start: 0
+AP: 1 "c"
+controllable-AP: 0
+Acceptance: 0 f
+properties: deterministic complete
+--BODY--
+State: 0
+[t] 0
+State: 1
+[t] 1
+--END--

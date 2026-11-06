@@ -3,8 +3,8 @@
  */
 
 /*
- * Internals of the eHOA parser (simplehoa.cpp); not part of the interface in
- * simplehoa.h.
+ * Internals shared by the eHOA parser (simplehoa.cpp) and the conversion to
+ * parity (paritize.cpp); not part of the interface in simplehoa.h.
  */
 
 #ifndef KNOR_HOAINTERNAL_HPP

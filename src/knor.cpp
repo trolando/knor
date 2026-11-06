@@ -47,6 +47,7 @@ handleOptions(int &argc, char**& argv)
             ("naive", "Use the naive splitting procedure (not recommended)")
             ("explicit", "Use the explicit splitting procedure (not recommended)")
             ("real", "Only check realizability (no synthesis)")
+            ("paritize", "Convert any acceptance condition (e.g. generalized Buchi) to parity, adding memory")
             ("bisim-game", "Apply bisimulation minimisation to the game")
             ("bisim-sol", "Apply bisimulation minimisation to the solution")
             ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
@@ -138,10 +139,18 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         std::cerr << "automaton has " << data->noStates << " states." << std::endl;
     }
 
-    // First check if the automaton is a parity automaton
+    // First check if the automaton is a parity automaton (after rewriting
+    // acceptance conditions that are parity conditions in disguise)
     bool isMaxParity = true;
     short controllerParity = 0;
-    int ret = isParityGFG(data, &isMaxParity, &controllerParity);
+    const int originalStates = data->noStates;
+    int ret = paritizeHoa(data, options["paritize"].count() > 0);
+    if (ret == 104) std::cerr << "(use --paritize to add the memory)" << std::endl;
+    if (ret != 0) return ret;
+    if (verbose && data->noStates != originalStates) {
+        std::cerr << "after adding memory, the automaton has " << data->noStates << " states." << std::endl;
+    }
+    ret = isParityGFG(data, &isMaxParity, &controllerParity);
     if (ret != 0) return ret;
     bool controllerIsOdd = controllerParity != 0;
 

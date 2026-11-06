@@ -1,0 +1,16 @@
+/* expect: 10 --paritize */
+HOA: v1
+States: 2
+Start: 0
+AP: 1 "c"
+controllable-AP: 0
+Acceptance: 2 Inf(0) & Inf(1)
+acc-name: generalized-Buchi 2
+properties: deterministic complete
+--BODY--
+State: 0
+[0] 0 {0}
+[!0] 0 {1}
+State: 1
+[t] 1
+--END--
