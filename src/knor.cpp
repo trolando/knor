@@ -89,8 +89,11 @@ handleOptions(int &argc, char**& argv)
 
         return options;
     } catch (const cxxopts::exceptions::exception & e) {
-        std::cout << "error parsing options: " << e.what() << std::endl;
-        exit(0);
+        // A bad argv must exit NON-zero (10/20 are verdicts, 255 is the error
+        // convention): benchmark harnesses map exit codes, and exiting 0 here
+        // silently turned option mistakes into fake "success" runs.
+        std::cerr << "error parsing options: " << e.what() << std::endl;
+        exit(255);
     }
 }
 
@@ -125,8 +128,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         std::string filename = options.unmatched()[0];
         FILE* f = fopen(filename.c_str(), "r");
         if (f == nullptr) {
-            std::cout << "file not found: " << filename << std::endl;
-            return 0;
+            std::cerr << "file not found: " << filename << std::endl;
+            return -1;
         }
         int ret = parseHoa(f, data);
         fclose(f);
