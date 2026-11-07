@@ -6,8 +6,11 @@
 #include <chrono>
 #include <stdexcept>
 #include <iostream>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <sstream>
+#include <unistd.h>
 
 // slightly modified version of 'alias compress2rs' from 'abc.rc' file
 const std::vector<std::string> ABCMinimization::compressCommands ({
@@ -36,11 +39,56 @@ const std::vector<std::string> ABCMinimization::compressCommands ({
        "ifraig -C 20",
 });
 
+namespace {
+
+/**
+ * Runs ABC for the lifetime of the object. ABC prints its messages to stdout, where knor writes the
+ * circuit, so stdout goes to stderr meanwhile. ABC also keeps a command history in abc.history in
+ * the working directory: batch mode records no commands, and the file is removed again unless it
+ * was there before.
+ */
+class AbcSession final {
+public:
+    AbcSession() : had_history(std::filesystem::exists(HISTORY, error))
+    {
+        std::fflush(stdout);
+        saved_stdout = dup(STDOUT_FILENO);
+        if (saved_stdout != -1) dup2(STDERR_FILENO, STDOUT_FILENO);
+        Abc_Start();
+        Abc_FrameSetBatchMode(1);
+    }
+
+    ~AbcSession()
+    {
+        Abc_Stop();
+        std::fflush(stdout);
+        if (saved_stdout != -1) {
+            dup2(saved_stdout, STDOUT_FILENO);
+            close(saved_stdout);
+        }
+        if (!had_history) std::filesystem::remove(HISTORY, error);
+    }
+
+    AbcSession(const AbcSession&) = delete;
+    AbcSession& operator=(const AbcSession&) = delete;
+
+private:
+    static constexpr const char* HISTORY = "abc.history";
+    std::error_code error;
+    bool had_history;
+    int saved_stdout;
+};
+
+}  // namespace
+
 void ABCMinimization::compress(int timeout)
 {
+    // without outputs no logic is observable; ABC has nothing to minimise and warns at every command
+    if (circuit.getNumOutputs() == 0) return;
+
     auto start = std::chrono::steady_clock::now();
 
-    Abc_Start();
+    AbcSession session;
     Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
 
     writeToAbc(pAbc);
@@ -60,14 +108,14 @@ void ABCMinimization::compress(int timeout)
     }
 
     readFromAbc(pAbc);
-
-    Abc_Stop();
 }
 
 void ABCMinimization::drewrite(int timeout)
 {
+    if (circuit.getNumOutputs() == 0) return;
+
     auto start = std::chrono::steady_clock::now();
-    Abc_Start();
+    AbcSession session;
     Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
 
     writeToAbc(pAbc);
@@ -90,8 +138,6 @@ void ABCMinimization::drewrite(int timeout)
     }
 
     readFromAbc(pAbc);
-
-    Abc_Stop();
 }
 
 void ABCMinimization::executeAbcCommand(Abc_Frame_t* pAbc, const std::string& command) const {

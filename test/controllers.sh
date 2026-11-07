@@ -1,11 +1,12 @@
 #!/bin/bash
 #
 # Regression test for the controller options (--auto-encode, --permissive,
-# --fpim, --fpjm, --mealy-sat, --mealy-any, --dc). For every example and every combination of options,
-# knor --real and knor -a must both exit with the expected verdict, and a
-# realizable example must give an AIGER file with one input per uncontrollable
-# and one output per controllable AP, which aigcheck accepts. Invalid
-# combinations must exit with 255.
+# --fpim, --fpjm, --mealy-sat, --mealy-any, --dc, --compress). For every example
+# and every combination of options, knor --real and knor -a must both exit with
+# the expected verdict, and a realizable example must give an AIGER file with
+# one input per uncontrollable and one output per controllable AP, which
+# aigcheck accepts. Invalid combinations must exit with 255, and ABC must leave
+# no abc.history behind.
 #
 # Usage: test/controllers.sh [path/to/knor [path/to/aigcheck]]
 #        (default: build/knor and build/aigcheck)
@@ -20,6 +21,7 @@ for tool in "$knor" "$aigcheck"; do
         exit 2
     fi
 done
+knor=$(cd "$(dirname "$knor")" && pwd)/$(basename "$knor")
 
 examples=(
     "$dir/../examples/EscalatorNonReactive.tlsf.ehoa 10"
@@ -43,6 +45,7 @@ modes=(
     "--auto-encode"
     "--auto-encode --fpjm"
     "--auto-encode --mealy-any --mealy-time 2"
+    "--auto-encode --compress"
     "--sym --mealy-sat --dc"
     "--bisim --mealy-sat --dc"
     "--permissive --mealy-sat --mealy-any --mealy-time 2 --dc"
@@ -90,6 +93,10 @@ for mode in "--mealy-any" "--sym --mealy-sat --mealy-any" "--sym --permissive" "
     res=$?
     [ "$res" = 255 ] || fail "$f $mode (exit code $res, expected 255)"
 done
+
+mkdir "$tmp/cwd"
+(cd "$tmp/cwd" && "$knor" -a --compress "$f" >/dev/null 2>&1)
+[ -e "$tmp/cwd/abc.history" ] && fail "$f -a --compress left abc.history in the working directory"
 
 if [ $failures -ne 0 ]; then
     echo "$failures controller test(s) failed"
