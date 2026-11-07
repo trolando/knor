@@ -298,8 +298,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
         realizable = game->getWinner(vstart) == 0;
 
-        // finally, check if the initial vertex is won by controller or environment
-        if (realizable) {
+        // finally, check if the initial vertex is won by controller or environment, and unless
+        // only the verdict is asked for, get the strategy
+        if (realizable && options["real"].count() == 0) {
             if (sym != nullptr) {
                 // now get the strategy from Oink...
                 std::map<MTBDD, MTBDD> str;  // cap to priostate
