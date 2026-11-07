@@ -364,9 +364,11 @@ TASK_3(MTBDD, apply_str, MTBDD, trans, strmap*, str, int, first_cap)
 
 bool SymGame::applyStrategy(const std::map<MTBDD, MTBDD>& str)
 {
-    auto strategy = RUN(apply_str, this->trans, &str, mtbdd_set_first(cap_vars));
+    // the variable of the first controllable AP, also without controllable APs
+    const int first_cap = priobits + statebits + uap_count;
+    auto strategy = RUN(apply_str, this->trans, &str, first_cap);
     if (strategy == mtbdd_invalid) {
-        std::cout << "Unable to compute strategy" << std::endl;
+        std::cerr << "Unable to compute strategy" << std::endl;
         return false;
     }
 
