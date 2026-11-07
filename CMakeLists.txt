@@ -60,6 +60,8 @@ add_test(NAME parser
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/parser.sh $<TARGET_FILE:knor>)
 add_test(NAME acceptance
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/acceptance.sh $<TARGET_FILE:knor>)
+add_test(NAME controllers
+    COMMAND bash ${CMAKE_SOURCE_DIR}/test/controllers.sh $<TARGET_FILE:knor> $<TARGET_FILE:aigcheck>)
 add_test(NAME aigcheck
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/aigcheck.sh $<TARGET_FILE:knor> $<TARGET_FILE:aigcheck>)
 
