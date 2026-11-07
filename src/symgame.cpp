@@ -2,6 +2,7 @@
  * Copyright (c) 2020-2021 Tom van Dijk
  *************************************************************************/
 
+#include <algorithm>
 #include <iostream>
 #include <map>
 #include <set>
@@ -302,20 +303,20 @@ std::unique_ptr<pg::Game> SymGame::toExplicit(std::map<int, MTBDD> &vertex_to_bd
 
 
 /**
- * Restrict the transition relation to the given complete strategy.
- * Assumes <str> is defined on state + uap
+ * Restrict the transition relation (below the uncontrollable APs) to the
+ * controllable APs that lead to one of the allowed successors (sorted).
  */
-MTBDD select_str(MTBDD trans, MTBDD str)
+MTBDD select_str(MTBDD trans, const std::vector<MTBDD>& allowed)
 {
-    if (trans == str) {
+    if (std::binary_search(allowed.begin(), allowed.end(), trans)) {
         return mtbdd_true;
     } else if (mtbdd_isleaf(trans)) {
         return mtbdd_false;
     } else {
         // state or uncontrollable ap
-        auto low = select_str(mtbdd_getlow(trans), str);
+        auto low = select_str(mtbdd_getlow(trans), allowed);
         mtbdd_refs_push(low);
-        auto high = select_str(mtbdd_gethigh(trans), str);
+        auto high = select_str(mtbdd_gethigh(trans), allowed);
         mtbdd_refs_push(high);
         MTBDD res = mtbdd_makenode(mtbdd_getvar(trans), low, high);
         mtbdd_refs_pop(2);
@@ -325,10 +326,10 @@ MTBDD select_str(MTBDD trans, MTBDD str)
 
 
 /**
- * Apply a strategy to the transition relation resulting in the strategy BDD
+ * Apply a (multi-)strategy to the transition relation resulting in the strategy BDD
  * Returns mtbdd_invalid if something is wrong.
  */
-typedef const std::map<MTBDD,MTBDD> strmap;
+typedef const std::map<MTBDD, std::vector<MTBDD>> strmap;
 TASK_3(MTBDD, apply_str, MTBDD, trans, strmap*, str, int, first_cap)
 {
     if (mtbdd_isleaf(trans)) {
@@ -351,7 +352,6 @@ TASK_3(MTBDD, apply_str, MTBDD, trans, strmap*, str, int, first_cap)
             }
         } else {
             auto it = str->find(trans);
-                // FIXME HERE: should return the CAP resulting in it, not the thing!!!
             if (it != str->end()) {
                 return select_str(it->first, it->second);
             } else {
@@ -364,9 +364,19 @@ TASK_3(MTBDD, apply_str, MTBDD, trans, strmap*, str, int, first_cap)
 
 bool SymGame::applyStrategy(const std::map<MTBDD, MTBDD>& str)
 {
+    std::map<MTBDD, std::vector<MTBDD>> multi;
+    for (const auto& x : str) multi[x.first].push_back(x.second);
+    return applyMultiStrategy(multi);
+}
+
+
+bool SymGame::applyMultiStrategy(const std::map<MTBDD, std::vector<MTBDD>>& str)
+{
+    std::map<MTBDD, std::vector<MTBDD>> sorted(str);
+    for (auto& x : sorted) std::sort(x.second.begin(), x.second.end());
     // the variable of the first controllable AP, also without controllable APs
     const int first_cap = priobits + statebits + uap_count;
-    auto strategy = RUN(apply_str, this->trans, &str, first_cap);
+    auto strategy = RUN(apply_str, this->trans, &sorted, first_cap);
     if (strategy == mtbdd_invalid) {
         std::cerr << "Unable to compute strategy" << std::endl;
         return false;

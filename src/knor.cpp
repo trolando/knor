@@ -18,6 +18,7 @@
 #include <aigencoder.hpp>
 #include <abcminimization.hpp>
 #include <gameconstructor.hpp>
+#include <permissive.hpp>
 
 extern "C" {
     #include <sylvan.h>
@@ -48,6 +49,9 @@ handleOptions(int &argc, char**& argv)
             ("explicit", "Use the explicit splitting procedure (not recommended)")
             ("real", "Only check realizability (no synthesis)")
             ("paritize", "Convert any acceptance condition (e.g. generalized Buchi) to parity, adding memory")
+            ("permissive", "Greedily extend the strategy to a winning multi-strategy (explicit solvers; slow on large games)")
+            ("fpim", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers)")
+            ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
             ("bisim-game", "Apply bisimulation minimisation to the game")
             ("bisim-sol", "Apply bisimulation minimisation to the solution")
             ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
@@ -85,6 +89,19 @@ handleOptions(int &argc, char**& argv)
         if (options.count("solvers")) {
             pg::Solvers::list(std::cout);
             exit(0);
+        }
+
+        if (options.count("permissive") && options.count("sym")) {
+            std::cerr << "error parsing options: --permissive requires an explicit solver (not --sym)" << std::endl;
+            exit(255);
+        }
+        if ((options.count("fpim") || options.count("fpjm")) && options.count("sym")) {
+            std::cerr << "error parsing options: --fpim and --fpjm require an explicit solver (not --sym)" << std::endl;
+            exit(255);
+        }
+        if (options.count("fpim") && options.count("fpjm")) {
+            std::cerr << "error parsing options: --fpim and --fpjm exclude each other" << std::endl;
+            exit(255);
         }
 
         return options;
@@ -301,7 +318,57 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // finally, check if the initial vertex is won by controller or environment, and unless
         // only the verdict is asked for, get the strategy
         if (realizable && options["real"].count() == 0) {
-            if (sym != nullptr) {
+            const bool fpim = options["fpim"].count() > 0;
+            const bool fpjm = options["fpjm"].count() > 0;
+            if (sym != nullptr && (fpim || fpjm || options["permissive"].count() > 0)) {
+                auto allowed = PermissiveStrategy::positional(*game);
+                if (fpim || fpjm) {
+                    const double t_before = wctime();
+                    const char* name = fpim ? "fixpoint iteration" : "fixpoint iteration with justifications";
+                    std::vector<int> winner;
+                    auto multi = fpim ? PermissiveStrategy::fpim(*game, winner) : PermissiveStrategy::fpjm(*game, winner);
+                    bool agrees = true;
+                    for (int v=0; v<game->vertexcount(); v++) agrees = agrees && winner[v] == game->getWinner(v);
+                    if (agrees && PermissiveStrategy::verify(*game, vstart, multi)) {
+                        allowed = std::move(multi);
+                    } else {
+                        // cannot happen; keep the positional strategy rather than risk a wrong controller
+                        std::cerr << "error: " << name << " disagrees with " << solver << ", using its strategy" << std::endl;
+                    }
+                    if (verbose) {
+                        long moves = 0;
+                        for (const auto& a : allowed) moves += static_cast<long>(a.size());
+                        std::cerr << name << ": " << moves << " moves of the controller" << std::endl;
+                        std::cerr << "\033[1;37mfinished " << name << " in " << std::fixed << (wctime() - t_before) << " sec.\033[m" << std::endl;
+                    }
+                }
+                std::vector<std::vector<int>> extended;  // the permissive extension of allowed, if any
+                if (options["permissive"].count() > 0) {
+                    const double t_before = wctime();
+                    PermissiveStrategy::Stats stats;
+                    extended = PermissiveStrategy::extend(*game, vstart, allowed, stats);
+                    if (!PermissiveStrategy::verify(*game, vstart, extended)) {
+                        // cannot happen; keep the strategy that was extended rather than risk a wrong controller
+                        std::cerr << "error: the multi-strategy is not winning, using the strategy before extending it" << std::endl;
+                        extended.clear();
+                    }
+                    if (verbose) {
+                        std::cerr << "multi-strategy: " << stats.added << " of " << stats.candidates
+                                  << " further edges allowed at " << stats.vertices << " reachable vertices" << std::endl;
+                        std::cerr << "\033[1;37mfinished extending the strategy in " << std::fixed << (wctime() - t_before) << " sec.\033[m" << std::endl;
+                    }
+                }
+                auto apply = [&](const std::vector<std::vector<int>>& moves) {
+                    std::map<MTBDD, std::vector<MTBDD>> str;  // cap to allowed priostates
+                    for (int v=0; v<game->vertexcount(); v++) {
+                        for (int w : moves[v]) str[vertex_to_bdd.at(v)].push_back(vertex_to_bdd.at(w));
+                    }
+                    if (!sym->applyMultiStrategy(str)) {
+                        std::cerr << "cannot apply strategy!" << std::endl;
+                    }
+                };
+                apply(extended.empty() ? allowed : extended);
+            } else if (sym != nullptr) {
                 // now get the strategy from Oink...
                 std::map<MTBDD, MTBDD> str;  // cap to priostate
                 for (int v=0; v<game->vertexcount(); v++) {

@@ -4,7 +4,9 @@
 
 #include <sylvan.h>
 #include <oink/oink.hpp>
+#include <map>
 #include <memory>
+#include <vector>
 
 extern "C" {
     #include "simplehoa.h"
@@ -54,6 +56,12 @@ public:
      * Apply a strategy (computed via Oink)
      */
     bool applyStrategy(const std::map<sylvan::MTBDD, sylvan::MTBDD>&);
+
+    /**
+     * Apply a multi-strategy: for each vertex of the controller (after the
+     * uncontrollable APs) the allowed successors (priority and next state).
+     */
+    bool applyMultiStrategy(const std::map<sylvan::MTBDD, std::vector<sylvan::MTBDD>>&);
 
     /**
      * Solve the symbolic parity game, return true if won

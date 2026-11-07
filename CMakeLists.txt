@@ -24,6 +24,7 @@ target_sources(knor
         src/gameconstructor.cpp
         src/knor.cpp
         src/paritize.cpp
+        src/permissive.cpp
         src/simplehoa.cpp
         src/symgame.cpp
 )
