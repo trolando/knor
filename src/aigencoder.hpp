@@ -19,6 +19,8 @@ extern "C" {
 
 class AIGEncoder final {
 public:
+    static constexpr int MAX_ONEHOT_STATES = 4096;
+
     AIGEncoder(HoaData &data, SymGame &game);
 
     AIGEncoder& setSop() {
@@ -36,6 +38,38 @@ public:
         return *this;
     }
 
+    /**
+     * Choose the outputs and successors among all moves that game.strategies
+     * and game.trans allow, using the freedom (and with the binary encoding,
+     * the unused state codes) as don't cares to keep the circuit small: each
+     * signal is chosen first among the outputs or the state bits (statesFirst)
+     * as the smallest of its simplifications (more with allCandidates, and the
+     * irredundant sum of products with isopCandidate). State bits that stay 0
+     * get no latch. With the one-hot encoding, encode() returns nullptr for
+     * games with more than MAX_ONEHOT_STATES states.
+     */
+    AIGEncoder& setDontCares(bool statesFirst = false, bool allCandidates = false, bool isopCandidate = true) {
+        this->dontcares = true;
+        this->statesFirst = statesFirst;
+        this->allCandidates = allCandidates;
+        this->isopCandidate = isopCandidate;
+        return *this;
+    }
+
+    /**
+     * With don't cares and the binary encoding (without ISOP), choose the order of the variables
+     * for the Shannon expansion by sifting, with at most about the given work (BDD nodes visited
+     * by the cost function; 0: keep the order of the game). The work is counted, not the time, so
+     * that the result does not depend on the machine.
+     */
+    AIGEncoder& setReorder(long work) {
+        this->reorderWork = work;
+        return *this;
+    }
+
+    /** The work that choosing the variable order took. */
+    long getReorderWork() const { return reorderUsed; }
+
     AIGEncoder& setVerbose() {
         this->verbose = true;
         return *this;
@@ -52,6 +86,12 @@ private:
     bool isop = false; // use ISOP
     bool verbose = false;
     bool onehot = false; // use onehot encoding
+    bool dontcares = false; // choose moves using don't cares (binary encoding)
+    bool statesFirst = false; // with don't cares: choose the next-state bits before the outputs
+    bool allCandidates = false; // with don't cares: consider more simplifications of each bit
+    bool isopCandidate = true; // with don't cares: consider the irredundant sum of products of each bit
+    long reorderWork = 0; // with don't cares: work for choosing the variable order (binary encoding)
+    long reorderUsed = 0; // the work it took
 
     std::vector<unsigned int> uap_to_lit; // store the input literals for each uncontrolled AP
     std::vector<std::string> cap_labels; // store the labels for controlled APs
@@ -66,6 +106,9 @@ private:
     void processSOP();
     void processOnehot();
     void processBinary();
+    bool processOnehotDontCares(int maxStates);
+    void chooseWithDontCares(sylvan::MTBDD* cap_bdds, sylvan::MTBDD* state_bdds);
+    unsigned int latchFunction(sylvan::MTBDD h, sylvan::MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits);
 };
 
 #endif //KNOR_AIGENCODER_HPP

@@ -2,6 +2,7 @@
  * Copyright Tom van Dijk
  *************************************************************************/
 
+#include <algorithm>
 #include <cstring> // for strcmp
 #include <iostream>
 #include <map>
@@ -28,6 +29,11 @@ extern "C" {
 }
 
 using namespace sylvan;
+
+// with --dc: the work (BDD nodes visited, see AIGEncoder::setReorder) for choosing the variable
+// order of the binary candidates by sifting (the best candidates first), and at most for each
+static constexpr long REORDER_WORK = 3000000;
+static constexpr long REORDER_CANDIDATE_WORK = 1000000;
 
 static double wctime()
 {
@@ -62,6 +68,8 @@ handleOptions(int &argc, char**& argv)
             ("onehot", "Use one-hot encoding for the states (recommended)")
             ("isop", "Convert BDDs to AIG using ISOP (instead of Shannon expansion)")
             ("sop", "Encode with ISOP and onehot (SOP variant of --isop --onehot)")
+            ("dc", "Encode with don't cares: unused state codes and the freedom of the strategy (or with --mealy-sat, of the minimised controller), in binary and one-hot, keeping the smallest")
+            ("dc-all", "With --dc, try every encoding candidate, not only those that pay off (for experiments; slower)")
             ("compress", "Compress the generated AIG using ABC")
             ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
             ("best", "Try all combinations of bisim and isop and write the smallest AIG")
@@ -110,6 +118,11 @@ handleOptions(int &argc, char**& argv)
         }
         if (options.count("fpim") && options.count("fpjm")) {
             std::cerr << "error parsing options: --fpim and --fpjm exclude each other" << std::endl;
+            exit(255);
+        }
+
+        if (options.count("dc") && (options.count("onehot") || options.count("sop") || options.count("best"))) {
+            std::cerr << "error parsing options: --dc chooses the encoding (not --onehot, --sop or --best)" << std::endl;
             exit(255);
         }
 
@@ -499,17 +512,24 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // sym->print_strategies();
     }
 
+    // with --dc, the minimised controller also comes with other state codes and all its correct
+    // moves, for the encoder to choose from; such games are not post-processed or bisimulated
+    std::vector<MealyMinimizer::Variant> variants;
+    bool minimised = false;
     if (options["mealy-sat"].count() > 0) {
         const auto t_before = wctime();
         MealyMinimizer::Options minimise;
         minimise.seconds = options["mealy-time"].as<double>();
         minimise.verbose = verbose;
+        minimise.relax = options["dc"].count() > 0;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
         minimise.anySeconds = minimise.seconds;
         auto minimized = MealyMinimizer::minimize(*sym, minimise);
         if (minimized.game != nullptr) {
             sym = std::move(minimized.game);
+            variants = std::move(minimized.variants);
+            minimised = true;
             if (verbose) std::cerr << "minimised controller has " << minimized.states << " states." << std::endl;
         }
         if (verbose) {
@@ -518,6 +538,18 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     }
     mtbdd_unprotect(&anyMoves);
     mtbdd_unprotect(&extendedMoves);
+
+    // without a minimised controller, --dc may choose among the moves of the strategy itself, rather
+    // than the lowest output that postprocess picks: on the explicit route, the strategy is a winning
+    // multi-strategy (the freedom of the symbolic solver need not be), so every choice is correct
+    if (options["dc"].count() > 0 && !minimised && explicit_solver) {
+        auto relational = std::make_unique<SymGame>(sym->statebits, sym->priobits, sym->uap_count, sym->cap_count,
+                                                     sym->maxprio);
+        relational->trans = sym->trans;
+        relational->strategies = sym->strategies;
+        relational->restrictToReachable(false);
+        variants.push_back({std::move(relational), "unclarified strategy"});
+    }
 
     {
         const auto t_before = wctime();
@@ -637,6 +669,78 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     if (options["sop"].count() > 0) encoder.setSop();
     const double t_before_enc = wctime();
     auto circuit = encoder.encode();
+    if (options["dc"].count() > 0) {
+        // the encoding, the numbering of the states, the order of the bits and the simplifications
+        // matter, in no predictable way: keep the smallest circuit (gates and latches), also compared
+        // to the one without don't cares
+        auto size = [](const std::unique_ptr<AIGCircuit>& c) { return c->getNumAnds() + c->getNumLatches(); };
+        if (verbose) {
+            std::cerr << "without don't cares: " << circuit->getNumAnds() << " gates and " << circuit->getNumLatches()
+                      << " latches" << std::endl;
+        }
+        // By default only the candidates that ever gave the smallest circuit on the examples
+        // (measured with --dc-all --stats): all simplifications of each signal, binary also without
+        // the irredundant sum of products, and not the deterministic monitor-coded game (its relaxed
+        // version suffices). With --dc-all every candidate, for experiments.
+        const bool all = options["dc-all"].count() > 0;
+        std::vector<std::pair<SymGame*, std::string>> games{{sym.get(), "controller"}};
+        for (const auto& variant : variants) {
+            if (all || variant.name != "monitor codes") games.emplace_back(variant.game.get(), variant.name);
+        }
+        // how each game is encoded: binary or one-hot, which signals are chosen first, and which
+        // simplifications of each signal are considered (see AIGEncoder::setDontCares)
+        struct Setting {
+            bool onehot, statesFirst, allCandidates, isopCandidate;
+        };
+        std::vector<Setting> settings;
+        for (const bool onehot : {false, true}) {
+            for (const bool isopCandidate : {true, false}) {
+                for (const bool allCandidates : {false, true}) {
+                    if (!all && (!allCandidates || (onehot && !isopCandidate))) continue;
+                    for (const bool statesFirst : {false, true}) {
+                        settings.push_back(Setting{onehot, statesFirst, allCandidates, isopCandidate});
+                    }
+                }
+            }
+        }
+        struct Binary {
+            long size;
+            size_t game;
+            Setting setting;
+        };
+        std::vector<Binary> binaries;   // the binary candidates, to reorder the best ones
+        long reorder_left = REORDER_WORK;
+        auto encodeCandidate = [&](size_t g, const Setting& s, long reorder) {
+            AIGEncoder other(*data, *games[g].first);
+            if (options["isop"].count() > 0) other.setIsop();
+            if (s.onehot) other.setOneHot();
+            auto candidate = other.setDontCares(s.statesFirst, s.allCandidates, s.isopCandidate).setReorder(reorder).encode();
+            if (candidate == nullptr) return false;   // too many states for one-hot
+            reorder_left -= other.getReorderWork();
+            if (verbose) {
+                std::cerr << "don't cares (" << games[g].second << ", " << (s.onehot ? "one-hot, " : "binary, ")
+                          << (s.statesFirst ? "state" : "outputs") << " first"
+                          << (s.allCandidates ? ", all candidates" : "") << (s.isopCandidate ? "" : ", no isop")
+                          << (reorder > 0 ? ", reordered" : "") << "): " << candidate->getNumAnds() << " gates and "
+                          << candidate->getNumLatches() << " latches" << std::endl;
+            }
+            if (!s.onehot && reorder == 0) binaries.push_back(Binary{size(candidate), g, s});
+            if (size(candidate) < size(circuit)) circuit = std::move(candidate);
+            return true;
+        };
+        for (size_t g = 0; g < games.size(); g++) {
+            bool onehotFits = true;
+            for (const Setting& s : settings) {
+                if (s.onehot && !onehotFits) continue;
+                if (!encodeCandidate(g, s, 0)) onehotFits = false;
+            }
+        }
+        // the variable order matters a lot, but sifting costs time: the best binary candidates first
+        std::sort(binaries.begin(), binaries.end(), [](const Binary& a, const Binary& b) { return a.size < b.size; });
+        for (size_t k = 0; k < binaries.size() && reorder_left > 0 && options["isop"].count() == 0; k++) {
+            encodeCandidate(binaries[k].game, binaries[k].setting, std::min(reorder_left, REORDER_CANDIDATE_WORK));
+        }
+    }
     const double t_after_enc = wctime();
     if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after_enc - t_before_enc) << " sec.\033[m" << std::endl;
 

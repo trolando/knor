@@ -736,64 +736,68 @@ void SymGame::postprocess(bool verbose)
     strategies = RUN(clarify, strategies, cap_vars);
 
     // Now remove all unreachable states according to the strategy  (slightly smaller controller)
+    restrictToReachable(verbose);
+}
+
+
+void SymGame::restrictToReachable(bool verbose)
+{
+    auto ns_to_s = mtbdd_map_empty();
+    mtbdd_refs_pushptr(&ns_to_s);
+
     {
-        auto ns_to_s = mtbdd_map_empty();
-        mtbdd_refs_pushptr(&ns_to_s);
-
-        {
-            auto _s = s_vars;
-            auto _n = ns_vars;
-            while (!mtbdd_set_isempty(_s)) {
-                auto sv = mtbdd_set_first(_s);
-                auto nv = mtbdd_set_first(_n);
-                _s = mtbdd_set_next(_s);
-                _n = mtbdd_set_next(_n);
-                ns_to_s = mtbdd_map_add(ns_to_s, nv, sylvan_ithvar(sv));
-            }
+        auto _s = s_vars;
+        auto _n = ns_vars;
+        while (!mtbdd_set_isempty(_s)) {
+            auto sv = mtbdd_set_first(_s);
+            auto nv = mtbdd_set_first(_n);
+            _s = mtbdd_set_next(_s);
+            _n = mtbdd_set_next(_n);
+            ns_to_s = mtbdd_map_add(ns_to_s, nv, sylvan_ithvar(sv));
         }
-
-        auto T = mtbdd_false;
-        mtbdd_refs_pushptr(&T);
-
-        {
-            // compute the strategy transition relation
-            // s > ns
-            auto vars = np_vars;
-            mtbdd_refs_pushptr(&vars);
-            vars = mtbdd_set_addall(vars, cap_vars);
-            vars = mtbdd_set_addall(vars, uap_vars);
-            T = mtbdd_and_exists(strategies, this->trans, vars);
-            mtbdd_refs_popptr(1);
-        }
-
-        auto visited = BDDTools::encode_state(0, s_vars);
-        mtbdd_refs_pushptr(&visited);
-
-        auto old = mtbdd_false;
-        mtbdd_refs_pushptr(&old);
-
-        // Just quick and dirty symbolic reachability ... this is not super efficient but it's OK
-        while (old != visited) {
-            old = visited;
-            auto next = mtbdd_and_exists(visited, T, s_vars); // cross product
-            mtbdd_refs_push(next);
-            next = sylvan_compose(next, ns_to_s);   // and rename
-            visited = sylvan_or(visited, next);
-            mtbdd_refs_pop(1);
-        }
-
-        assert(visited == mtbdd_true || mtbdd_getvar(visited) >= (unsigned)this->priobits); // should not have priorities
-
-        // count the number of states
-        if (verbose) {
-            auto noStates = (long)sylvan_satcount(visited, s_vars);
-            std::cerr << "after reachability: " << noStates << " states." << std::endl;
-        }
-
-        strategies = sylvan_and(strategies, visited);
-        trans = sylvan_and(trans, strategies);
-        mtbdd_refs_popptr(4);
     }
+
+    auto T = mtbdd_false;
+    mtbdd_refs_pushptr(&T);
+
+    {
+        // compute the strategy transition relation
+        // s > ns
+        auto vars = np_vars;
+        mtbdd_refs_pushptr(&vars);
+        vars = mtbdd_set_addall(vars, cap_vars);
+        vars = mtbdd_set_addall(vars, uap_vars);
+        T = mtbdd_and_exists(strategies, this->trans, vars);
+        mtbdd_refs_popptr(1);
+    }
+
+    auto visited = BDDTools::encode_state(0, s_vars);
+    mtbdd_refs_pushptr(&visited);
+
+    auto old = mtbdd_false;
+    mtbdd_refs_pushptr(&old);
+
+    // Just quick and dirty symbolic reachability ... this is not super efficient but it's OK
+    while (old != visited) {
+        old = visited;
+        auto next = mtbdd_and_exists(visited, T, s_vars); // cross product
+        mtbdd_refs_push(next);
+        next = sylvan_compose(next, ns_to_s);   // and rename
+        visited = sylvan_or(visited, next);
+        mtbdd_refs_pop(1);
+    }
+
+    assert(visited == mtbdd_true || mtbdd_getvar(visited) >= (unsigned)this->priobits); // should not have priorities
+
+    // count the number of states
+    if (verbose) {
+        auto noStates = (long)sylvan_satcount(visited, s_vars);
+        std::cerr << "after reachability: " << noStates << " states." << std::endl;
+    }
+
+    strategies = sylvan_and(strategies, visited);
+    trans = sylvan_and(trans, strategies);
+    mtbdd_refs_popptr(4);
 }
 
 

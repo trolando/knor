@@ -8,6 +8,7 @@
 #include <knor.hpp>
 #include <algorithm>
 #include <set>
+#include <unordered_map>
 
 using namespace sylvan;
 
@@ -658,50 +659,608 @@ void AIGEncoder::processOnehot()
     mtbdd_unprotect(&su_vars);
 }
 
+// Choose the output and next-state functions one bit at a time among the
+// allowed moves (state -> uap -> cap -> next state). Where a bit may be both 0
+// and 1, or the state and input do not occur (such as unused state codes), its
+// value is a don't care: any function between "1 where it must be 1" and "1
+// unless it must be 0" will do. The smallest BDD of the former, its
+// simplification by sylvan_restrict (on the care set) and the irredundant sum
+// of products between the two is taken, with allCandidates also considering
+// the latter and the simplification by sylvan_constrain. Each choice
+// restricts the remaining moves, so together
+// the functions select an allowed move in every state and for every input.
+// The bits are chosen in the order outputs, state, or the reverse.
+void AIGEncoder::chooseWithDontCares(MTBDD* cap_bdds, MTBDD* state_bdds)
+{
+    MTBDD moves = mtbdd_false, out = mtbdd_false, bit = mtbdd_false, can1 = mtbdd_false, can0 = mtbdd_false;
+    MTBDD fixed = mtbdd_false, must1 = mtbdd_false, candidate = mtbdd_false, link = mtbdd_false;
+    for (MTBDD* r : {&moves, &out, &bit, &can1, &can0, &fixed, &must1, &candidate, &link}) mtbdd_refs_pushptr(r);
+    moves = sylvan_and_exists(game.strategies, game.trans, game.np_vars);
+    out = mtbdd_set_addall(game.cap_vars, game.ns_vars);
+    // Every state with a move must have one for every input: elsewhere the bits are don't cares, so a
+    // state without a move for some input would get an arbitrary one.
+    can1 = sylvan_exists(moves, out);
+    can0 = sylvan_forall(can1, game.uap_vars);
+    fixed = sylvan_exists(can1, game.uap_vars);
+    if (can0 != fixed) {
+        std::cerr << "error: a state of the controller has no move for some input" << std::endl;
+        exit(1);
+    }
+    auto choose = [&](uint32_t var, MTBDD& result) {
+        result = mtbdd_false;
+        mtbdd_protect(&result);
+        bit = sylvan_ithvar(var);
+        can1 = sylvan_and_exists(moves, bit, out);
+        can0 = sylvan_and_exists(moves, sylvan_not(bit), out);
+        fixed = sylvan_xor(can1, can0);
+        must1 = sylvan_and(can1, fixed);
+        result = must1;
+        auto consider = [&]() {
+            if (mtbdd_nodecount(candidate) < mtbdd_nodecount(result)) result = candidate;
+        };
+        candidate = sylvan_restrict(must1, fixed);
+        consider();
+        candidate = sylvan_and(can0, fixed);        // must be 0
+        candidate = sylvan_not(candidate);          // the upper bound
+        if (allCandidates) consider();
+        // the irredundant sum of products between the bounds (Minato-Morreale): its BDD is often
+        // more regular than the generalized cofactors that restrict and constrain give
+        if (isopCandidate) {
+            zdd_isop(must1, candidate, &candidate);
+            consider();
+        }
+        if (allCandidates) {
+            candidate = sylvan_constrain(must1, fixed);
+            consider();
+        }
+        link = sylvan_equiv(bit, result);
+        moves = sylvan_and(moves, link);
+    };
+    auto outputs = [&]() {
+        for (int i = 0; i < game.cap_count; i++) choose(mtbdd_set_first(game.cap_vars) + i, cap_bdds[i]);
+    };
+    auto states = [&]() {
+        for (int i = 0; i < game.statebits; i++) choose(mtbdd_set_first(game.ns_vars) + i, state_bdds[i]);
+    };
+    if (statesFirst) {
+        states();
+        outputs();
+    } else {
+        outputs();
+        states();
+    }
+    mtbdd_refs_popptr(9);
+}
+
+// The next-state function h, as ITE(g, h where g holds, h where g does not
+// hold) for the output g whose logic the circuit already has, if the two
+// restrictions (by sylvan_restrict, so this is exact) are smaller than h. For
+// example a flag that a grant resets only needs the grant and a few gates.
+unsigned int AIGEncoder::latchFunction(MTBDD h, MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits)
+{
+    MTBDD high = mtbdd_false, low = mtbdd_false, bestHigh = mtbdd_false, bestLow = mtbdd_false;
+    for (MTBDD* r : {&high, &low, &bestHigh, &bestLow}) mtbdd_refs_pushptr(r);
+    size_t best = mtbdd_nodecount(h);
+    int output = -1;
+    for (int j = 0; j < game.cap_count; j++) {
+        if (sylvan_isconst(cap_bdds[j])) continue;
+        high = sylvan_restrict(h, cap_bdds[j]);
+        low = sylvan_restrict(h, sylvan_not(cap_bdds[j]));
+        const MTBDD both[2] = {high, low};
+        const size_t cost = mtbdd_nodecount_more(both, 2) + 3;
+        if (cost < best) {
+            best = cost;
+            output = j;
+            bestHigh = high;
+            bestLow = low;
+        }
+    }
+    unsigned int res;
+    if (output == -1) {
+        res = bddToAigRecursive(h);
+    } else {
+        const unsigned int g = output_lits[output];
+        const unsigned int a = bddToAigRecursive(bestHigh);
+        const unsigned int b = bddToAigRecursive(bestLow);
+        res = aiger_not(circuit->makeAnd(aiger_not(circuit->makeAnd(g, a)), aiger_not(circuit->makeAnd(aiger_not(g), b))));
+    }
+    mtbdd_refs_popptr(4);
+    return res;
+}
+
+namespace {
+
+// MTBDDs that stay protected as long as the pool exists; their addresses stay valid.
+class Pool final {
+public:
+    Pool() = default;
+    Pool(const Pool&) = delete;
+    Pool& operator=(const Pool&) = delete;
+    ~Pool() { for (MTBDD& dd : items) mtbdd_unprotect(&dd); }
+
+    MTBDD& add(MTBDD dd)
+    {
+        items.push_back(dd);
+        mtbdd_protect(&items.back());
+        return items.back();
+    }
+
+private:
+    std::deque<MTBDD> items;
+};
+
+// The functions of the inputs that the states use for one signal, and which states use each.
+struct Functions {
+    std::vector<MTBDD*> function;
+    std::vector<std::vector<int>> states;
+    std::map<MTBDD, int> index;
+};
+
+}  // namespace
+
+// One-hot encoding that chooses among the allowed moves: a latch per state
+// (that of the initial state inverted, so that all latches start at 0), and
+// for every output and every latch an OR over the states of "in this state
+// and this function of the inputs". Per state, the outputs and the successor
+// are chosen one signal at a time, as in chooseWithDontCares but as functions
+// of the inputs only, preferring a function that another state already uses
+// for the same signal (which the circuit then shares). Every state chooses one
+// successor for every input, so exactly one state is active at any time.
+// Returns false (without a circuit) if the game has more than maxStates states.
+bool AIGEncoder::processOnehotDontCares(int maxStates)
+{
+    Pool pool;
+    MTBDD& moves = pool.add(sylvan_and_exists(game.strategies, game.trans, game.np_vars));   // s, u, c, ns
+    MTBDD& out = pool.add(mtbdd_set_addall(game.cap_vars, game.ns_vars));
+    MTBDD& states = pool.add(sylvan_project(moves, game.s_vars));
+    if (sylvan_satcount(states, game.s_vars) > maxStates) return false;
+
+    // the states, and per state its moves (u, c, ns)
+    std::vector<int> code;
+    std::map<int, int> index;   // state code -> position
+    std::vector<MTBDD*> rel;
+    {
+        std::vector<uint8_t> arr(game.statebits);
+        MTBDD& cube = pool.add(mtbdd_false);
+        for (MTBDD leaf = mtbdd_enum_all_first(states, game.s_vars, arr.data(), nullptr); leaf != mtbdd_false;
+             leaf = mtbdd_enum_all_next(states, game.s_vars, arr.data(), nullptr)) {
+            int c = 0;
+            for (int i = 0; i < game.statebits; i++) c = 2 * c + (arr[i] ? 1 : 0);
+            index[c] = static_cast<int>(code.size());
+            code.push_back(c);
+        }
+        for (int c : code) {
+            cube = BDDTools::encode_state(c, game.s_vars);
+            rel.push_back(&pool.add(sylvan_and_exists(moves, cube, game.s_vars)));
+        }
+    }
+    if (index.count(0) == 0) return false;   // no initial state
+    const int n = static_cast<int>(code.size());
+    {
+        // every successor must be a state with moves
+        MTBDD& successors = pool.add(sylvan_project(moves, game.ns_vars));
+        std::vector<uint8_t> arr(game.statebits);
+        for (MTBDD leaf = mtbdd_enum_all_first(successors, game.ns_vars, arr.data(), nullptr); leaf != mtbdd_false;
+             leaf = mtbdd_enum_all_next(successors, game.ns_vars, arr.data(), nullptr)) {
+            int c = 0;
+            for (int i = 0; i < game.statebits; i++) c = 2 * c + (arr[i] ? 1 : 0);
+            if (index.count(c) == 0) return false;
+        }
+    }
+
+    MTBDD& can1 = pool.add(mtbdd_false);
+    MTBDD& can0 = pool.add(mtbdd_false);
+    MTBDD& fixed = pool.add(mtbdd_false);
+    MTBDD& must1 = pool.add(mtbdd_false);
+    MTBDD& must0 = pool.add(mtbdd_false);
+    MTBDD& candidate = pool.add(mtbdd_false);
+    MTBDD& chosen = pool.add(mtbdd_false);
+    MTBDD& test = pool.add(mtbdd_false);
+    MTBDD& lit = pool.add(mtbdd_false);
+    MTBDD& link = pool.add(mtbdd_false);
+    MTBDD& rest = pool.add(mtbdd_false);
+
+    // Choose a function of the inputs between must1 and not must0 for one signal of state k: a
+    // constant, or a function that other states use for it (the most used first), or the smallest
+    // of the simplifications; records it in f and returns it.
+    auto choose = [&](Functions& f, int k) -> MTBDD {
+        fixed = sylvan_xor(can1, can0);
+        must1 = sylvan_and(can1, fixed);
+        must0 = sylvan_and(can0, fixed);
+        auto fits = [&](MTBDD g) {
+            test = sylvan_and(must1, sylvan_not(g));
+            if (test != mtbdd_false) return false;
+            test = sylvan_and(g, must0);
+            return test == mtbdd_false;
+        };
+        bool found = true;
+        if (must1 == mtbdd_false) {
+            chosen = mtbdd_false;
+        } else if (must0 == mtbdd_false) {
+            chosen = mtbdd_true;
+        } else {
+            found = false;
+            std::vector<int> order(f.function.size());
+            for (size_t j = 0; j < order.size(); j++) order[j] = static_cast<int>(j);
+            std::sort(order.begin(), order.end(), [&](int a, int b) { return f.states[a].size() > f.states[b].size(); });
+            for (size_t j = 0; j < order.size() && j < 16 && !found; j++) {
+                if (fits(*f.function[order[j]])) {
+                    chosen = *f.function[order[j]];
+                    found = true;
+                }
+            }
+            if (!found) {
+                chosen = must1;
+                auto consider = [&]() {
+                    if (mtbdd_nodecount(candidate) < mtbdd_nodecount(chosen)) chosen = candidate;
+                };
+                candidate = sylvan_restrict(must1, fixed);
+                consider();
+                candidate = sylvan_not(must0);
+                if (allCandidates) consider();
+                if (isopCandidate) {
+                    zdd_isop(must1, candidate, &candidate);
+                    consider();
+                }
+                if (allCandidates) {
+                    candidate = sylvan_constrain(must1, fixed);
+                    consider();
+                }
+            }
+        }
+        if (chosen != mtbdd_false) {
+            auto it = f.index.find(chosen);
+            if (it == f.index.end()) {
+                it = f.index.emplace(chosen, static_cast<int>(f.function.size())).first;
+                f.function.push_back(&pool.add(chosen));
+                f.states.emplace_back();
+            }
+            f.states[it->second].push_back(k);
+        }
+        return chosen;
+    };
+
+    std::vector<Functions> outputs(game.cap_count), latches(n);
+    auto chooseOutputs = [&](int k) {
+        MTBDD& r = *rel[k];
+        for (int i = 0; i < game.cap_count; i++) {
+            lit = sylvan_ithvar(mtbdd_set_first(game.cap_vars) + i);
+            can1 = sylvan_and_exists(r, lit, out);
+            can0 = sylvan_and_exists(r, sylvan_not(lit), out);
+            const MTBDD f = choose(outputs[i], k);
+            link = sylvan_equiv(lit, f);
+            r = sylvan_and(r, link);
+        }
+    };
+    auto chooseSuccessor = [&](int k) {
+        MTBDD& r = *rel[k];
+        // the successors, those allowed for the most inputs first
+        rest = sylvan_project(r, game.ns_vars);
+        std::vector<std::pair<double, int>> successors;
+        std::vector<uint8_t> arr(game.statebits);
+        for (MTBDD leaf = mtbdd_enum_all_first(rest, game.ns_vars, arr.data(), nullptr); leaf != mtbdd_false;
+             leaf = mtbdd_enum_all_next(rest, game.ns_vars, arr.data(), nullptr)) {
+            int c = 0;
+            for (int i = 0; i < game.statebits; i++) c = 2 * c + (arr[i] ? 1 : 0);
+            successors.emplace_back(0.0, index.at(c));
+        }
+        for (auto& s : successors) {
+            lit = BDDTools::encode_state(code[s.second], game.ns_vars);
+            can1 = sylvan_and_exists(r, lit, out);
+            s.first = -sylvan_satcount(can1, game.uap_vars);
+        }
+        std::sort(successors.begin(), successors.end());
+        for (const auto& s : successors) {
+            const int t = s.second;
+            lit = BDDTools::encode_state(code[t], game.ns_vars);
+            can1 = sylvan_and_exists(r, lit, out);
+            rest = sylvan_and(r, sylvan_not(lit));
+            can0 = sylvan_exists(rest, out);
+            const MTBDD g = choose(latches[t], k);
+            link = sylvan_equiv(lit, g);
+            r = sylvan_and(r, link);
+        }
+    };
+    for (int k = 0; k < n; k++) {
+        if (statesFirst) {
+            chooseSuccessor(k);
+            chooseOutputs(k);
+        } else {
+            chooseOutputs(k);
+            chooseSuccessor(k);
+        }
+        // every input must still have a move (with one successor, as the latch functions select it)
+        test = sylvan_exists(*rel[k], out);
+        if (test != mtbdd_true) {
+            std::cerr << "error: the one-hot encoding with don't cares lost the moves of a state" << std::endl;
+            exit(1);
+        }
+    }
+
+    // the circuit
+    std::vector<unsigned int> latch(n), active(n);
+    for (int k = 0; k < n; k++) {
+        latch[k] = circuit->makeLatch();
+        active[k] = code[k] == 0 ? aiger_not(latch[k]) : latch[k];
+    }
+    // a signal: the OR over its functions of "the function and one of the states that use it", where
+    // with more than half of the states "none of the others" is smaller (exactly one state is active)
+    auto signal = [&](const Functions& f) {
+        std::deque<unsigned int> terms;
+        for (size_t j = 0; j < f.function.size(); j++) {
+            std::deque<unsigned int> sources;
+            unsigned int guard;
+            if (2 * f.states[j].size() > static_cast<size_t>(n)) {
+                std::vector<char> uses(n, 0);
+                for (int k : f.states[j]) uses[k] = 1;
+                for (int k = 0; k < n; k++) {
+                    if (!uses[k]) sources.push_back(active[k]);
+                }
+                guard = aiger_not(circuit->makeMultiOr(sources));
+            } else {
+                for (int k : f.states[j]) sources.push_back(active[k]);
+                guard = circuit->makeMultiOr(sources);
+            }
+            const unsigned int inputs = isop ? bddToAigIsop(*f.function[j]) : bddToAigRecursive(*f.function[j]);
+            terms.push_back(circuit->makeAnd(inputs, guard));
+        }
+        return circuit->makeMultiOr(terms);
+    };
+    for (int i = 0; i < game.cap_count; i++) circuit->makeOutput(signal(outputs[i]), cap_labels[i]);
+    for (int t = 0; t < n; t++) {
+        const unsigned int next = signal(latches[t]);
+        circuit->setLatch(latch[t], code[t] == 0 ? aiger_not(next) : next, "");
+    }
+    return true;
+}
+
+namespace {
+
+// The number of AND gates that bddToAigRecursive makes for the functions together: equal
+// sub-BDDs give equal gates, as AIGCircuit hashes them. Adds the number of BDD nodes visited
+// (a measure of the work, also of making the functions) to work.
+class ShannonCost final {
+public:
+    static unsigned int of(const std::vector<MTBDD>& functions, long& work)
+    {
+        ShannonCost cost;
+        for (MTBDD f : functions) cost.literal(f);
+        work += static_cast<long>(cost.nodes.size()) + 1;
+        return cost.gates;
+    }
+
+private:
+    std::unordered_map<MTBDD, unsigned int> nodes;
+    std::unordered_map<uint32_t, unsigned int> variables;
+    std::unordered_map<uint64_t, unsigned int> ands;
+    unsigned int next = 2;
+    unsigned int gates = 0;
+
+    unsigned int makeAnd(unsigned int a, unsigned int b)
+    {
+        if (b < a) std::swap(a, b);
+        if (a == aiger_false) return aiger_false;
+        if (a == aiger_true) return b;
+        const uint64_t key = (static_cast<uint64_t>(b) << 32) | a;
+        auto it = ands.find(key);
+        if (it != ands.end()) return it->second;
+        gates++;
+        next += 2;
+        return ands[key] = next - 2;
+    }
+
+    unsigned int literal(MTBDD bdd)
+    {
+        if (bdd == mtbdd_true) return aiger_true;
+        if (bdd == mtbdd_false) return aiger_false;
+        const bool complemented = (bdd & sylvan_complement) != 0;
+        const MTBDD node = bdd & ~sylvan_complement;
+        auto it = nodes.find(node);
+        unsigned int res;
+        if (it != nodes.end()) {
+            res = it->second;
+        } else {
+            auto var = variables.find(mtbdd_getvar(node));
+            if (var == variables.end()) {
+                var = variables.emplace(mtbdd_getvar(node), next).first;
+                next += 2;
+            }
+            const unsigned int v = var->second;
+            const MTBDD low = mtbdd_getlow(node);
+            const MTBDD high = mtbdd_gethigh(node);
+            if (low == mtbdd_false) {
+                res = makeAnd(v, literal(high));
+            } else if (high == mtbdd_false) {
+                res = makeAnd(aiger_not(v), literal(low));
+            } else if (high == mtbdd_true) {
+                res = aiger_not(makeAnd(aiger_not(v), aiger_not(literal(low))));
+            } else {
+                const unsigned int l = literal(low);
+                const unsigned int h = literal(high);
+                res = aiger_not(makeAnd(aiger_not(makeAnd(aiger_not(v), l)), aiger_not(makeAnd(v, h))));
+            }
+            nodes.emplace(node, res);
+        }
+        return complemented ? aiger_not(res) : res;
+    }
+};
+
+// Choose a variable order for the functions, which the Shannon expansion follows. Sylvan has no
+// dynamic reordering, so the functions are renamed to fresh variables (first, first + 1, ...) in
+// the order to evaluate. Sifting moves each variable through all positions and keeps the best,
+// until no move improves; then it restarts from a random order (with a fixed seed). The cost is
+// the number of gates of the Shannon expansion of all functions together. It stops when the
+// work (BDD nodes visited by the cost, see ShannonCost) exceeds budget, so the result does not
+// depend on the speed of the machine, and adds the work to used. Returns false (and leaves the
+// functions) if there are more than MAX_REORDER_VARS variables; otherwise replaces the
+// functions and sets order[position] to the original variable.
+constexpr int MAX_REORDER_VARS = 22;
+constexpr int MAX_REORDER_RESTARTS = 3;
+
+bool reorderFunctions(const std::vector<MTBDD*>& functions, const std::vector<uint32_t>& vars, uint32_t first,
+                      long budget, long& used, std::vector<uint32_t>& order)
+{
+    const int n = static_cast<int>(vars.size());
+    if (n == 0 || n > MAX_REORDER_VARS) return false;
+    Pool pool;
+    std::vector<MTBDD*> original, renamed;
+    for (MTBDD* f : functions) {
+        original.push_back(&pool.add(*f));
+        renamed.push_back(&pool.add(mtbdd_false));
+    }
+    MTBDD& map = pool.add(mtbdd_false);
+    MTBDD& var = pool.add(mtbdd_false);
+    std::vector<MTBDD> values(functions.size());
+    auto cost = [&](const std::vector<uint32_t>& ord) {
+        map = mtbdd_map_empty();
+        for (int pos = 0; pos < n; pos++) {
+            var = sylvan_ithvar(first + static_cast<uint32_t>(pos));
+            map = mtbdd_map_add(map, ord[pos], var);
+        }
+        for (size_t i = 0; i < functions.size(); i++) {
+            *renamed[i] = sylvan_compose(*original[i], map);
+            values[i] = *renamed[i];
+        }
+        return ShannonCost::of(values, used);
+    };
+    const long limit = used + budget;
+    std::vector<uint32_t> current = vars;
+    unsigned int currentCost = cost(current);
+    order = current;
+    unsigned int best = currentCost;
+    uint32_t seed = 12345;
+    auto random = [&](int bound) {
+        seed = seed * 1103515245u + 12345u;
+        return static_cast<int>((seed >> 16) % static_cast<uint32_t>(bound));
+    };
+    for (int restart = 0; restart < MAX_REORDER_RESTARTS; restart++) {
+        if (restart > 0) {
+            for (int i = n - 1; i > 0; i--) std::swap(current[i], current[random(i + 1)]);
+            currentCost = cost(current);
+        }
+        bool improved = true;
+        while (improved && used < limit) {
+            improved = false;
+            for (int v = 0; v < n && used < limit; v++) {
+                std::vector<uint32_t> moved = current;
+                moved.erase(std::find(moved.begin(), moved.end(), vars[v]));
+                std::vector<uint32_t> bestMove = current;
+                for (int pos = 0; pos < n; pos++) {
+                    std::vector<uint32_t> candidate = moved;
+                    candidate.insert(candidate.begin() + pos, vars[v]);
+                    const unsigned int c = cost(candidate);
+                    if (c < currentCost) {
+                        currentCost = c;
+                        bestMove = candidate;
+                        improved = true;
+                    }
+                }
+                current = bestMove;
+            }
+        }
+        if (currentCost < best) {
+            best = currentCost;
+            order = current;
+        }
+        if (used >= limit) break;
+    }
+    cost(order);
+    for (size_t i = 0; i < functions.size(); i++) *functions[i] = *renamed[i];
+    return true;
+}
+
+}  // namespace
+
 void AIGEncoder::processBinary()
 {
-    // initialize state_to_lit and bddvar_to_lit
+    MTBDD cap_bdds[game.cap_count];   // contains the solution: controllable ap bdds: state -> uap -> B
+    MTBDD state_bdds[game.statebits]; // contains the solution: state bit bdds      : state -> uap -> B
+    std::vector<bool> live(game.statebits, true);   // the state bits that get a latch
+    std::vector<uint32_t> order;                     // with reordering: the variable at each position
+
+    // we use the "strategies" field of the game class, which should only include state -> uap -> cap.
+
+    if (dontcares) {
+        chooseWithDontCares(cap_bdds, state_bdds);
+        // A state bit whose next function is 0 is always 0 (latches start at 0): substitute 0 for
+        // it in all functions and drop its latch, until no more bits become constant.
+        MTBDD cube = mtbdd_false, set = mtbdd_false;
+        mtbdd_refs_pushptr(&cube);
+        mtbdd_refs_pushptr(&set);
+        for (bool changed = true; changed;) {
+            changed = false;
+            for (int i = 0; i < game.statebits; i++) {
+                if (!live[i] || state_bdds[i] != mtbdd_false) continue;
+                live[i] = false;
+                changed = true;
+                uint32_t var = mtbdd_set_first(game.s_vars) + static_cast<uint32_t>(i);
+                cube = sylvan_nithvar(var);
+                set = mtbdd_set_from_array(&var, 1);
+                for (int j = 0; j < game.cap_count; j++) cap_bdds[j] = sylvan_and_exists(cap_bdds[j], cube, set);
+                for (int j = 0; j < game.statebits; j++) {
+                    if (live[j]) state_bdds[j] = sylvan_and_exists(state_bdds[j], cube, set);
+                }
+            }
+        }
+        mtbdd_refs_popptr(2);
+        if (reorderWork > 0 && !isop) {
+            std::vector<MTBDD*> functions;
+            std::vector<uint32_t> vars;
+            for (int i = 0; i < game.cap_count; i++) functions.push_back(&cap_bdds[i]);
+            for (int i = 0; i < game.statebits; i++) {
+                if (!live[i]) continue;
+                functions.push_back(&state_bdds[i]);
+                vars.push_back(mtbdd_set_first(game.s_vars) + static_cast<uint32_t>(i));
+            }
+            for (int i = 0; i < game.uap_count; i++) vars.push_back(mtbdd_set_first(game.uap_vars) + static_cast<uint32_t>(i));
+            // fresh variables after all variables of the game (the next-state variables are last)
+            const uint32_t first = mtbdd_set_first(game.ns_vars) + static_cast<uint32_t>(game.statebits);
+            if (!reorderFunctions(functions, vars, first, reorderWork, reorderUsed, order)) order.clear();
+        }
+    } else {
+        // compute the BDDs for the controllable APs
+        for (auto i = 0; i < game.cap_count; i++) {
+            cap_bdds[i] = sylvan_ithvar(mtbdd_set_first(game.cap_vars) + i);
+            mtbdd_protect(&cap_bdds[i]);
+            // keep just s and u... get rid of cap variables
+            cap_bdds[i] = sylvan_and_exists(game.strategies, cap_bdds[i], game.cap_vars);
+        }
+
+        // now we compute the full BDD excluding priority and controllable AP
+        // the BDD "full" is defined on variables state -> uap -> next state
+        MTBDD pc_vars = mtbdd_set_addall(game.np_vars, game.cap_vars);
+        mtbdd_protect(&pc_vars);
+        MTBDD full = mtbdd_and_exists(game.strategies, game.trans, pc_vars);
+        mtbdd_protect(&full);
+
+        // compute bdds for each state variable
+        for (int i=0; i<game.statebits; i++) {
+            state_bdds[i] = sylvan_ithvar(mtbdd_set_first(game.ns_vars) + i);
+            mtbdd_protect(&state_bdds[i]);
+            // keep just s and u... get rid of next state variables
+            state_bdds[i] = sylvan_and_exists(full, state_bdds[i], game.ns_vars);
+        }
+
+        mtbdd_unprotect(&full);
+        mtbdd_unprotect(&pc_vars);
+    }
+
+    // the latches of the state bits, and the literals of the variables (also renamed ones)
     {
         auto _vars = game.s_vars;
         for (int i = 0; i < game.statebits; i++) {
             auto bddvar = mtbdd_set_first(_vars);
             _vars = mtbdd_set_next(_vars);
+            if (!live[i]) continue;
             auto lit = circuit->makeLatch();
             state_to_lit[i] = lit;
             bddvar_to_lit.emplace(bddvar, lit);
         }
+        const uint32_t first = mtbdd_set_first(game.ns_vars) + static_cast<uint32_t>(game.statebits);
+        for (size_t pos = 0; pos < order.size(); pos++) {
+            bddvar_to_lit.emplace(first + static_cast<uint32_t>(pos), bddvar_to_lit.at(order[pos]));
+        }
     }
-
-    MTBDD cap_bdds[game.cap_count];   // contains the solution: controllable ap bdds: state -> uap -> B
-    MTBDD state_bdds[game.statebits]; // contains the solution: state bit bdds      : state -> uap -> B
-
-    // we use the "strategies" field of the game class, which should only include state -> uap -> cap.
-
-    // compute the BDDs for the controllable APs
-    for (auto i = 0; i < game.cap_count; i++) {
-        cap_bdds[i] = sylvan_ithvar(mtbdd_set_first(game.cap_vars) + i);
-        mtbdd_protect(&cap_bdds[i]);
-        // keep just s and u... get rid of cap variables
-        cap_bdds[i] = sylvan_and_exists(game.strategies, cap_bdds[i], game.cap_vars);
-    }
-
-    // now we compute the full BDD excluding priority and controllable AP
-    // the BDD "full" is defined on variables state -> uap -> next state
-    MTBDD pc_vars = mtbdd_set_addall(game.np_vars, game.cap_vars);
-    mtbdd_protect(&pc_vars);
-    MTBDD full = mtbdd_and_exists(game.strategies, game.trans, pc_vars);
-    mtbdd_protect(&full);
-
-    // compute bdds for each state variable
-    for (int i=0; i<game.statebits; i++) {
-        state_bdds[i] = sylvan_ithvar(mtbdd_set_first(game.ns_vars) + i);
-        mtbdd_protect(&state_bdds[i]);
-        // keep just s and u... get rid of next state variables
-        state_bdds[i] = sylvan_and_exists(full, state_bdds[i], game.ns_vars);
-    }
-
-    mtbdd_unprotect(&full);
-    mtbdd_unprotect(&pc_vars);
 
     if (isop) {
         // ISOP construction, first convert all cap bdds etc to covers
@@ -729,8 +1288,10 @@ void AIGEncoder::processBinary()
             zdd_unprotect(&cap_zdds[i]);
         }
         for (int i=0; i<game.statebits; i++) {
-            auto res = bddToAigCoverSop(state_zdds[i]);
-            circuit->setLatch(state_to_lit.at(i), res, "");
+            if (live[i]) {
+                auto res = bddToAigCoverSop(state_zdds[i]);
+                circuit->setLatch(state_to_lit.at(i), res, "");
+            }
             zdd_unprotect(&state_zdds[i]);
         }
     } else {
@@ -761,12 +1322,15 @@ void AIGEncoder::processBinary()
                 bddvar_to_lit.insert_or_assign(bddvars.at(i), state_to_lit.at(game.statebits - i - 1));
             }
         }
+        std::vector<unsigned int> output_lits;
         for (int i=0; i<game.cap_count; i++) {
             auto res = bddToAigRecursive(cap_bdds[i]);
             circuit->makeOutput(res, cap_labels[i]);
+            output_lits.push_back(res);
         }
         for (int i=0; i<game.statebits; i++) {
-            auto res = bddToAigRecursive(state_bdds[i]);
+            if (!live[i]) continue;
+            auto res = dontcares ? latchFunction(state_bdds[i], cap_bdds, output_lits) : bddToAigRecursive(state_bdds[i]);
             circuit->setLatch(state_to_lit.at(i), res, "");
         }
     }
@@ -805,6 +1369,8 @@ std::unique_ptr<AIGCircuit> AIGEncoder::encode()
 
     if (sop) {
         processSOP();
+    } else if (onehot && dontcares) {
+        if (!processOnehotDontCares(MAX_ONEHOT_STATES)) return nullptr;
     } else if (onehot) {
         processOnehot();
     } else {

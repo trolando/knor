@@ -73,6 +73,12 @@ public:
      */
     void postprocess(bool verbose);
 
+    /**
+     * Restrict strategies and trans to the states that are reachable from the
+     * initial state with the moves of the strategies (part of postprocess)
+     */
+    void restrictToReachable(bool verbose);
+
     [[maybe_unused]] void print_vars() const;
     [[maybe_unused]] void print_kiss(bool only_strategy=false);
     [[maybe_unused]] void print_trans(bool only_strategy=false) const;
