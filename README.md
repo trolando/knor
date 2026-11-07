@@ -59,18 +59,18 @@ Example command line:
 - Use `--print-game` to print the constructed parity game to standard output, and terminate instead of continuing with solving the parity game.
 
 ### Solving the game
-- Use `--sym` to run the internal symbolic parity game solver. This is the default option; using `--sym` is optional.
-- You can select an explicit solver for the parity game solving, e.g., `--npp`, `--fpi`, `--fpj` are recommended solvers for most games, but `--tl`, `--rtl` are suitable for artificial hard games. See further the documentation of [Oink](https://github.com/trolando/oink/).
-- **Recommendation**: `--sym` unless the game is an artificial hard game, then `--tl` or `--rtl`.
+- By default, the game is solved by an explicit solver of [Oink](https://github.com/trolando/oink/), tangle learning (`--tl`). You can select another one, e.g., `--npp`, `--fpi`, `--fpj`; see further the documentation of Oink.
+- Use `--sym` to run the internal symbolic parity game solver instead.
+- **Recommendation**: the default.
 
 ### Controller synthesis
 - Use `--real` to not do synthesis, only check realizability.
 - Use `--bisim` to minimize the state space using bisimulation minimization prior to synthesis.
 - Use `--onehot` to encode the states using one-hot encoding instead of logarithmic encoding.
 - Use `--isop` to use ZDD covers for the conversion to AIG. By default, a direct conversion based on ITE (Shannon expansion) is used.
-- Use `--best` to automatically find the smallest result of combinations of `--bisim`, `--isop` and `--onehot`.
+- Use `--auto-encode` for a small controller: the multi-strategy of fixpoint iteration (`--fpim`), minimisation of the controller as a Mealy machine with a SAT solver (`--mealy-sat`), encoding with don't cares (`--dc`), and for small controllers a short search over all winning moves. It works with an explicit solver; `--fpjm` may replace `--fpim`.
 - Use `--compress` to compress the AIG after construction using ABC.
-- **Recommendation**: `--bisim --onehot` to get a fast result, or `--best --compress` to get the best result; `--bisim --onehot --compress` gives reasonably good results.
+- **Recommendation**: `--auto-encode` for the smallest result, optionally with `--compress`; `--bisim --onehot` for a fast result.
 
 ### Output of AIG controller
 - Use `-a` to write the result to ascii AIGER format.

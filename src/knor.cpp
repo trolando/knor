@@ -31,6 +31,10 @@ extern "C" {
 
 using namespace sylvan;
 
+// with --auto-encode: the search over all winning moves, for controllers of at most so many states
+static constexpr int AUTO_ANY_STATES = 16;
+static constexpr double AUTO_ANY_SECONDS = 10.0;
+
 // with --dc: the work (BDD nodes visited, see AIGEncoder::setReorder) for choosing the variable
 // order of the binary candidates by sifting (the best candidates first), and at most for each
 static constexpr long REORDER_WORK = 3000000;
@@ -75,8 +79,8 @@ handleOptions(int &argc, char**& argv)
             ("fpim", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers)")
             ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
             ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
-            ("mealy-any", "With --mealy-sat, also search for smaller controllers that may make any winning move (explicit solvers)")
-            ("mealy-time", "Seconds for the SAT searches of --mealy-sat, and as many for each wider search; the rest of the minimisation is not bounded", cxxopts::value<double>()->default_value("60"))
+            ("mealy-any", "With --mealy-sat or --auto-encode, also search for smaller controllers that may make any winning move, without limits (explicit solvers)")
+            ("mealy-time", "Seconds for the SAT searches of --mealy-sat, and as many for each wider search (with --auto-encode, 10 for all winning moves); the rest of the minimisation is not bounded", cxxopts::value<double>()->default_value("60"))
             ("bisim-game", "Apply bisimulation minimisation to the game")
             ("bisim-sol", "Apply bisimulation minimisation to the solution")
             ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
@@ -87,7 +91,7 @@ handleOptions(int &argc, char**& argv)
             ("dc-all", "With --dc, try every encoding candidate, not only those that pay off (for experiments; slower)")
             ("compress", "Compress the generated AIG using ABC")
             ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
-            ("best", "Try all combinations of bisim and isop and write the smallest AIG")
+            ("auto-encode", "Synthesize a small controller: --mealy-sat --dc with --fpim (unless --fpjm or --sym), and for a small controller a short search over all winning moves")
             ("no-solve", "Do not solve, halt after constructing the parity game")
             ("print-game", "Just print the parity game (implies no-solve)")
             ("print-witness", "Print the witness parity game")
@@ -119,8 +123,8 @@ handleOptions(int &argc, char**& argv)
             exit(0);
         }
 
-        if (options.count("mealy-any") && (!options.count("mealy-sat") || options.count("sym"))) {
-            std::cerr << "error parsing options: --mealy-any requires --mealy-sat and an explicit solver (not --sym)" << std::endl;
+        if (options.count("mealy-any") && ((!options.count("mealy-sat") && !options.count("auto-encode")) || options.count("sym"))) {
+            std::cerr << "error parsing options: --mealy-any requires --mealy-sat or --auto-encode, and an explicit solver (not --sym)" << std::endl;
             exit(255);
         }
 
@@ -137,9 +141,13 @@ handleOptions(int &argc, char**& argv)
             exit(255);
         }
 
-        if (options.count("dc") && (options.count("onehot") || options.count("sop") || options.count("best"))) {
-            std::cerr << "error parsing options: --dc chooses the encoding (not --onehot, --sop or --best)" << std::endl;
+        if ((options.count("dc") || options.count("auto-encode")) && (options.count("onehot") || options.count("sop"))) {
+            std::cerr << "error parsing options: --dc and --auto-encode choose the encoding (not --onehot or --sop)" << std::endl;
             exit(255);
+        }
+        if (options.count("auto-encode") && options.count("sym")) {
+            std::cerr << "warning: --auto-encode works best with an explicit solver and --fpim (the default) or --fpjm;"
+                         " with --sym, the search over all winning moves is skipped" << std::endl;
         }
 
         return options;
@@ -170,6 +178,13 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     auto & options = *_options;
 
     bool verbose = options["verbose"].count() > 0;
+    // --auto-encode is --mealy-sat --dc with --fpim (unless --fpjm or --sym is given), with the search
+    // over all winning moves for small controllers (explicit solvers)
+    const bool auto_encode = options.count("auto-encode") > 0;
+    const bool use_fpim = options.count("fpim") > 0 || (auto_encode && !options.count("fpjm") && !options.count("sym"));
+    const bool use_mealy = auto_encode || options.count("mealy-sat") > 0;
+    const bool use_any = auto_encode || options.count("mealy-any") > 0;
+    const bool use_dc = auto_encode || options.count("dc") > 0;
     if (options.count("stats")) stats_file.path = options["stats"].as<std::string>();
     RunStats& run_stats = stats_file.stats;
 
@@ -258,7 +273,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
     std::unique_ptr<SymGame> sym = nullptr;
     bool realizable; // not known yet
-    MTBDD anyMoves = mtbdd_false;   // with --mealy-any: every move into the winning region
+    MTBDD anyMoves = mtbdd_false;   // with --mealy-any or --auto-encode: every move into the winning region
     mtbdd_protect(&anyMoves);
     MTBDD extendedMoves = mtbdd_false;   // with --permissive and --mealy-sat: the permissive extension
     mtbdd_protect(&extendedMoves);
@@ -369,7 +384,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // finally, check if the initial vertex is won by controller or environment, and unless
         // only the verdict is asked for, get the strategy
         if (realizable && options["real"].count() == 0) {
-            if (sym != nullptr && options["mealy-any"].count() > 0) {
+            if (sym != nullptr && use_any) {
                 std::map<MTBDD, std::vector<MTBDD>> str;  // cap to winning priostates
                 for (int v=0; v<game->vertexcount(); v++) {
                     if (game->owner(v) != 0 || game->getWinner(v) != 0) continue;
@@ -379,7 +394,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                 }
                 if (sym->applyMultiStrategy(str)) anyMoves = sym->strategies;
             }
-            const bool fpim = options["fpim"].count() > 0;
+            const bool fpim = use_fpim;
             const bool fpjm = options["fpjm"].count() > 0;
             if (sym != nullptr && (fpim || fpjm || options["permissive"].count() > 0)) {
                 auto allowed = PermissiveStrategy::positional(*game);
@@ -430,7 +445,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                         std::cerr << "cannot apply strategy!" << std::endl;
                     }
                 };
-                if (!extended.empty() && options["mealy-sat"].count() > 0) {
+                if (!extended.empty() && use_mealy) {
                     // the minimiser searches the extension after the strategy (see MealyMinimizer::minimize)
                     apply(extended);
                     extendedMoves = sym->strategies;
@@ -548,15 +563,16 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     // moves, for the encoder to choose from; such games are not post-processed or bisimulated
     std::vector<MealyMinimizer::Variant> variants;
     bool minimised = false;
-    if (options["mealy-sat"].count() > 0) {
+    if (use_mealy) {
         const auto t_before = wctime();
         MealyMinimizer::Options minimise;
         minimise.seconds = options["mealy-time"].as<double>();
         minimise.verbose = verbose;
-        minimise.relax = options["dc"].count() > 0;
+        minimise.relax = use_dc;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
-        minimise.anySeconds = minimise.seconds;
+        minimise.anySeconds = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_SECONDS : minimise.seconds;
+        minimise.anyStates = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_STATES : 0;
         auto minimized = MealyMinimizer::minimize(*sym, minimise);
         run_stats.searches = minimized.searches;
         run_stats.time("minimisation", wctime() - t_before);
@@ -576,7 +592,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     // without a minimised controller, --dc may choose among the moves of the strategy itself, rather
     // than the lowest output that postprocess picks: on the explicit route, the strategy is a winning
     // multi-strategy (the freedom of the symbolic solver need not be), so every choice is correct
-    if (options["dc"].count() > 0 && !minimised && explicit_solver) {
+    if (use_dc && !minimised && explicit_solver) {
         auto relational = std::make_unique<SymGame>(sym->statebits, sym->priobits, sym->uap_count, sym->cap_count,
                                                      sym->maxprio);
         relational->trans = sym->trans;
@@ -601,9 +617,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // sym->print_strategies();
     }
 
-    const bool best = options["best"].count() > 0;
-
-    if (bisim_sol || best) {
+    if (bisim_sol) {
         const auto t_before = wctime();
         MTBDD partition = CALL(min_lts_strong, sym.get(), true);
         mtbdd_protect(&partition);
@@ -638,68 +652,6 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         exit(10);
     }
 
-    if (best) {
-        auto var1b = AIGEncoder(*data, *sym).setSop().encode();
-        auto var2b = AIGEncoder(*data, *sym).setOneHot().setIsop().encode();
-        auto var3b = AIGEncoder(*data, *sym).setOneHot().encode();
-        auto var4b = AIGEncoder(*data, *sym).encode();
-
-        if (verbose) {
-            std::cerr << "bisim, sop: " << var1b->getNumAnds() << " gates and " << var1b->getNumLatches() << " latches" << std::endl;
-            std::cerr << "bisim, onehot+isop: " << var2b->getNumAnds() << " gates and " << var2b->getNumLatches() << " latches" << std::endl;
-            std::cerr << "bisim, onehot+ite: " << var3b->getNumAnds() << " gates and " << var3b->getNumLatches() << " latches" << std::endl;
-            std::cerr << "bisim, binary+ite: " << var4b->getNumAnds() << " gates and " << var4b->getNumLatches() << " latches" << std::endl;
-        }
-
-        if (options["compress"].count() > 0) {
-            ABCMinimization(*var1b, verbose).compress(compress_timeout/4);
-            ABCMinimization(*var2b, verbose).compress(compress_timeout/4);
-            ABCMinimization(*var3b, verbose).compress(compress_timeout/4);
-            ABCMinimization(*var4b, verbose).compress(compress_timeout/4);
-
-            if (verbose) {
-                std::cerr << "sizes after compressing with ABC:" << std::endl;
-                std::cerr << "bisim, sop: " << var1b->getNumAnds() << " gates and " << var1b->getNumLatches() << " latches" << std::endl;
-                std::cerr << "bisim, onehot+isop: " << var2b->getNumAnds() << " gates and " << var2b->getNumLatches() << " latches" << std::endl;
-                std::cerr << "bisim, onehot+ite: " << var3b->getNumAnds() << " gates and " << var3b->getNumLatches() << " latches" << std::endl;
-                std::cerr << "bisim, binary+ite: " << var4b->getNumAnds() << " gates and " << var4b->getNumLatches() << " latches" << std::endl;
-            }
-        }
-
-        auto var1bsize = var1b->getNumAnds() + var1b->getNumLatches();
-        auto var2bsize = var2b->getNumAnds() + var2b->getNumLatches();
-        auto var3bsize = var3b->getNumAnds() + var3b->getNumLatches();
-        auto var4bsize = var4b->getNumAnds() + var4b->getNumLatches();
-
-        auto smallest_size = var1bsize;
-        auto * smallest = &var1b;
-        if (smallest_size > var2bsize) {
-            smallest_size = var2bsize;
-            smallest = &var2b;
-        }
-        if (smallest_size > var3bsize) {
-            smallest_size = var3bsize;
-            smallest = &var3b;
-        }
-        if (smallest_size > var4bsize) {
-            smallest_size = var4bsize;
-            smallest = &var4b;
-        }
-
-        run_stats.ands = (*smallest)->getNumAnds();
-        run_stats.latches = (*smallest)->getNumLatches();
-        if (options.count("write-binary")) {
-            (*smallest)->writeBinary(stdout);
-        } else if (options["write-ascii"].count() > 0) {
-            (*smallest)->writeAscii(stdout);
-        }
-
-        if (verbose) {
-            std::cerr << "\033[1;37mtotal time was " << std::fixed << (wctime() - t_before_parsing) << " sec.\033[m" << std::endl;
-        }
-        exit(10);
-    }
-
     AIGEncoder encoder(*data, *sym);
     if (verbose) encoder.setVerbose();
     if (options["isop"].count() > 0) encoder.setIsop();
@@ -710,7 +662,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     run_stats.candidates.push_back(RunStats::Candidate{"controller", "plain", false, false, false, false,
                                                        circuit->getNumAnds(), circuit->getNumLatches(),
                                                        wctime() - t_before_enc});
-    if (options["dc"].count() > 0) {
+    if (use_dc) {
         // the encoding, the numbering of the states, the order of the bits and the simplifications
         // matter, in no predictable way: keep the smallest circuit (gates and latches), also compared
         // to the one without don't cares
