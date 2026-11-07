@@ -59,3 +59,14 @@ add_test(NAME acceptance
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/acceptance.sh $<TARGET_FILE:knor>)
 add_test(NAME aigcheck
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/aigcheck.sh $<TARGET_FILE:knor> $<TARGET_FILE:aigcheck>)
+
+# Optional: check the controllers and aigcheck itself with Spot, which shares no code with knor
+find_program(AUTFILT autfilt)
+find_package(Python3 COMPONENTS Interpreter)
+if(AUTFILT AND Python3_Interpreter_FOUND)
+    add_test(NAME spot_crosscheck
+        COMMAND bash ${CMAKE_SOURCE_DIR}/test/spot_crosscheck.sh $<TARGET_FILE:knor> $<TARGET_FILE:aigcheck>
+                ${AUTFILT} ${Python3_EXECUTABLE})
+else()
+    message(STATUS "autfilt (Spot) or Python 3 not found: the test spot_crosscheck is skipped (set AUTFILT to enable it)")
+endif()

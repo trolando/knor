@@ -20,3 +20,9 @@ controller against the automaton it was synthesized from, by exploring
 their product. It shares only the eHOA parser, the paritizer and the AIGER
 library with knor. The ctest `aigcheck` (`aigcheck.sh`) runs it on the
 controllers of all realizable examples.
+
+The optional ctest `spot_crosscheck` (`spot_crosscheck.sh`, with
+`aig2hoa.py`) checks controllers with Spot, which shares no code with knor:
+`aig2hoa.py` translates a controller into an automaton of its traces and
+`autfilt --included-in` compares it with the specification. It runs when
+CMake finds `autfilt` (set `-DAUTFILT=/path/to/autfilt`) and Python 3.
