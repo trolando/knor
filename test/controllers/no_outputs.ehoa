@@ -1,0 +1,16 @@
+HOA: v1
+name: "a specification without outputs"
+States: 2
+Start: 0
+AP: 1 "a"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+controllable-AP:
+properties: trans-labels explicit-labels trans-acc complete deterministic
+--BODY--
+State: 0
+[0] 1 {0}
+[!0] 0 {0}
+State: 1
+[t] 0
+--END--

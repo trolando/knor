@@ -12,3 +12,11 @@ own licenses:
 Both include the AIGER library by Armin Biere, whose license is in the
 header of `src/aiger.h`. The complete source code of both tools is
 available at the links above.
+
+## Controller checks
+
+`aigcheck` (built with knor, source `aigcheck.cpp`) checks an AIGER
+controller against the automaton it was synthesized from, by exploring
+their product. It shares only the eHOA parser, the paritizer and the AIGER
+library with knor. The ctest `aigcheck` (`aigcheck.sh`) runs it on the
+controllers of all realizable examples.

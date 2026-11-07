@@ -36,6 +36,19 @@ if(CMAKE_HOST_SYSTEM MATCHES Linux)
 endif()
 target_include_directories(knor PRIVATE src)
 
+# Independent checker of the controllers against the automata, for the tests
+add_executable(aigcheck)
+target_sources(aigcheck
+    PRIVATE
+        test/aigcheck.cpp
+        src/aiger.c
+        src/paritize.cpp
+        src/simplehoa.cpp
+)
+target_compile_features(aigcheck PUBLIC c_std_11 cxx_std_17)
+target_compile_options(aigcheck PRIVATE -Wall -Wextra -fno-strict-aliasing -Wno-deprecated -Wno-unused-parameter)
+target_include_directories(aigcheck PRIVATE src)
+
 # Tests (ctest / make test)
 enable_testing()
 add_test(NAME verdict_regression
@@ -44,3 +57,5 @@ add_test(NAME parser
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/parser.sh $<TARGET_FILE:knor>)
 add_test(NAME acceptance
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/acceptance.sh $<TARGET_FILE:knor>)
+add_test(NAME aigcheck
+    COMMAND bash ${CMAKE_SOURCE_DIR}/test/aigcheck.sh $<TARGET_FILE:knor> $<TARGET_FILE:aigcheck>)
