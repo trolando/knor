@@ -158,6 +158,11 @@ unsigned int AIGEncoder::bddToAigRecursive(MTBDD bdd)
             auto rhs1 = bddToAigRecursive(low);
             res = circuit->makeAnd(rhs0, rhs1);
         }
+    } else if (high == mtbdd_true) {
+        // OR(the_lit, ...) == ~AND(~the_lit, ~...): one gate (the low edge is never complemented,
+        // so it is never true)
+        auto lowres = bddToAigRecursive(low);
+        res = aiger_not(circuit->makeAnd(aiger_not(the_lit), aiger_not(lowres)));
     } else {
         // OR(low, high) == ~AND(~AND(the_lit, ...), ~AND(~the_lit, ...))
         auto lowres = bddToAigRecursive(low);
