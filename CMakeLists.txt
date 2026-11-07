@@ -26,6 +26,7 @@ target_sources(knor
         src/mealy.cpp
         src/paritize.cpp
         src/permissive.cpp
+        src/runstats.cpp
         src/simplehoa.cpp
         src/symgame.cpp
 )

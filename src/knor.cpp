@@ -21,6 +21,7 @@
 #include <gameconstructor.hpp>
 #include <mealy.hpp>
 #include <permissive.hpp>
+#include <runstats.hpp>
 
 extern "C" {
     #include <sylvan.h>
@@ -34,6 +35,20 @@ using namespace sylvan;
 // order of the binary candidates by sifting (the best candidates first), and at most for each
 static constexpr long REORDER_WORK = 3000000;
 static constexpr long REORDER_CANDIDATE_WORK = 1000000;
+
+namespace {
+
+// --stats: the statistics of the run, written when knor exits (also through exit())
+struct StatsFile final {
+    std::string path;
+    RunStats stats;
+    ~StatsFile()
+    {
+        if (!path.empty() && !stats.write(path)) std::cerr << "error: cannot write " << path << std::endl;
+    }
+} stats_file;
+
+}  // namespace
 
 static double wctime()
 {
@@ -80,6 +95,7 @@ handleOptions(int &argc, char**& argv)
             ("a,write-ascii", "Write ascii AIGER file")
             ("b,write-binary", "Write binary AIGER file")
             ("v,verbose", "Be verbose")
+            ("stats", "Write statistics of the run (times, minimisation, encoding candidates) as JSON to the file", cxxopts::value<std::string>())
             ;
         opts.add_options("Explicit solvers")
             ("solvers", "List available solvers")
@@ -154,6 +170,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     auto & options = *_options;
 
     bool verbose = options["verbose"].count() > 0;
+    if (options.count("stats")) stats_file.path = options["stats"].as<std::string>();
+    RunStats& run_stats = stats_file.stats;
 
     // First initialize the HOA data structure
     const auto t_before_parsing = wctime();
@@ -176,6 +194,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     }
 
     const auto t_after_parsing = wctime();
+    run_stats.time("parse", t_after_parsing - t_before_parsing);
     if (verbose) {
         std::cerr << "\033[1;37mfinished parsing automaton in " << std::fixed << (t_after_parsing - t_before_parsing) << " sec.\033[m" << std::endl;
         std::cerr << "automaton has " << data->noStates << " states." << std::endl;
@@ -256,6 +275,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             const double t_before_splitting = wctime();
             game.reset(GameConstructor::constructGameNaive(data, isMaxParity, controllerIsOdd));
             const double t_after_splitting = wctime();
+            run_stats.time("construct", t_after_splitting - t_before_splitting);
             if (verbose) {
                 std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
             }
@@ -263,6 +283,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             const double t_before_splitting = wctime();
             game.reset(GameConstructor::constructGame(data, isMaxParity, controllerIsOdd));
             const double t_after_splitting = wctime();
+            run_stats.time("construct", t_after_splitting - t_before_splitting);
             if (verbose) {
                 std::cerr << "\033[1;37mfinished constructing game in " << std::fixed << (t_after_splitting - t_before_splitting) << " sec.\033[m" << std::endl;
             }
@@ -271,6 +292,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             vstart = 0; // always set to 0 by constructSymGame
             sym = GameConstructor::constructSymGame(data, isMaxParity, controllerIsOdd);
             const double t_2 = wctime();
+            run_stats.time("construct", t_2 - t_1);
             if (verbose) std::cerr << "\033[1;37mfinished constructing symbolic game in " << std::fixed << (t_2 - t_1) << " sec.\033[m" << std::endl;
             if (bisim_game) {
                 const double t_before = wctime();
@@ -282,11 +304,13 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                      std::cerr << "after bisimulation minimisation: " << count_blocks() << " blocks." << std::endl;
                 }
                 const double t_after = wctime();
+                run_stats.time("bisimulation of the game", t_after - t_before);
                 if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of game in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
             }
             const double t_3 = wctime();
             game = sym->toExplicit(vertex_to_bdd);
             const double t_4 = wctime();
+            run_stats.time("explicit game", t_4 - t_3);
             if (verbose) {
                 std::cerr << "\033[1;37mfinished constructing explicit game in " << std::fixed << (t_4 - t_3) << " sec.\033[m" << std::endl;
             }
@@ -329,6 +353,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // and run the solver
         engine.run();
         double end = wctime();
+        run_stats.time("solve", end - begin);
 
         // report how long it all took
         if (verbose) {
@@ -371,6 +396,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                         // cannot happen; keep the positional strategy rather than risk a wrong controller
                         std::cerr << "error: " << name << " disagrees with " << solver << ", using its strategy" << std::endl;
                     }
+                    run_stats.time(fpim ? "fpim" : "fpjm", wctime() - t_before);
                     if (verbose) {
                         long moves = 0;
                         for (const auto& a : allowed) moves += static_cast<long>(a.size());
@@ -388,6 +414,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                         std::cerr << "error: the multi-strategy is not winning, using the strategy before extending it" << std::endl;
                         extended.clear();
                     }
+                    run_stats.time("extension", wctime() - t_before);
                     if (verbose) {
                         std::cerr << "multi-strategy: " << stats.added << " of " << stats.candidates
                                   << " further edges allowed at " << stats.vertices << " reachable vertices" << std::endl;
@@ -433,6 +460,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         const double t_before_construct = wctime();
         sym = GameConstructor::constructSymGame(data, isMaxParity, controllerIsOdd);
         const double t_after_construct = wctime();
+        run_stats.time("construct", t_after_construct - t_before_construct);
 
         if (verbose) {
             std::cerr << "\033[1;37mfinished constructing symbolic game in " << std::fixed << (t_after_construct - t_before_construct) << " sec.\033[m" << std::endl;
@@ -448,6 +476,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                 std::cerr << "after bisimulation minimisation: " << count_blocks() << " blocks." << std::endl;
             }
             const double t_after = wctime();
+            run_stats.time("bisimulation of the game", t_after - t_before);
             if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of game in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
         }
 
@@ -466,11 +495,14 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         const double t_before_solve = wctime();
         realizable = sym->solve(verbose);
         const double t_after_solve = wctime();
+        run_stats.time("solve", t_after_solve - t_before_solve);
 
         if (verbose) {
             std::cerr << "\033[1;37mfinished solving game in " << std::fixed << (t_after_solve - t_before_solve) << " sec.\033[m" << std::endl;
         }
     }
+
+    run_stats.verdict = realizable ? "realizable" : "unrealizable";
 
     if (options["real"].count() > 0) {
         if (realizable) {
@@ -526,6 +558,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         minimise.anyMoves = anyMoves;
         minimise.anySeconds = minimise.seconds;
         auto minimized = MealyMinimizer::minimize(*sym, minimise);
+        run_stats.searches = minimized.searches;
+        run_stats.time("minimisation", wctime() - t_before);
         if (minimized.game != nullptr) {
             sym = std::move(minimized.game);
             variants = std::move(minimized.variants);
@@ -555,6 +589,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         const auto t_before = wctime();
         sym->postprocess(verbose);
         const auto t_after = wctime();
+        run_stats.time("postprocess", t_after - t_before);
 
         if (verbose) {
             std::cerr << "\033[1;37mfinished post processing in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
@@ -578,6 +613,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         CALL(minimize, sym.get(), partition, verbose);
         mtbdd_unprotect(&partition);
         const auto t_after = wctime();
+        run_stats.time("bisimulation of the solution", t_after - t_before);
         if (verbose) std::cerr << "\033[1;37mfinished bisimulation minimisation of solution in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
     }
 
@@ -650,6 +686,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             smallest = &var4b;
         }
 
+        run_stats.ands = (*smallest)->getNumAnds();
+        run_stats.latches = (*smallest)->getNumLatches();
         if (options.count("write-binary")) {
             (*smallest)->writeBinary(stdout);
         } else if (options["write-ascii"].count() > 0) {
@@ -669,6 +707,9 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     if (options["sop"].count() > 0) encoder.setSop();
     const double t_before_enc = wctime();
     auto circuit = encoder.encode();
+    run_stats.candidates.push_back(RunStats::Candidate{"controller", "plain", false, false, false, false,
+                                                       circuit->getNumAnds(), circuit->getNumLatches(),
+                                                       wctime() - t_before_enc});
     if (options["dc"].count() > 0) {
         // the encoding, the numbering of the states, the order of the bits and the simplifications
         // matter, in no predictable way: keep the smallest circuit (gates and latches), also compared
@@ -711,12 +752,17 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         std::vector<Binary> binaries;   // the binary candidates, to reorder the best ones
         long reorder_left = REORDER_WORK;
         auto encodeCandidate = [&](size_t g, const Setting& s, long reorder) {
+            const double t_start = wctime();
             AIGEncoder other(*data, *games[g].first);
             if (options["isop"].count() > 0) other.setIsop();
             if (s.onehot) other.setOneHot();
             auto candidate = other.setDontCares(s.statesFirst, s.allCandidates, s.isopCandidate).setReorder(reorder).encode();
             if (candidate == nullptr) return false;   // too many states for one-hot
             reorder_left -= other.getReorderWork();
+            run_stats.candidates.push_back(RunStats::Candidate{games[g].second, s.onehot ? "one-hot" : "binary",
+                                                               s.statesFirst, s.allCandidates, s.isopCandidate,
+                                                               reorder > 0, candidate->getNumAnds(),
+                                                               candidate->getNumLatches(), wctime() - t_start});
             if (verbose) {
                 std::cerr << "don't cares (" << games[g].second << ", " << (s.onehot ? "one-hot, " : "binary, ")
                           << (s.statesFirst ? "state" : "outputs") << " first"
@@ -742,6 +788,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         }
     }
     const double t_after_enc = wctime();
+    run_stats.time("encoding", t_after_enc - t_before_enc);
     if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after_enc - t_before_enc) << " sec.\033[m" << std::endl;
 
     /**
@@ -753,6 +800,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         ABCMinimization(*circuit, verbose).drewrite(compress_timeout);
         const double t_after = wctime();
         if (verbose) std::cerr << "size of AIG after drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
+        run_stats.time("drw+drf", t_after - t_before);
         if (verbose) std::cerr << "\033[1;37mfinished drw+drf in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
     }
 
@@ -762,12 +810,15 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         ABCMinimization(*circuit, verbose).compress(compress_timeout);
         const double t_after = wctime();
         if (verbose) std::cerr << "size of AIG after compression: " << circuit->getNumAnds() << " gates." << std::endl;
+        run_stats.time("compression", t_after - t_before);
         if (verbose) std::cerr << "\033[1;37mfinished compression in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
     }
 
     if (verbose) {
         std::cerr << "final size of AIG: " << circuit->getNumAnds() << " gates." << std::endl;
     }
+    run_stats.ands = circuit->getNumAnds();
+    run_stats.latches = circuit->getNumLatches();
 
     if (options["write-binary"].count() > 0) {
         circuit->writeBinary(stdout);
