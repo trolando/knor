@@ -23,6 +23,7 @@ target_sources(knor
         src/bisim.cpp
         src/gameconstructor.cpp
         src/knor.cpp
+        src/mealy.cpp
         src/paritize.cpp
         src/permissive.cpp
         src/simplehoa.cpp

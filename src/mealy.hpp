@@ -1,0 +1,94 @@
+/**
+ * Copyright Tom van Dijk
+ */
+
+#ifndef KNOR_MEALY_HPP
+#define KNOR_MEALY_HPP
+
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include <symgame.hpp>
+
+/**
+ * Minimisation of the controller as a Mealy machine.
+ *
+ * The (multi-)strategy of a solved game, restricted to the states that are
+ * reachable from the initial state, is a nondeterministic Mealy machine: in
+ * every state, for every input, it allows some outputs, each with a
+ * successor state. Because the strategy is winning, every deterministic
+ * Mealy machine that only makes allowed moves is a correct controller, so
+ * the parity condition plays no role here. minimize() looks for such a
+ * machine with few states: after merging bisimilar states, it computes which
+ * states are compatible (can be served by one controller state) and a set of
+ * pairwise incompatible states, a lower bound. These anchor the first states
+ * of the controller, so that each state can only be served by the anchors it
+ * is compatible with, which keeps the SAT encoding small. It first tries as
+ * many states as the lower bound (then the result is minimal), then searches
+ * upwards with growing steps and bisects once a controller is found.
+ */
+class MealyMinimizer final {
+public:
+    /**
+     * One search for a small controller within a set of moves (for --stats).
+     */
+    struct Search {
+        std::string moves;      // "strategy", "extended strategy" or "all winning moves"
+        std::string skipped;    // why the search did not run, empty if it did
+        int machine = 0;        // states of the Mealy machine of the moves
+        int quotient = 0;       // after merging bisimilar states
+        int lowerBound = 0;     // pairwise incompatible states
+        int found = 0;          // states of the controller found (the quotient if no smaller one), 0 if none
+        bool proven = false;    // found is minimal for these moves
+        std::vector<std::pair<int, int>> calls;  // (states, 1 suffice, 0 do not suffice, -1 undecided, -2 too large)
+    };
+
+    /**
+     * With relax: another game of the controller (other state codes, more moves) for --dc.
+     */
+    struct Variant {
+        std::unique_ptr<SymGame> game;
+        std::string name;       // what it is, e.g. "relaxed, breadth-first"
+    };
+
+    struct Result {
+        std::unique_ptr<SymGame> game;  // the minimised controller, or nullptr if none was found
+        int states = 0;                 // states of the minimised controller
+        std::vector<Variant> variants;  // with relax
+        std::vector<Search> searches;   // the searches that were made
+    };
+
+    struct Options {
+        double seconds = 60;                    // for the search within the strategy, and the extended one
+        bool verbose = false;
+        bool relax = false;
+        sylvan::MTBDD extended = sylvan::mtbdd_false;   // a winning multi-strategy that contains the strategy
+        sylvan::MTBDD anyMoves = sylvan::mtbdd_false;   // all moves into the winning region
+        double anySeconds = 60;                 // for the search over anyMoves
+        int anyStates = 0;                      // search anyMoves only for controllers of at most this many states (0: all)
+    };
+
+    /**
+     * Minimise the controller given by game.trans and game.strategies, using
+     * at most options.seconds. The result is a game with the controller's
+     * states as states, in which strategies and trans contain exactly the
+     * controller's moves (with priority 0). With relax, the
+     * variants are games of the same controller with other state codes,
+     * most with every move that keeps the controller correct (possibly
+     * several outputs and successors per state and input); only AIGEncoder
+     * with setDontCares() may encode them. Then it searches the wider move
+     * sets of the options that are not mtbdd_false, each for at most its
+     * time, for a smaller controller that may make any of their moves: first
+     * extended, then anyMoves (only if the controller has at most anyStates
+     * states; such controllers are checked for losing cycles unless the moves
+     * form a winning multi-strategy). More freedom weakens the lower bound,
+     * so this gives the best of both: the fast search of the strategy, and
+     * smaller controllers where the wider search finds them. With relax, a
+     * wider controller that is not smaller is a variant too.
+     */
+    static Result minimize(SymGame& game, const Options& options);
+};
+
+#endif

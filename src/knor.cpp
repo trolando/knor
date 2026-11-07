@@ -18,6 +18,7 @@
 #include <aigencoder.hpp>
 #include <abcminimization.hpp>
 #include <gameconstructor.hpp>
+#include <mealy.hpp>
 #include <permissive.hpp>
 
 extern "C" {
@@ -52,6 +53,9 @@ handleOptions(int &argc, char**& argv)
             ("permissive", "Greedily extend the strategy to a winning multi-strategy (explicit solvers; slow on large games)")
             ("fpim", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers)")
             ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
+            ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
+            ("mealy-any", "With --mealy-sat, also search for smaller controllers that may make any winning move (explicit solvers)")
+            ("mealy-time", "Seconds for the SAT searches of --mealy-sat, and as many for each wider search; the rest of the minimisation is not bounded", cxxopts::value<double>()->default_value("60"))
             ("bisim-game", "Apply bisimulation minimisation to the game")
             ("bisim-sol", "Apply bisimulation minimisation to the solution")
             ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
@@ -89,6 +93,11 @@ handleOptions(int &argc, char**& argv)
         if (options.count("solvers")) {
             pg::Solvers::list(std::cout);
             exit(0);
+        }
+
+        if (options.count("mealy-any") && (!options.count("mealy-sat") || options.count("sym"))) {
+            std::cerr << "error parsing options: --mealy-any requires --mealy-sat and an explicit solver (not --sym)" << std::endl;
+            exit(255);
         }
 
         if (options.count("permissive") && options.count("sym")) {
@@ -217,6 +226,10 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
 
     std::unique_ptr<SymGame> sym = nullptr;
     bool realizable; // not known yet
+    MTBDD anyMoves = mtbdd_false;   // with --mealy-any: every move into the winning region
+    mtbdd_protect(&anyMoves);
+    MTBDD extendedMoves = mtbdd_false;   // with --permissive and --mealy-sat: the permissive extension
+    mtbdd_protect(&extendedMoves);
     int compress_timeout = 30*60*1000; // 30 minutes x 60 seconds x 1000 milliseconds
 
     if (explicit_solver) {
@@ -318,6 +331,16 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // finally, check if the initial vertex is won by controller or environment, and unless
         // only the verdict is asked for, get the strategy
         if (realizable && options["real"].count() == 0) {
+            if (sym != nullptr && options["mealy-any"].count() > 0) {
+                std::map<MTBDD, std::vector<MTBDD>> str;  // cap to winning priostates
+                for (int v=0; v<game->vertexcount(); v++) {
+                    if (game->owner(v) != 0 || game->getWinner(v) != 0) continue;
+                    for (const int* e = game->outs(v); *e != -1; e++) {
+                        if (game->getWinner(*e) == 0) str[vertex_to_bdd.at(v)].push_back(vertex_to_bdd.at(*e));
+                    }
+                }
+                if (sym->applyMultiStrategy(str)) anyMoves = sym->strategies;
+            }
             const bool fpim = options["fpim"].count() > 0;
             const bool fpjm = options["fpjm"].count() > 0;
             if (sym != nullptr && (fpim || fpjm || options["permissive"].count() > 0)) {
@@ -367,7 +390,14 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                         std::cerr << "cannot apply strategy!" << std::endl;
                     }
                 };
-                apply(extended.empty() ? allowed : extended);
+                if (!extended.empty() && options["mealy-sat"].count() > 0) {
+                    // the minimiser searches the extension after the strategy (see MealyMinimizer::minimize)
+                    apply(extended);
+                    extendedMoves = sym->strategies;
+                    apply(allowed);
+                } else {
+                    apply(extended.empty() ? allowed : extended);
+                }
             } else if (sym != nullptr) {
                 // now get the strategy from Oink...
                 std::map<MTBDD, MTBDD> str;  // cap to priostate
@@ -452,6 +482,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             std::cerr << "\033[1;31mgame is unrealizable!\033[m" << std::endl;
             sylvan_stats_report(stdout);
         }
+        mtbdd_unprotect(&anyMoves);
+        mtbdd_unprotect(&extendedMoves);
         return 20;
     }
 
@@ -466,6 +498,26 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // sym->print_trans(true);
         // sym->print_strategies();
     }
+
+    if (options["mealy-sat"].count() > 0) {
+        const auto t_before = wctime();
+        MealyMinimizer::Options minimise;
+        minimise.seconds = options["mealy-time"].as<double>();
+        minimise.verbose = verbose;
+        minimise.extended = extendedMoves;
+        minimise.anyMoves = anyMoves;
+        minimise.anySeconds = minimise.seconds;
+        auto minimized = MealyMinimizer::minimize(*sym, minimise);
+        if (minimized.game != nullptr) {
+            sym = std::move(minimized.game);
+            if (verbose) std::cerr << "minimised controller has " << minimized.states << " states." << std::endl;
+        }
+        if (verbose) {
+            std::cerr << "\033[1;37mfinished mealy minimisation in " << std::fixed << (wctime() - t_before) << " sec.\033[m" << std::endl;
+        }
+    }
+    mtbdd_unprotect(&anyMoves);
+    mtbdd_unprotect(&extendedMoves);
 
     {
         const auto t_before = wctime();
