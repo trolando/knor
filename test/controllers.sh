@@ -51,7 +51,7 @@ modes=(
     "--permissive --mealy-sat --mealy-any --mealy-work 20000000 --dc"
     # the ablation options, each in one of these
     "--auto-encode --no-relaxed-moves --no-monitor-codes --no-or-gate"
-    "--auto-encode --no-cube-codes --no-rechoose"
+    "--auto-encode --no-cube-codes --no-rechoose --no-extension"
     "--auto-encode --no-renumber --no-output-codes --no-latch-ite --no-dead-latches"
     "--auto-encode --no-binary-dc --no-guard-complement --no-isop-candidate"
     "--auto-encode --no-onehot-dc --no-all-candidates --reorder-work 0 --gates-only"

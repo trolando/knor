@@ -36,6 +36,9 @@ using namespace sylvan;
 static constexpr int AUTO_ANY_STATES = 16;
 // and with a fifth of the work of the other searches
 static constexpr long AUTO_ANY_SHARE = 5;
+// with --auto-encode: the permissive extension of the strategy, with this much work (keeps the
+// buffers' small controllers, which need about 10 million)
+static constexpr long AUTO_PERMISSIVE_WORK = 20000000;
 
 // with --dc: the work (BDD nodes visited, see AIGEncoder::setReorder) for choosing the variable
 // order of the binary candidates by sifting (the best candidates first), at most a third for each
@@ -77,7 +80,7 @@ handleOptions(int &argc, char**& argv)
             ("real", "Only check realizability (no synthesis)")
             ("paritize", "Convert any acceptance condition (e.g. generalized Buchi) to parity, adding memory")
             ("permissive", "Greedily extend the strategy to a winning multi-strategy (explicit solvers; slow on large games)")
-            ("permissive-work", "Work of --permissive: (vertex, priority) pairs its cycle checks visit (0: no limit)", cxxopts::value<long>()->default_value("0"))
+            ("permissive-work", "Work of --permissive: (vertex, priority) pairs its cycle checks visit (0: no limit; --auto-encode: 20 million)", cxxopts::value<long>())
             ("fpim", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers)")
             ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
             ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
@@ -93,7 +96,7 @@ handleOptions(int &argc, char**& argv)
             ("dc-all", "With --dc, try every encoding candidate, not only those that pay off (for experiments; slower)")
             ("compress", "Compress the generated AIG using ABC")
             ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
-            ("auto-encode", "Synthesize a small controller: --mealy-sat --dc with --fpim (unless --fpjm or --sym), and for a small controller a short search over all winning moves")
+            ("auto-encode", "Synthesize a small controller: --mealy-sat --dc with --fpim (unless --fpjm or --sym), --permissive with a work budget, and for a small controller a short search over all winning moves")
             ("no-solve", "Do not solve, halt after constructing the parity game")
             ("print-game", "Just print the parity game (implies no-solve)")
             ("print-witness", "Print the witness parity game")
@@ -111,6 +114,7 @@ handleOptions(int &argc, char**& argv)
             ("no-monitor-codes", "No state codes with monitor flags")
             ("no-cube-codes", "No state codes as cubes (codes with a free bit)")
             ("no-layered", "With --permissive, minimise over the extended strategy directly")
+            ("no-extension", "--auto-encode without the permissive extension")
             ("no-unclarified", "No candidate with the freedom of the unclarified strategy (--dc without --mealy-sat)")
             ("no-binary-dc", "No binary candidates with don't cares")
             ("no-onehot-dc", "No one-hot candidates")
@@ -185,8 +189,12 @@ handleOptions(int &argc, char**& argv)
                 exit(255);
             }
         }
-        if (options.count("no-layered") && !(options.count("permissive") && mealy)) {
-            std::cerr << "error parsing options: --no-layered requires --permissive with --mealy-sat or --auto-encode" << std::endl;
+        if (options.count("no-extension") && !options.count("auto-encode")) {
+            std::cerr << "error parsing options: --no-extension requires --auto-encode" << std::endl;
+            exit(255);
+        }
+        if (options.count("no-layered") && !((options.count("permissive") && mealy) || options.count("auto-encode"))) {
+            std::cerr << "error parsing options: --no-layered requires --permissive with --mealy-sat, or --auto-encode" << std::endl;
             exit(255);
         }
         if (options.count("auto-encode") && options.count("sym")) {
@@ -222,13 +230,16 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     auto & options = *_options;
 
     bool verbose = options["verbose"].count() > 0;
-    // --auto-encode is --mealy-sat --dc with --fpim (unless --fpjm or --sym is given), with the search
-    // over all winning moves for small controllers (explicit solvers)
+    // --auto-encode is --mealy-sat --dc with --fpim (unless --fpjm or --sym is given), with the permissive
+    // extension (with a work budget) and the search over all winning moves for small controllers
+    // (explicit solvers)
     const bool auto_encode = options.count("auto-encode") > 0;
     const bool use_fpim = options.count("fpim") > 0 || (auto_encode && !options.count("fpjm") && !options.count("sym"));
     const bool use_mealy = auto_encode || options.count("mealy-sat") > 0;
     const bool use_any = auto_encode || options.count("mealy-any") > 0;
     const bool use_dc = auto_encode || options.count("dc") > 0;
+    const bool use_permissive = options.count("permissive") > 0
+                                || (auto_encode && !options.count("no-extension") && !options.count("sym"));
     if (options.count("stats")) stats_file.path = options["stats"].as<std::string>();
     RunStats& run_stats = stats_file.stats;
 
@@ -443,7 +454,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             }
             const bool fpim = use_fpim;
             const bool fpjm = options["fpjm"].count() > 0;
-            if (sym != nullptr && (fpim || fpjm || options["permissive"].count() > 0)) {
+            if (sym != nullptr && (fpim || fpjm || use_permissive)) {
                 auto allowed = PermissiveStrategy::positional(*game);
                 if (fpim || fpjm) {
                     const double t_before = wctime();
@@ -467,10 +478,12 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                     }
                 }
                 std::vector<std::vector<int>> extended;  // the permissive extension of allowed, if any
-                if (options["permissive"].count() > 0) {
+                if (use_permissive) {
                     const double t_before = wctime();
                     PermissiveStrategy::Stats stats;
-                    extended = PermissiveStrategy::extend(*game, vstart, allowed, options["permissive-work"].as<long>(), stats);
+                    const long work = options.count("permissive-work") ? options["permissive-work"].as<long>()
+                                      : options.count("permissive") ? 0 : AUTO_PERMISSIVE_WORK;
+                    extended = PermissiveStrategy::extend(*game, vstart, allowed, work, stats);
                     if (!PermissiveStrategy::verify(*game, vstart, extended)) {
                         // cannot happen; keep the strategy that was extended rather than risk a wrong controller
                         std::cerr << "error: the multi-strategy is not winning, using the strategy before extending it" << std::endl;
