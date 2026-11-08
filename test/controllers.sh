@@ -44,11 +44,11 @@ modes=(
     "--fpim --permissive --mealy-sat --dc"
     "--auto-encode"
     "--auto-encode --fpjm"
-    "--auto-encode --mealy-any --mealy-conflicts 20000"
+    "--auto-encode --mealy-any --mealy-work 20000000"
     "--auto-encode --compress"
     "--sym --mealy-sat --dc"
     "--bisim --mealy-sat --dc"
-    "--permissive --mealy-sat --mealy-any --mealy-conflicts 20000 --dc"
+    "--permissive --mealy-sat --mealy-any --mealy-work 20000000 --dc"
     # the ablation options, each in one of these
     "--auto-encode --no-relaxed-moves --no-monitor-codes --no-or-gate"
     "--auto-encode --no-renumber --no-output-codes --no-latch-ite --no-dead-latches"

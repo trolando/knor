@@ -34,7 +34,8 @@ using namespace sylvan;
 
 // with --auto-encode: the search over all winning moves, for controllers of at most so many states
 static constexpr int AUTO_ANY_STATES = 16;
-static constexpr long AUTO_ANY_CONFLICTS = 100000;
+// and with a fifth of the work of the other searches
+static constexpr long AUTO_ANY_SHARE = 5;
 
 // with --dc: the work (BDD nodes visited, see AIGEncoder::setReorder) for choosing the variable
 // order of the binary candidates by sifting (the best candidates first), at most a third for each
@@ -80,7 +81,7 @@ handleOptions(int &argc, char**& argv)
             ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
             ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
             ("mealy-any", "With --mealy-sat or --auto-encode, also search for smaller controllers that may make any winning move, without limits (explicit solvers)")
-            ("mealy-conflicts", "SAT solver conflicts for the search of --mealy-sat, and as many for each wider search (with --auto-encode, 100000 for all winning moves); counted instead of time, so the result does not depend on the machine", cxxopts::value<long>()->default_value("1000000"))
+            ("mealy-work", "Work of the SAT searches of --mealy-sat (solver propagations and clauses, about 20 million per second), as much for each wider search (with --auto-encode, a fifth for all winning moves); counted, not timed, so the result does not depend on the machine", cxxopts::value<long>()->default_value("1000000000"))
             ("bisim-game", "Apply bisimulation minimisation to the game")
             ("bisim-sol", "Apply bisimulation minimisation to the solution")
             ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
@@ -608,7 +609,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     if (use_mealy) {
         const auto t_before = wctime();
         MealyMinimizer::Options minimise;
-        minimise.conflicts = options["mealy-conflicts"].as<long>();
+        minimise.work = options["mealy-work"].as<long>();
         minimise.verbose = verbose;
         minimise.relax = use_dc;
         minimise.variants.relaxed = options.count("no-relaxed-moves") == 0;
@@ -617,7 +618,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         minimise.variants.monitorCodes = options.count("no-monitor-codes") == 0;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
-        minimise.anyConflicts = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_CONFLICTS : minimise.conflicts;
+        minimise.anyWork = auto_encode && options.count("mealy-any") == 0 ? minimise.work / AUTO_ANY_SHARE : minimise.work;
         minimise.anyStates = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_STATES : 0;
         auto minimized = MealyMinimizer::minimize(*sym, minimise);
         run_stats.searches = minimized.searches;

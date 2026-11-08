@@ -49,7 +49,7 @@ bool RunStats::write(const std::string& path) const
           << ", \"calls\": [";
         for (size_t j = 0; j < s.calls.size(); j++) {
             const MealyMinimizer::Search::Call& call = s.calls[j];
-            o << (j ? ", " : "") << "[" << call.states << ", " << quote(outcome(call.outcome)) << ", " << call.conflicts << "]";
+            o << (j ? ", " : "") << "[" << call.states << ", " << quote(outcome(call.outcome)) << ", " << call.work << "]";
         }
         o << "]}";
     }
