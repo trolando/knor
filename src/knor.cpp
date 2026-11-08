@@ -86,6 +86,7 @@ handleOptions(int &argc, char**& argv)
             ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
             ("mealy-any", "With --mealy-sat or --auto-encode, also search for smaller controllers that may make any winning move, without limits (explicit solvers)")
             ("mealy-work", "Work of the SAT searches of --mealy-sat (solver propagations, clauses inspected and added; about 25 million per second), as much for each wider search (with --auto-encode, a fifth for all winning moves); counted, not timed, so the result does not depend on the machine", cxxopts::value<long>()->default_value("2000000000"))
+            ("mealy-any-work", "Work of the search over all winning moves (default: as --mealy-work; with --auto-encode a fifth of it)", cxxopts::value<long>())
             ("bisim-game", "Apply bisimulation minimisation to the game")
             ("bisim-sol", "Apply bisimulation minimisation to the solution")
             ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
@@ -192,6 +193,10 @@ handleOptions(int &argc, char**& argv)
         }
         if (options.count("no-fewer-first") && !mealy) {
             std::cerr << "error parsing options: --no-fewer-first requires --mealy-sat or --auto-encode" << std::endl;
+            exit(255);
+        }
+        if (options.count("mealy-any-work") && !options.count("auto-encode") && !options.count("mealy-any")) {
+            std::cerr << "error parsing options: --mealy-any-work requires --auto-encode or --mealy-any" << std::endl;
             exit(255);
         }
         if (options.count("no-extension") && !options.count("auto-encode")) {
@@ -643,7 +648,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         minimise.fewerFirst = options.count("no-fewer-first") == 0;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
-        minimise.anyWork = auto_encode && options.count("mealy-any") == 0 ? minimise.work / AUTO_ANY_SHARE : minimise.work;
+        minimise.anyWork = options.count("mealy-any-work") ? options["mealy-any-work"].as<long>()
+                           : auto_encode && options.count("mealy-any") == 0 ? minimise.work / AUTO_ANY_SHARE : minimise.work;
         minimise.anyStates = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_STATES : 0;
         auto minimized = MealyMinimizer::minimize(*sym, minimise);
         run_stats.searches = minimized.searches;
