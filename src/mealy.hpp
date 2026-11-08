@@ -84,13 +84,13 @@ public:
      * result does not depend on the machine or its load.
      */
     struct Options {
-        long work = 1000000000;                 // for the search within the strategy, and the extended one
+        long work = 2000000000;                 // for the search within the strategy, and the extended one
         bool verbose = false;
         bool relax = false;
         Variants variants;                      // with relax
         sylvan::MTBDD extended = sylvan::mtbdd_false;   // a winning multi-strategy that contains the strategy
         sylvan::MTBDD anyMoves = sylvan::mtbdd_false;   // all moves into the winning region
-        long anyWork = 1000000000;              // for the search over anyMoves
+        long anyWork = 2000000000;              // for the search over anyMoves
         int anyStates = 0;                      // search anyMoves only for controllers of at most this many states (0: all)
     };
 
