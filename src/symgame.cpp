@@ -778,14 +778,15 @@ void SymGame::restrictToReachable(bool verbose)
     mtbdd_refs_pushptr(&old);
 
     // Just quick and dirty symbolic reachability ... this is not super efficient but it's OK
+    MTBDD next = mtbdd_false;
+    mtbdd_refs_pushptr(&next);
     while (old != visited) {
         old = visited;
-        auto next = mtbdd_and_exists(visited, T, s_vars); // cross product
-        mtbdd_refs_push(next);
-        next = sylvan_compose(next, ns_to_s);   // and rename
+        next = mtbdd_and_exists(visited, T, s_vars); // cross product
+        next = sylvan_compose(next, ns_to_s);   // and rename (next is rooted by pointer, also its new value)
         visited = sylvan_or(visited, next);
-        mtbdd_refs_pop(1);
     }
+    mtbdd_refs_popptr(1);
 
     assert(visited == mtbdd_true || mtbdd_getvar(visited) >= (unsigned)this->priobits); // should not have priorities
 
