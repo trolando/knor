@@ -116,6 +116,7 @@ handleOptions(int &argc, char**& argv)
             ("no-cube-codes", "No state codes as cubes (codes with a free bit)")
             ("no-adjacency-codes", "No state codes that give related states codes close together")
             ("no-fewer-first", "After an undecided SAT call of the minimiser, do not try fewer states first")
+            ("no-strong-bound", "Lower bound of the minimiser only from states forced along single successors, with the initial one")
             ("no-layered", "With --permissive, minimise over the extended strategy directly")
             ("no-extension", "--auto-encode without the permissive extension")
             ("no-unclarified", "No candidate with the freedom of the unclarified strategy (--dc without --mealy-sat)")
@@ -194,9 +195,11 @@ handleOptions(int &argc, char**& argv)
                 exit(255);
             }
         }
-        if (options.count("no-fewer-first") && !mealy) {
-            std::cerr << "error parsing options: --no-fewer-first requires --mealy-sat or --auto-encode" << std::endl;
-            exit(255);
+        for (const char* name : {"no-fewer-first", "no-strong-bound"}) {
+            if (options.count(name) && !mealy) {
+                std::cerr << "error parsing options: --" << name << " requires --mealy-sat or --auto-encode" << std::endl;
+                exit(255);
+            }
         }
         if (options.count("mealy-any-work") && !options.count("auto-encode") && !options.count("mealy-any")) {
             std::cerr << "error parsing options: --mealy-any-work requires --auto-encode or --mealy-any" << std::endl;
@@ -650,6 +653,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         minimise.variants.cubeCodes = options.count("no-cube-codes") == 0;
         minimise.variants.adjacencyCodes = options.count("no-adjacency-codes") == 0;
         minimise.fewerFirst = options.count("no-fewer-first") == 0;
+        minimise.strongBound = options.count("no-strong-bound") == 0;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
         minimise.anyWork = options.count("mealy-any-work") ? options["mealy-any-work"].as<long>()

@@ -377,26 +377,53 @@ private:
     std::map<std::pair<int, int>, bool> cache;
 };
 
-// The states that every controller visits: those reachable from the initial
-// state on letters where all options lead to the same successor.
-std::vector<bool> forcedStates(const Machine& m)
+// The states that every controller visits: q is unavoidable if the
+// environment can force a visit to q whatever allowed outputs the controller
+// chooses. reach[s], the states that the environment can force from s, is the
+// least set with s itself and, for some letter, the states that it can force
+// from the successors of all options of s (computed for all states at once,
+// as bitsets). Stops after MAX_FORCED_WORK words; every state found so far is
+// unavoidable. Without strong, only letters on which all options have the same
+// successor count (the states forced along single successors).
+constexpr long MAX_FORCED_WORK = 400000000;
+
+std::vector<bool> forcedStates(const Machine& m, bool strong)
 {
-    std::vector<bool> forced(m.states(), false);
-    std::vector<int> todo{m.initial};
-    forced[m.initial] = true;
-    while (!todo.empty()) {
-        const int q = todo.back();
-        todo.pop_back();
-        for (const std::vector<Option>& options : m.options[q]) {
-            const int succ = options[0].successor;
-            bool same = true;
-            for (const Option& o : options) same = same && o.successor == succ;
-            if (same && !forced[succ]) {
-                forced[succ] = true;
-                todo.push_back(succ);
+    const int n = m.states();
+    const int words = (n + 63) / 64;
+    std::vector<uint64_t> reach(static_cast<size_t>(n) * words, 0);
+    auto row = [&](int q) { return reach.data() + static_cast<size_t>(q) * words; };
+    for (int q = 0; q < n; q++) row(q)[q / 64] |= uint64_t(1) << (q % 64);
+    std::vector<uint64_t> meet(words);
+    long work = 0;
+    for (bool changed = true; changed && work < MAX_FORCED_WORK;) {
+        changed = false;
+        for (int q = 0; q < n; q++) {
+            uint64_t* target = row(q);
+            for (const std::vector<Option>& options : m.options[q]) {
+                if (!strong && std::any_of(options.begin(), options.end(),
+                                           [&](const Option& o) { return o.successor != options[0].successor; })) {
+                    continue;
+                }
+                const uint64_t* first = row(options[0].successor);
+                std::copy(first, first + words, meet.begin());
+                for (size_t o = 1; o < options.size(); o++) {
+                    const uint64_t* other = row(options[o].successor);
+                    for (int w = 0; w < words; w++) meet[w] &= other[w];
+                }
+                for (int w = 0; w < words; w++) {
+                    if (meet[w] & ~target[w]) {
+                        target[w] |= meet[w];
+                        changed = true;
+                    }
+                }
+                work += static_cast<long>(options.size() + 1) * words;
             }
         }
     }
+    std::vector<bool> forced(n);
+    const uint64_t* initial = row(m.initial);
+    for (int q = 0; q < n; q++) forced[q] = (initial[q / 64] >> (q % 64)) & 1;
     return forced;
 }
 
@@ -407,12 +434,13 @@ std::vector<bool> forcedStates(const Machine& m)
 // relation, or an over-approximation of it if this takes more than
 // MAX_COMPAT_WORK (then the set is just the initial state), or nothing for
 // large machines.
-std::vector<int> incompatibleStates(const Machine& m, Overlap& overlap, std::vector<std::vector<char>>& compatible)
+std::vector<int> incompatibleStates(const Machine& m, Overlap& overlap, bool strong,
+                                    std::vector<std::vector<char>>& compatible)
 {
     const int n = m.states();
     std::vector<int> clique{m.initial};
     if (n > MAX_COMPAT_STATES) return clique;
-    const std::vector<bool> forced = forcedStates(m);
+    const std::vector<bool> forced = forcedStates(m, strong);
     compatible.assign(n, std::vector<char>(n, 1));
     long work = 0;
     for (bool changed = true; changed;) {
@@ -438,29 +466,40 @@ std::vector<int> incompatibleStates(const Machine& m, Overlap& overlap, std::vec
             }
         }
     }
-    std::vector<int> candidates;
-    for (int s = 0; s < n; s++) {
-        if (forced[s] && !compatible[s][m.initial]) candidates.push_back(s);
-    }
-    while (!candidates.empty()) {
-        int best = candidates[0];
-        int bestDegree = -1;
-        for (int c : candidates) {
-            int degree = 0;
-            for (int d : candidates) degree += compatible[c][d] ? 0 : 1;
-            if (degree > bestDegree) {
-                best = c;
-                bestDegree = degree;
+    // greedily, the states incompatible with most of the others first; the clique need not contain
+    // the initial state (the initial state is often compatible with all others), but it is the first
+    // anchor if that gives as large a clique
+    auto greedy = [&](std::vector<int> candidates, std::vector<int> result) {
+        while (!candidates.empty()) {
+            int best = candidates[0];
+            int bestDegree = -1;
+            for (int c : candidates) {
+                int degree = 0;
+                for (int d : candidates) degree += compatible[c][d] ? 0 : 1;
+                if (degree > bestDegree) {
+                    best = c;
+                    bestDegree = degree;
+                }
             }
+            result.push_back(best);
+            std::vector<int> rest;
+            for (int c : candidates) {
+                if (c != best && !compatible[c][best]) rest.push_back(c);
+            }
+            candidates = std::move(rest);
         }
-        clique.push_back(best);
-        std::vector<int> rest;
-        for (int c : candidates) {
-            if (c != best && !compatible[c][best]) rest.push_back(c);
-        }
-        candidates = std::move(rest);
+        return result;
+    };
+    std::vector<int> withInitial, all;
+    for (int s = 0; s < n; s++) {
+        if (!forced[s]) continue;
+        all.push_back(s);
+        if (!compatible[s][m.initial]) withInitial.push_back(s);
     }
-    return clique;
+    std::vector<int> first = greedy(withInitial, clique);
+    if (!strong) return first;
+    std::vector<int> other = greedy(all, {});
+    return other.size() > first.size() ? other : first;
 }
 
 // The deterministic controller: successor and output bits per state and letter.
@@ -625,6 +664,20 @@ public:
         }
         bool ok = clause({pos(trueVar)});
         for (int i = 0; i < anchored && ok; i++) ok = clause({pos(x(anchors[i], i))});
+        // the controller state that starts, serving the initial state: its anchor, or else one of the
+        // anchors compatible with it or the first free state (the free states are interchangeable)
+        initialAnchor = static_cast<int>(std::find(anchors.begin(), anchors.end(), m.initial) - anchors.begin());
+        if (initialAnchor == anchored) {
+            initialAnchor = -1;
+            std::vector<lit> some;
+            for (int d : anchorsOf[m.initial]) initialVar.emplace_back(d, next++);
+            if (k > anchored) initialVar.emplace_back(anchored, next++);
+            for (const auto& [d, v] : initialVar) {
+                some.push_back(pos(v));
+                ok = ok && clause({neg(v), pos(x(m.initial, d))});
+            }
+            ok = ok && !some.empty() && clause(some) && atMostOne(some);
+        }
         for (int c = 0; c < k && ok; c++) {
             const std::vector<int>& letterOf = classes(c).letter;
             sVar[c].resize(letterOf.size());
@@ -709,6 +762,10 @@ public:
     Controller controller() const
     {
         Controller ctl;
+        ctl.initial = initialAnchor;
+        for (const auto& [d, v] : initialVar) {
+            if (sat_solver_var_value(solver, v)) ctl.initial = d;
+        }
         ctl.successor.assign(k, std::vector<int>(letters, 0));
         ctl.output.assign(k, std::vector<std::vector<uint8_t>>(letters, std::vector<uint8_t>(capCount, 0)));
         for (int c = 0; c < k; c++) {
@@ -910,6 +967,8 @@ private:
     const int states;
     const int letters;
     sat_solver* solver;
+    int initialAnchor = 0;                      // the controller state serving the initial state, or -1:
+    std::vector<std::pair<int, int>> initialVar;// the candidates and their selector variables
     long added = 0;                             // clauses
     long propagations = 0;                      // of solve()
     long inspections = 0;                       // of clauses, by solve()
@@ -1993,7 +2052,7 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
     const Machine q = quotient(ex.machine, block, checkCycles);
     Overlap overlap(ex.outputSets);
     std::vector<std::vector<char>> compatible;
-    const std::vector<int> anchors = incompatibleStates(q, overlap, compatible);
+    const std::vector<int> anchors = incompatibleStates(q, overlap, options.strongBound, compatible);
     const int lowerBound = static_cast<int>(anchors.size());
     searches[index].machine = ex.machine.states();
     searches[index].quotient = q.states();
@@ -2128,7 +2187,7 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     const Machine q = quotient(ex.machine, block, false);
     Overlap overlap(ex.outputSets);
     std::vector<std::vector<char>> compatible;
-    const std::vector<int> anchors = incompatibleStates(q, overlap, compatible);
+    const std::vector<int> anchors = incompatibleStates(q, overlap, options.strongBound, compatible);
     const int lowerBound = static_cast<int>(anchors.size());
     search.machine = ex.machine.states();
     search.quotient = q.states();
