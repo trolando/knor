@@ -82,6 +82,8 @@ public:
                                         // by "none of the other states"
         bool rechoose = true;           // binary with don't cares and reordering: choose the functions again
                                         // in the new variable order, if that is smaller
+        bool marginalChoice = true;     // binary with don't cares: choose each function by the gates it adds
+                                        // to the functions chosen before (else by its BDD nodes)
     };
 
     AIGEncoder& setRules(const Rules& rules) {

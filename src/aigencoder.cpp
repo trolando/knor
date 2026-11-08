@@ -659,6 +659,79 @@ void AIGEncoder::processOnehot()
     mtbdd_unprotect(&su_vars);
 }
 
+namespace {
+
+// The number of AND gates that bddToAigRecursive makes for the functions together: equal
+// sub-BDDs give equal gates, as AIGCircuit hashes them. Adds the number of BDD nodes visited
+// (a measure of the work, also of making the functions) to work.
+class ShannonCost final {
+public:
+    static unsigned int of(const std::vector<MTBDD>& functions, long& work)
+    {
+        ShannonCost cost;
+        for (MTBDD f : functions) cost.literal(f);
+        work += static_cast<long>(cost.nodes.size()) + 1;
+        return cost.gates;
+    }
+
+private:
+    std::unordered_map<MTBDD, unsigned int> nodes;
+    std::unordered_map<uint32_t, unsigned int> variables;
+    std::unordered_map<uint64_t, unsigned int> ands;
+    unsigned int next = 2;
+    unsigned int gates = 0;
+
+    unsigned int makeAnd(unsigned int a, unsigned int b)
+    {
+        if (b < a) std::swap(a, b);
+        if (a == aiger_false) return aiger_false;
+        if (a == aiger_true) return b;
+        const uint64_t key = (static_cast<uint64_t>(b) << 32) | a;
+        auto it = ands.find(key);
+        if (it != ands.end()) return it->second;
+        gates++;
+        next += 2;
+        return ands[key] = next - 2;
+    }
+
+    unsigned int literal(MTBDD bdd)
+    {
+        if (bdd == mtbdd_true) return aiger_true;
+        if (bdd == mtbdd_false) return aiger_false;
+        const bool complemented = (bdd & sylvan_complement) != 0;
+        const MTBDD node = bdd & ~sylvan_complement;
+        auto it = nodes.find(node);
+        unsigned int res;
+        if (it != nodes.end()) {
+            res = it->second;
+        } else {
+            auto var = variables.find(mtbdd_getvar(node));
+            if (var == variables.end()) {
+                var = variables.emplace(mtbdd_getvar(node), next).first;
+                next += 2;
+            }
+            const unsigned int v = var->second;
+            const MTBDD low = mtbdd_getlow(node);
+            const MTBDD high = mtbdd_gethigh(node);
+            if (low == mtbdd_false) {
+                res = makeAnd(v, literal(high));
+            } else if (high == mtbdd_false) {
+                res = makeAnd(aiger_not(v), literal(low));
+            } else if (high == mtbdd_true) {
+                res = aiger_not(makeAnd(aiger_not(v), aiger_not(literal(low))));
+            } else {
+                const unsigned int l = literal(low);
+                const unsigned int h = literal(high);
+                res = aiger_not(makeAnd(aiger_not(makeAnd(aiger_not(v), l)), aiger_not(makeAnd(v, h))));
+            }
+            nodes.emplace(node, res);
+        }
+        return complemented ? aiger_not(res) : res;
+    }
+};
+
+}  // namespace
+
 // Choose the output and next-state functions one bit at a time among the
 // allowed moves (state -> uap -> cap -> next state). Where a bit may be both 0
 // and 1, or the state and input do not occur (such as unused state codes), its
@@ -688,6 +761,15 @@ void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap
         std::cerr << "error: a state of the controller has no move for some input" << std::endl;
         exit(1);
     }
+    // with rules.marginalChoice, a candidate is judged by the gates of the Shannon expansion of the
+    // functions chosen so far together with it (so shared logic is free), then by its nodes
+    std::vector<MTBDD> chosen;  // protected as cap_bdds and state_bdds
+    auto cost = [&](MTBDD f) {
+        long work = 0;          // not counted: this is the cost of building the circuit
+        std::vector<MTBDD> all = chosen;
+        all.push_back(f);
+        return std::make_pair(rules.marginalChoice ? ShannonCost::of(all, work) : 0u, mtbdd_nodecount(f));
+    };
     auto choose = [&](uint32_t var, MTBDD& result) {
         result = mtbdd_false;
         mtbdd_protect(&result);
@@ -697,8 +779,13 @@ void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap
         fixed = sylvan_xor(can1, can0);
         must1 = sylvan_and(can1, fixed);
         result = must1;
+        auto best = cost(result);
         auto consider = [&]() {
-            if (mtbdd_nodecount(candidate) < mtbdd_nodecount(result)) result = candidate;
+            const auto c = cost(candidate);
+            if (c < best) {
+                best = c;
+                result = candidate;
+            }
         };
         candidate = sylvan_restrict(must1, fixed);
         consider();
@@ -715,6 +802,7 @@ void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap
             candidate = sylvan_constrain(must1, fixed);
             consider();
         }
+        chosen.push_back(result);
         link = sylvan_equiv(bit, result);
         moves = sylvan_and(moves, link);
     };
@@ -982,74 +1070,6 @@ bool AIGEncoder::processOnehotDontCares(int maxStates)
 
 namespace {
 
-// The number of AND gates that bddToAigRecursive makes for the functions together: equal
-// sub-BDDs give equal gates, as AIGCircuit hashes them. Adds the number of BDD nodes visited
-// (a measure of the work, also of making the functions) to work.
-class ShannonCost final {
-public:
-    static unsigned int of(const std::vector<MTBDD>& functions, long& work)
-    {
-        ShannonCost cost;
-        for (MTBDD f : functions) cost.literal(f);
-        work += static_cast<long>(cost.nodes.size()) + 1;
-        return cost.gates;
-    }
-
-private:
-    std::unordered_map<MTBDD, unsigned int> nodes;
-    std::unordered_map<uint32_t, unsigned int> variables;
-    std::unordered_map<uint64_t, unsigned int> ands;
-    unsigned int next = 2;
-    unsigned int gates = 0;
-
-    unsigned int makeAnd(unsigned int a, unsigned int b)
-    {
-        if (b < a) std::swap(a, b);
-        if (a == aiger_false) return aiger_false;
-        if (a == aiger_true) return b;
-        const uint64_t key = (static_cast<uint64_t>(b) << 32) | a;
-        auto it = ands.find(key);
-        if (it != ands.end()) return it->second;
-        gates++;
-        next += 2;
-        return ands[key] = next - 2;
-    }
-
-    unsigned int literal(MTBDD bdd)
-    {
-        if (bdd == mtbdd_true) return aiger_true;
-        if (bdd == mtbdd_false) return aiger_false;
-        const bool complemented = (bdd & sylvan_complement) != 0;
-        const MTBDD node = bdd & ~sylvan_complement;
-        auto it = nodes.find(node);
-        unsigned int res;
-        if (it != nodes.end()) {
-            res = it->second;
-        } else {
-            auto var = variables.find(mtbdd_getvar(node));
-            if (var == variables.end()) {
-                var = variables.emplace(mtbdd_getvar(node), next).first;
-                next += 2;
-            }
-            const unsigned int v = var->second;
-            const MTBDD low = mtbdd_getlow(node);
-            const MTBDD high = mtbdd_gethigh(node);
-            if (low == mtbdd_false) {
-                res = makeAnd(v, literal(high));
-            } else if (high == mtbdd_false) {
-                res = makeAnd(aiger_not(v), literal(low));
-            } else if (high == mtbdd_true) {
-                res = aiger_not(makeAnd(aiger_not(v), aiger_not(literal(low))));
-            } else {
-                const unsigned int l = literal(low);
-                const unsigned int h = literal(high);
-                res = aiger_not(makeAnd(aiger_not(makeAnd(aiger_not(v), l)), aiger_not(makeAnd(v, h))));
-            }
-            nodes.emplace(node, res);
-        }
-        return complemented ? aiger_not(res) : res;
-    }
-};
 
 // Choose a variable order for the functions, which the Shannon expansion follows. Sylvan has no
 // dynamic reordering, so the functions are renamed to fresh variables (first, first + 1, ...) in

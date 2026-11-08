@@ -126,6 +126,7 @@ handleOptions(int &argc, char**& argv)
              cxxopts::value<long>()->default_value(std::to_string(REORDER_WORK)))
             ("no-latch-ite", "No next-state functions as ITE on an output")
             ("no-rechoose", "Do not choose the functions again in the order found by sifting")
+            ("no-marginal-choice", "Choose each function by its BDD nodes, not by the gates it adds to the circuit")
             ("no-dead-latches", "Keep the latches of state bits that stay 0")
             ("no-guard-complement", "One-hot: no \"none of the other states\" guards")
             ("no-or-gate", "Two gates for x OR f in the Shannon expansion, not one (any encoding)")
@@ -178,7 +179,7 @@ handleOptions(int &argc, char**& argv)
         const bool dc = options.count("dc") || options.count("auto-encode");
         const bool mealy = options.count("mealy-sat") || options.count("auto-encode");
         for (const char* name : {"no-binary-dc", "no-onehot-dc", "no-isop-candidate", "no-all-candidates", "reorder-work",
-                                 "no-latch-ite", "no-rechoose", "no-dead-latches", "no-guard-complement", "gates-only",
+                                 "no-latch-ite", "no-rechoose", "no-marginal-choice", "no-dead-latches", "no-guard-complement", "gates-only",
                                  "no-unclarified"}) {
             if (options.count(name) && !dc) {
                 std::cerr << "error parsing options: --" << name << " requires --dc or --auto-encode" << std::endl;
@@ -735,6 +736,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     rules.deadLatches = options.count("no-dead-latches") == 0;
     rules.latchSplit = options.count("no-latch-ite") == 0;
     rules.rechoose = options.count("no-rechoose") == 0;
+    rules.marginalChoice = options.count("no-marginal-choice") == 0;
     rules.guardComplement = options.count("no-guard-complement") == 0;
     AIGEncoder encoder(*data, *sym);
     encoder.setRules(rules);

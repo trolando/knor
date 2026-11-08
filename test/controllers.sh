@@ -54,7 +54,7 @@ modes=(
     "--auto-encode --no-cube-codes --no-rechoose --no-extension"
     "--auto-encode --no-renumber --no-output-codes --no-latch-ite --no-dead-latches"
     "--auto-encode --no-binary-dc --no-guard-complement --no-isop-candidate"
-    "--auto-encode --no-onehot-dc --no-all-candidates --reorder-work 0 --gates-only"
+    "--auto-encode --no-onehot-dc --no-all-candidates --reorder-work 0 --gates-only --no-marginal-choice"
     "--fpim --permissive --mealy-sat --dc --no-layered --no-fewer-first"
     "--dc --no-unclarified"
 )
