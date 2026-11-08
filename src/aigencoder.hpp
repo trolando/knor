@@ -70,6 +70,23 @@ public:
     /** The work that choosing the variable order took. */
     long getReorderWork() const { return reorderUsed; }
 
+    /**
+     * Rules of the encoding that can be switched off, to measure what each
+     * contributes (knor's ablation options); all are on by default.
+     */
+    struct Rules {
+        bool orGate = true;             // x OR f as one gate in the Shannon expansion, not two
+        bool deadLatches = true;        // with don't cares: no latch for a state bit that stays 0
+        bool latchSplit = true;         // with don't cares: a next-state function as ITE on an output, if smaller
+        bool guardComplement = true;    // one-hot with don't cares: guard a function that most states use
+                                        // by "none of the other states"
+    };
+
+    AIGEncoder& setRules(const Rules& rules) {
+        this->rules = rules;
+        return *this;
+    }
+
     AIGEncoder& setVerbose() {
         this->verbose = true;
         return *this;
@@ -92,6 +109,7 @@ private:
     bool isopCandidate = true; // with don't cares: consider the irredundant sum of products of each bit
     long reorderWork = 0; // with don't cares: work for choosing the variable order (binary encoding)
     long reorderUsed = 0; // the work it took
+    Rules rules;
 
     std::vector<unsigned int> uap_to_lit; // store the input literals for each uncontrolled AP
     std::vector<std::string> cap_labels; // store the labels for controlled APs

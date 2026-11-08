@@ -37,9 +37,8 @@ static constexpr int AUTO_ANY_STATES = 16;
 static constexpr long AUTO_ANY_CONFLICTS = 100000;
 
 // with --dc: the work (BDD nodes visited, see AIGEncoder::setReorder) for choosing the variable
-// order of the binary candidates by sifting (the best candidates first), and at most for each
+// order of the binary candidates by sifting (the best candidates first), at most a third for each
 static constexpr long REORDER_WORK = 3000000;
-static constexpr long REORDER_CANDIDATE_WORK = 1000000;
 
 namespace {
 
@@ -102,6 +101,26 @@ handleOptions(int &argc, char**& argv)
             ("v,verbose", "Be verbose")
             ("stats", "Write statistics of the run (times, minimisation, encoding candidates) as JSON to the file", cxxopts::value<std::string>())
             ;
+        // for experiments: each switches off one part of --mealy-sat, --dc or --auto-encode
+        opts.add_options("Ablation")
+            ("no-relaxed-moves", "Encode the minimised controller's own moves only, not all its correct moves")
+            ("no-renumber", "Relaxed moves keep the controller's state numbering (not breadth- and depth-first)")
+            ("no-output-codes", "No state codes with output bits")
+            ("no-monitor-codes", "No state codes with monitor flags")
+            ("no-layered", "With --permissive, minimise over the extended strategy directly")
+            ("no-unclarified", "No candidate with the freedom of the unclarified strategy (--dc without --mealy-sat)")
+            ("no-binary-dc", "No binary candidates with don't cares")
+            ("no-onehot-dc", "No one-hot candidates")
+            ("no-isop-candidate", "No ISOP candidate for a signal")
+            ("no-all-candidates", "For a signal only its restriction and ISOP, not its upper bound and constrain")
+            ("reorder-work", "Sifting work for the variable order of the binary candidates (0: no reordering)",
+             cxxopts::value<long>()->default_value(std::to_string(REORDER_WORK)))
+            ("no-latch-ite", "No next-state functions as ITE on an output")
+            ("no-dead-latches", "Keep the latches of state bits that stay 0")
+            ("no-guard-complement", "One-hot: no \"none of the other states\" guards")
+            ("no-or-gate", "Two gates for x OR f in the Shannon expansion, not one (any encoding)")
+            ("gates-only", "Keep the candidate with the fewest gates, not the fewest gates and latches")
+            ;
         opts.add_options("Explicit solvers")
             ("solvers", "List available solvers")
             ;
@@ -144,6 +163,25 @@ handleOptions(int &argc, char**& argv)
 
         if ((options.count("dc") || options.count("auto-encode")) && (options.count("onehot") || options.count("sop"))) {
             std::cerr << "error parsing options: --dc and --auto-encode choose the encoding (not --onehot or --sop)" << std::endl;
+            exit(255);
+        }
+        const bool dc = options.count("dc") || options.count("auto-encode");
+        const bool mealy = options.count("mealy-sat") || options.count("auto-encode");
+        for (const char* name : {"no-binary-dc", "no-onehot-dc", "no-isop-candidate", "no-all-candidates", "reorder-work",
+                                 "no-latch-ite", "no-dead-latches", "no-guard-complement", "gates-only", "no-unclarified"}) {
+            if (options.count(name) && !dc) {
+                std::cerr << "error parsing options: --" << name << " requires --dc or --auto-encode" << std::endl;
+                exit(255);
+            }
+        }
+        for (const char* name : {"no-relaxed-moves", "no-renumber", "no-output-codes", "no-monitor-codes"}) {
+            if (options.count(name) && !(dc && mealy)) {
+                std::cerr << "error parsing options: --" << name << " requires --mealy-sat --dc or --auto-encode" << std::endl;
+                exit(255);
+            }
+        }
+        if (options.count("no-layered") && !(options.count("permissive") && mealy)) {
+            std::cerr << "error parsing options: --no-layered requires --permissive with --mealy-sat or --auto-encode" << std::endl;
             exit(255);
         }
         if (options.count("auto-encode") && options.count("sym")) {
@@ -449,7 +487,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                         std::cerr << "cannot apply strategy!" << std::endl;
                     }
                 };
-                if (!extended.empty() && use_mealy) {
+                if (!extended.empty() && use_mealy && options.count("no-layered") == 0) {
                     // the minimiser searches the extension after the strategy (see MealyMinimizer::minimize)
                     apply(extended);
                     extendedMoves = sym->strategies;
@@ -573,6 +611,10 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         minimise.conflicts = options["mealy-conflicts"].as<long>();
         minimise.verbose = verbose;
         minimise.relax = use_dc;
+        minimise.variants.relaxed = options.count("no-relaxed-moves") == 0;
+        minimise.variants.renumber = options.count("no-renumber") == 0;
+        minimise.variants.outputCodes = options.count("no-output-codes") == 0;
+        minimise.variants.monitorCodes = options.count("no-monitor-codes") == 0;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
         minimise.anyConflicts = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_CONFLICTS : minimise.conflicts;
@@ -596,7 +638,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     // without a minimised controller, --dc may choose among the moves of the strategy itself, rather
     // than the lowest output that postprocess picks: on the explicit route, the strategy is a winning
     // multi-strategy (the freedom of the symbolic solver need not be), so every choice is correct
-    if (use_dc && !minimised && explicit_solver) {
+    if (use_dc && !minimised && explicit_solver && options.count("no-unclarified") == 0) {
         auto relational = std::make_unique<SymGame>(sym->statebits, sym->priobits, sym->uap_count, sym->cap_count,
                                                      sym->maxprio);
         relational->trans = sym->trans;
@@ -656,7 +698,13 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         exit(10);
     }
 
+    AIGEncoder::Rules rules;
+    rules.orGate = options.count("no-or-gate") == 0;
+    rules.deadLatches = options.count("no-dead-latches") == 0;
+    rules.latchSplit = options.count("no-latch-ite") == 0;
+    rules.guardComplement = options.count("no-guard-complement") == 0;
     AIGEncoder encoder(*data, *sym);
+    encoder.setRules(rules);
     if (verbose) encoder.setVerbose();
     if (options["isop"].count() > 0) encoder.setIsop();
     if (options["onehot"].count() > 0) encoder.setOneHot();
@@ -668,9 +716,12 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                                                        wctime() - t_before_enc});
     if (use_dc) {
         // the encoding, the numbering of the states, the order of the bits and the simplifications
-        // matter, in no predictable way: keep the smallest circuit (gates and latches), also compared
-        // to the one without don't cares
-        auto size = [](const std::unique_ptr<AIGCircuit>& c) { return c->getNumAnds() + c->getNumLatches(); };
+        // matter, in no predictable way: keep the smallest circuit (gates and latches, or with
+        // --gates-only gates), also compared to the one without don't cares
+        const bool gates_only = options.count("gates-only") > 0;
+        auto size = [gates_only](const std::unique_ptr<AIGCircuit>& c) {
+            return c->getNumAnds() + (gates_only ? 0 : c->getNumLatches());
+        };
         if (verbose) {
             std::cerr << "without don't cares: " << circuit->getNumAnds() << " gates and " << circuit->getNumLatches()
                       << " latches" << std::endl;
@@ -678,8 +729,11 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // By default only the candidates that ever gave the smallest circuit on the examples
         // (measured with --dc-all --stats): all simplifications of each signal, binary also without
         // the irredundant sum of products, and not the deterministic monitor-coded game (its relaxed
-        // version suffices). With --dc-all every candidate, for experiments.
+        // version suffices). With --dc-all every candidate, for experiments; the ablation options
+        // leave out some.
         const bool all = options["dc-all"].count() > 0;
+        const bool no_isop = options.count("no-isop-candidate") > 0;
+        const bool no_all = options.count("no-all-candidates") > 0;
         std::vector<std::pair<SymGame*, std::string>> games{{sym.get(), "controller"}};
         for (const auto& variant : variants) {
             if (all || variant.name != "monitor codes") games.emplace_back(variant.game.get(), variant.name);
@@ -691,9 +745,12 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         };
         std::vector<Setting> settings;
         for (const bool onehot : {false, true}) {
+            if (options.count(onehot ? "no-onehot-dc" : "no-binary-dc")) continue;
             for (const bool isopCandidate : {true, false}) {
+                if (no_isop && isopCandidate) continue;
+                if (!all && !no_isop && onehot && !isopCandidate) continue;
                 for (const bool allCandidates : {false, true}) {
-                    if (!all && (!allCandidates || (onehot && !isopCandidate))) continue;
+                    if (no_all ? allCandidates : !all && !allCandidates) continue;
                     for (const bool statesFirst : {false, true}) {
                         settings.push_back(Setting{onehot, statesFirst, allCandidates, isopCandidate});
                     }
@@ -706,10 +763,12 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
             Setting setting;
         };
         std::vector<Binary> binaries;   // the binary candidates, to reorder the best ones
-        long reorder_left = REORDER_WORK;
+        const long reorder_work = options["reorder-work"].as<long>();
+        long reorder_left = reorder_work;
         auto encodeCandidate = [&](size_t g, const Setting& s, long reorder) {
             const double t_start = wctime();
             AIGEncoder other(*data, *games[g].first);
+            other.setRules(rules);
             if (options["isop"].count() > 0) other.setIsop();
             if (s.onehot) other.setOneHot();
             auto candidate = other.setDontCares(s.statesFirst, s.allCandidates, s.isopCandidate).setReorder(reorder).encode();
@@ -740,7 +799,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         // the variable order matters a lot, but sifting costs time: the best binary candidates first
         std::sort(binaries.begin(), binaries.end(), [](const Binary& a, const Binary& b) { return a.size < b.size; });
         for (size_t k = 0; k < binaries.size() && reorder_left > 0 && options["isop"].count() == 0; k++) {
-            encodeCandidate(binaries[k].game, binaries[k].setting, std::min(reorder_left, REORDER_CANDIDATE_WORK));
+            encodeCandidate(binaries[k].game, binaries[k].setting, std::min(reorder_left, std::max(1L, reorder_work / 3)));
         }
     }
     const double t_after_enc = wctime();

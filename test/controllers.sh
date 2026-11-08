@@ -49,6 +49,13 @@ modes=(
     "--sym --mealy-sat --dc"
     "--bisim --mealy-sat --dc"
     "--permissive --mealy-sat --mealy-any --mealy-conflicts 20000 --dc"
+    # the ablation options, each in one of these
+    "--auto-encode --no-relaxed-moves --no-monitor-codes --no-or-gate"
+    "--auto-encode --no-renumber --no-output-codes --no-latch-ite --no-dead-latches"
+    "--auto-encode --no-binary-dc --no-guard-complement --no-isop-candidate"
+    "--auto-encode --no-onehot-dc --no-all-candidates --reorder-work 0 --gates-only"
+    "--fpim --permissive --mealy-sat --dc --no-layered"
+    "--dc --no-unclarified"
 )
 
 tmp=$(mktemp -d)

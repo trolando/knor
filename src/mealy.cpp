@@ -1545,9 +1545,10 @@ Moves keepOutputBits(const Moves& moves, const std::vector<OutputBit>& chosen, c
     return result;
 }
 
-bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, bool relax, bool checkCycles, bool verbose,
-          BddPool& pool, MealyMinimizer::Result& result)
+bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const MealyMinimizer::Options& options,
+          bool checkCycles, BddPool& pool, MealyMinimizer::Result& result)
 {
+    const MealyMinimizer::Variants& kinds = options.variants;
     OutputTable table(pool);
     const Moves moves = movesOf(ctl, table, game.cap_vars);
     const std::vector<std::vector<char>> pairs = reached(ex.machine, ex.outputSets, table.sets(), ctl.initial, moves);
@@ -1558,26 +1559,35 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, bool relax
     result.game = toGame(game, order, codes, statebits, moves, ex.letterSets, table.sets());
     result.states = static_cast<int>(order.size());
     result.variants.clear();
-    if (!relax) return true;
+    if (!options.relax) return true;
 
     auto correct = [&](int initial, const Moves& all) {
         return !reached(ex.machine, ex.outputSets, table.sets(), initial, all).empty()
                && (!checkCycles || winningMoves(ex.machine, ex.outputSets, table.sets(), initial, all));
     };
-    const Moves all = relaxedMoves(ex.machine, ex.outputSets, moves.size(), pairs, table);
+    const Moves all = kinds.relaxed ? relaxedMoves(ex.machine, ex.outputSets, moves.size(), pairs, table) : moves;
     if (correct(ctl.initial, all)) {
-        // the numbering of the states matters for the encoding, in no predictable way
-        for (const bool depthFirst : {false, true}) {
-            const std::vector<int> numbers = numbering(ctl.initial, all, depthFirst);
-            codes = positions(numbers, all.size(), statebits);
-            result.variants.push_back({toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()),
-                                       depthFirst ? "relaxed, depth-first" : "relaxed, breadth-first"});
+        if (kinds.relaxed && kinds.renumber) {
+            // the numbering of the states matters for the encoding, in no predictable way
+            for (const bool depthFirst : {false, true}) {
+                const std::vector<int> numbers = numbering(ctl.initial, all, depthFirst);
+                codes = positions(numbers, all.size(), statebits);
+                result.variants.push_back({toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()),
+                                           depthFirst ? "relaxed, depth-first" : "relaxed, breadth-first"});
+            }
+        } else if (kinds.relaxed) {
+            codes = positions(order, all.size(), statebits);
+            result.variants.push_back({toGame(game, order, codes, statebits, all, ex.letterSets, table.sets()),
+                                       "relaxed"});
         }
         // state bits that are output bits cost (almost) no gates
         std::vector<int> outputOrder;
         std::vector<OutputBit> outputBits;
-        codes = outputCodes(all, ctl.initial, game.cap_count, table.sets(), game.cap_vars, outputOrder, statebits,
-                            outputBits);
+        codes.clear();
+        if (kinds.outputCodes) {
+            codes = outputCodes(all, ctl.initial, game.cap_count, table.sets(), game.cap_vars, outputOrder, statebits,
+                                outputBits);
+        }
         if (!codes.empty()) {
             const int flags = static_cast<int>(outputBits.size());
             const Moves agreeing = keepOutputBits(all, outputBits, codes, statebits - flags, table, game.cap_vars);
@@ -1585,7 +1595,7 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, bool relax
                 // only the states that these moves reach (where correct() checked that every state has a
                 // move for every letter); the codes are labels, and the initial state keeps code 0
                 const std::vector<int> agreeingOrder = numbering(ctl.initial, agreeing, false);
-                if (verbose) {
+                if (options.verbose) {
                     std::cerr << "state codes of " << flags << " output bits and " << statebits - flags
                               << " further bits for " << agreeingOrder.size() << " states" << std::endl;
                 }
@@ -1595,6 +1605,7 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, bool relax
         }
     }
 
+    if (!kinds.monitorCodes) return true;
     Controller split = ctl;
     std::vector<int> splitOrder;
     std::vector<Monitor> chosen;
@@ -1606,13 +1617,14 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, bool relax
         reached(ex.machine, ex.outputSets, table.sets(), split.initial, exact);
     if (splitPairs.empty()) return true;
     const int flags = static_cast<int>(chosen.size());
-    if (verbose) {
+    if (options.verbose) {
         std::cerr << "state codes of " << flags << " monitor flags and " << statebits - flags << " further bits for "
                   << splitOrder.size() << " states" << std::endl;
     }
     // with the controller's moves, and with the freedom that keeps the flags
     result.variants.push_back({toGame(game, splitOrder, codes, statebits, exact, ex.letterSets, table.sets()),
                                "monitor codes"});
+    if (!kinds.relaxed) return true;
     const Moves free = keepFlags(relaxedMoves(ex.machine, ex.outputSets, exact.size(), splitPairs, table), chosen,
                                  codes, statebits - flags, inputs, game.cap_count, table, game.cap_vars);
     if (correct(split.initial, free)) {
@@ -1636,10 +1648,12 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, bool relax
 // With relax, a controller that is not smaller still gives games with its
 // freedom to more, for the encoder to choose from (fewer states need not give
 // a smaller circuit).
-bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long conflicts, bool verbose, bool relax,
-                 MealyMinimizer::Result& result, std::vector<MealyMinimizer::Variant>& more,
-                 std::vector<MealyMinimizer::Search>& searches)
+bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long conflicts,
+                 const MealyMinimizer::Options& options, MealyMinimizer::Result& result,
+                 std::vector<MealyMinimizer::Variant>& more, std::vector<MealyMinimizer::Search>& searches)
 {
+    const bool verbose = options.verbose;
+    const bool relax = options.relax;
     const size_t index = searches.size();
     searches.emplace_back();
     searches[index].moves = name;
@@ -1748,7 +1762,7 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long c
     if (top >= bound) {
         // not smaller than the controller of the strategy, but with more freedom
         MealyMinimizer::Result other;
-        if (relax && !checkCycles && emit(game, ex, best, relax, false, verbose, pool, other)) {
+        if (relax && !checkCycles && emit(game, ex, best, options, false, pool, other)) {
             const std::string prefix = std::string(name) + ": ";
             more.push_back({std::move(other.game), prefix + "controller"});
             for (auto& variant : other.variants) more.push_back({std::move(variant.game), prefix + variant.name});
@@ -1764,7 +1778,7 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long c
         correct = false;
     }
     MealyMinimizer::Result found;
-    if (!correct || !emit(game, ex, best, relax, checkCycles, verbose, pool, found)) {
+    if (!correct || !emit(game, ex, best, options, checkCycles, pool, found)) {
         // cannot happen; keep the other controller rather than risk a wrong one
         std::cerr << "error: the controller found over the " << name << " is not winning" << std::endl;
         return false;
@@ -1873,7 +1887,7 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     }
     search.found = found;
     search.proven = proven;
-    if (!emit(game, ex, best, relax, false, verbose, pool, result)) {
+    if (!emit(game, ex, best, options, false, pool, result)) {
         // cannot happen; keep the original controller rather than risk a wrong one
         std::cerr << "error: the minimised controller makes moves the strategy does not allow" << std::endl;
         Result none;
@@ -1895,7 +1909,7 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
                            Wider{options.anyMoves, "all winning moves", options.anyConflicts, options.anyStates}}) {
         Result smaller;
         if (w.moves == mtbdd_false || (w.maxStates > 0 && result.states > w.maxStates)
-            || !searchWider(game, w.moves, w.name, result.states, w.conflicts, verbose, relax, smaller, more, searches)) {
+            || !searchWider(game, w.moves, w.name, result.states, w.conflicts, options, smaller, more, searches)) {
             continue;
         }
         if (relax) {

@@ -66,6 +66,17 @@ public:
     };
 
     /**
+     * The variants that relax makes; all by default (knor's ablation options
+     * switch them off).
+     */
+    struct Variants {
+        bool relaxed = true;        // with every move that keeps the controller correct (else its own moves)
+        bool renumber = true;       // relaxed: number the states breadth-first and depth-first by these moves
+        bool outputCodes = true;    // state codes with output bits
+        bool monitorCodes = true;   // state codes with monitor flags
+    };
+
+    /**
      * The SAT searches are limited by the conflicts of the SAT solver, not by
      * time, so that the result does not depend on the machine or its load.
      */
@@ -73,6 +84,7 @@ public:
         long conflicts = 1000000;               // for the search within the strategy, and the extended one
         bool verbose = false;
         bool relax = false;
+        Variants variants;                      // with relax
         sylvan::MTBDD extended = sylvan::mtbdd_false;   // a winning multi-strategy that contains the strategy
         sylvan::MTBDD anyMoves = sylvan::mtbdd_false;   // all moves into the winning region
         long anyConflicts = 1000000;            // for the search over anyMoves

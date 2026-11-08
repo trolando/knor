@@ -159,7 +159,7 @@ unsigned int AIGEncoder::bddToAigRecursive(MTBDD bdd)
             auto rhs1 = bddToAigRecursive(low);
             res = circuit->makeAnd(rhs0, rhs1);
         }
-    } else if (high == mtbdd_true) {
+    } else if (high == mtbdd_true && rules.orGate) {
         // OR(the_lit, ...) == ~AND(~the_lit, ~...): one gate (the low edge is never complemented,
         // so it is never true)
         auto lowres = bddToAigRecursive(low);
@@ -990,7 +990,7 @@ bool AIGEncoder::processOnehotDontCares(int maxStates)
         for (size_t j = 0; j < f.function.size(); j++) {
             std::deque<unsigned int> sources;
             unsigned int guard;
-            if (2 * f.states[j].size() > static_cast<size_t>(n)) {
+            if (rules.guardComplement && 2 * f.states[j].size() > static_cast<size_t>(n)) {
                 std::vector<char> uses(n, 0);
                 for (int k : f.states[j]) uses[k] = 1;
                 for (int k = 0; k < n; k++) {
@@ -1187,7 +1187,7 @@ void AIGEncoder::processBinary()
         MTBDD cube = mtbdd_false, set = mtbdd_false;
         mtbdd_refs_pushptr(&cube);
         mtbdd_refs_pushptr(&set);
-        for (bool changed = true; changed;) {
+        for (bool changed = rules.deadLatches; changed;) {
             changed = false;
             for (int i = 0; i < game.statebits; i++) {
                 if (!live[i] || state_bdds[i] != mtbdd_false) continue;
@@ -1330,7 +1330,8 @@ void AIGEncoder::processBinary()
         }
         for (int i=0; i<game.statebits; i++) {
             if (!live[i]) continue;
-            auto res = dontcares ? latchFunction(state_bdds[i], cap_bdds, output_lits) : bddToAigRecursive(state_bdds[i]);
+            auto res = dontcares && rules.latchSplit ? latchFunction(state_bdds[i], cap_bdds, output_lits)
+                                                     : bddToAigRecursive(state_bdds[i]);
             circuit->setLatch(state_to_lit.at(i), res, "");
         }
     }
