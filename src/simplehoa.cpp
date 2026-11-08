@@ -508,8 +508,11 @@ private:
 // ---------------------------------------------------------------------------
 
 // Nesting limit for parentheses and negations, so that hostile input cannot
-// exhaust the (Lace worker) stack.
-constexpr int MAX_NESTING = 1000;
+// exhaust the stack. A parity condition with n priorities nests n - 1 deep
+// (parity games have thousands); parsing it and the recursive passes over the
+// tree take about 600 bytes of stack per level, which knor's Lace worker has
+// room for (see main in knor.cpp).
+constexpr int MAX_NESTING = 100000;
 
 class AutomatonParser final {
 public:

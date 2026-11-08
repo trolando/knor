@@ -42,6 +42,8 @@
 #include <utility>
 #include <vector>
 
+#include <pthread.h>
+
 extern "C" {
 #include "aiger.h"
 }
@@ -510,19 +512,24 @@ private:
 
 }  // namespace
 
-int main(int argc, char** argv)
+namespace {
+
+struct Arguments {
+    char** argv;
+    int result;
+};
+
+void* check(void* p)
 {
-    if (argc != 3) {
-        fprintf(stderr, "usage: aigcheck automaton.ehoa controller.aag\n");
-        return 2;
-    }
+    Arguments& args = *static_cast<Arguments*>(p);
+    char** argv = args.argv;
     FILE* f = fopen(argv[1], "r");
     if (f == nullptr) fail("cannot open %s", argv[1]);
     HoaData data;
     defaultsHoa(&data);
     const int ret = parseHoa(f, &data);
     fclose(f);
-    if (ret != 0) return 2;
+    if (ret != 0) exit(2);
 
     const Spec spec(data);   // may rewrite the acceptance condition of data
     const Controller ctrl(argv[2], data);
@@ -530,5 +537,27 @@ int main(int argc, char** argv)
     product.explore();
     const bool ok = product.check();
     resetHoa(&data);
-    return ok ? 0 : 1;
+    args.result = ok ? 0 : 1;
+    return nullptr;
+}
+
+}  // namespace
+
+int main(int argc, char** argv)
+{
+    if (argc != 3) {
+        fprintf(stderr, "usage: aigcheck automaton.ehoa controller.aag\n");
+        return 2;
+    }
+    // The parser recurses as deep as the input is nested: give it the stack
+    // that knor's Lace worker has (see main in src/knor.cpp).
+    Arguments args{argv, 2};
+    pthread_attr_t attr;
+    pthread_t thread;
+    if (pthread_attr_init(&attr) != 0 || pthread_attr_setstacksize(&attr, size_t(256) << 20) != 0
+        || pthread_create(&thread, &attr, check, &args) != 0 || pthread_join(thread, nullptr) != 0) {
+        fail("cannot start the checker thread");
+    }
+    pthread_attr_destroy(&attr);
+    return args.result;
 }

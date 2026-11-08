@@ -51,6 +51,8 @@ target_sources(aigcheck
 target_compile_features(aigcheck PUBLIC c_std_11 cxx_std_17)
 target_compile_options(aigcheck PRIVATE -Wall -Wextra -fno-strict-aliasing -Wno-deprecated -Wno-unused-parameter)
 target_include_directories(aigcheck PRIVATE src)
+find_package(Threads REQUIRED)
+target_link_libraries(aigcheck PRIVATE Threads::Threads)
 
 # Tests (ctest / make test)
 enable_testing()

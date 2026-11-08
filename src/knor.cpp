@@ -800,7 +800,10 @@ main(int argc, char* argv[])
 {
     auto options = handleOptions(argc, argv);
 
-    // Initialize Lace, only 1 worker
+    // Initialize Lace, only 1 worker. The worker runs everything, and its program stack must hold
+    // the recursion over deeply nested acceptance conditions (parity games with up to 100000
+    // priorities, see MAX_NESTING in simplehoa.cpp); only the part that is used takes memory.
+    lace_set_stacksize(size_t(256) << 20);
     lace_start(1, 1024*1024*2); // initialize Lace, but sequentially
                                 // also get a large enough task size... (2M tasks) for PSI!
 
