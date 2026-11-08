@@ -12,8 +12,9 @@
  * uncontrollable AP and one AIGER output per controllable AP, matched by
  * symbol name, latches initialised to 0 or 1, outputs computed from the
  * current inputs and latches. The automaton must be what knor accepts
- * (isParityGFG): a complete deterministic colored parity automaton with a
- * unique initial state, with the priority on the edge or on the target state.
+ * (isParityGFG): a colored parity automaton with a unique initial state, with
+ * the priority on the edge or on the target state. It need not declare the
+ * properties "deterministic" and "complete", because they are checked here.
  *
  * The checker explores the product of the controller's latch valuations with
  * the automaton states over all input valuations and reports FAIL iff some
@@ -23,10 +24,9 @@
  * at a time while the circuit and the labels are evaluated in three-valued
  * logic, and a cube is closed as soon as the edge taken and the next latch
  * values are determined. This is exact and independent of knor's BDD and AIG
- * code. The properties "deterministic" and "complete" are checked on every
- * reached valuation: one without an edge is reported as FAIL (the automaton is
- * not complete, and knor's game has no move there), one with several edges is
- * an error.
+ * code. Determinism and completeness are checked on every reached
+ * valuation: one without an edge is reported as FAIL (a missing edge rejects
+ * the run), one with several edges is an error.
  *
  * Exit codes: 0 PASS, 1 FAIL, 2 error (usage, parsing, malformed input).
  */
@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <map>
 #include <string>
@@ -69,6 +70,22 @@ uint8_t not3(uint8_t a) { return a == VX ? VX : static_cast<uint8_t>(1 - a); }
 uint8_t and3(uint8_t a, uint8_t b) { return (a == 0 || b == 0) ? 0 : (a == 1 && b == 1) ? 1 : VX; }
 uint8_t or3(uint8_t a, uint8_t b) { return not3(and3(not3(a), not3(b))); }
 
+// Declare the property if the automaton does not (properties is malloc'd).
+void declare(HoaData& data, const char* property)
+{
+    for (int i = 0; i < data.noProps; i++) {
+        if (std::string(data.properties[i]) == property) return;
+    }
+    const size_t count = static_cast<size_t>(std::max(data.noProps, 0));
+    char** properties = static_cast<char**>(realloc(data.properties, (count + 1) * sizeof(char*)));
+    char* copy = static_cast<char*>(malloc(strlen(property) + 1));
+    if (properties == nullptr || copy == nullptr) fail("out of memory");
+    strcpy(copy, property);
+    properties[count] = copy;
+    data.properties = properties;
+    data.noProps = static_cast<int>(count) + 1;
+}
+
 /**
  * The specification: the parsed automaton, its parity condition, and for
  * every edge its priority and the APs in its label.
@@ -80,6 +97,9 @@ public:
         // As knor does: rewrite other acceptance conditions (Buchi, Rabin, ...)
         // into canonical parity; this preserves the language.
         if (paritizeHoa(&data, true) != 0) exit(2);
+        // checked on the reached valuations instead
+        declare(data, "deterministic");
+        declare(data, "complete");
         if (isParityGFG(&data, &is_max_, &good_) != 0) exit(2);
         if (data.noAccSets < 1) fail("the automaton has no acceptance sets");
         for (int i = 0; i < data.noAliases; i++) aliases_[data.aliases[i].alias] = data.aliases[i].labelExpr;

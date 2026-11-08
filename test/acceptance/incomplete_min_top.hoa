@@ -1,0 +1,13 @@
+/* expect: 10 */
+/* min odd, priority 0 losing: the sink gets 0; the controller avoids the hole on {1} */
+HOA: v1
+States: 1
+Start: 0
+AP: 2 "u" "c"
+controllable-AP: 1
+acc-name: parity min odd 70
+Acceptance: 70 Fin(0) & (Inf(1) | (Fin(2) & (Inf(3) | (Fin(4) & (Inf(5) | (Fin(6) & (Inf(7) | (Fin(8) & (Inf(9) | (Fin(10) & (Inf(11) | (Fin(12) & (Inf(13) | (Fin(14) & (Inf(15) | (Fin(16) & (Inf(17) | (Fin(18) & (Inf(19) | (Fin(20) & (Inf(21) | (Fin(22) & (Inf(23) | (Fin(24) & (Inf(25) | (Fin(26) & (Inf(27) | (Fin(28) & (Inf(29) | (Fin(30) & (Inf(31) | (Fin(32) & (Inf(33) | (Fin(34) & (Inf(35) | (Fin(36) & (Inf(37) | (Fin(38) & (Inf(39) | (Fin(40) & (Inf(41) | (Fin(42) & (Inf(43) | (Fin(44) & (Inf(45) | (Fin(46) & (Inf(47) | (Fin(48) & (Inf(49) | (Fin(50) & (Inf(51) | (Fin(52) & (Inf(53) | (Fin(54) & (Inf(55) | (Fin(56) & (Inf(57) | (Fin(58) & (Inf(59) | (Fin(60) & (Inf(61) | (Fin(62) & (Inf(63) | (Fin(64) & (Inf(65) | (Fin(66) & (Inf(67) | (Fin(68) & (Inf(69))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+--BODY--
+State: 0
+[1] 0 {1}
+--END--

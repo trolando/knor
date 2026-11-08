@@ -16,6 +16,7 @@
 #include <cxxopts.hpp>
 #include <symgame.hpp>
 #include <bisim.hpp>
+#include <complete.hpp>
 #include <aigencoder.hpp>
 #include <abcminimization.hpp>
 #include <gameconstructor.hpp>
@@ -220,7 +221,18 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     bool isMaxParity = true;
     short controllerParity = 0;
     const int originalStates = data->noStates;
-    int ret = paritizeHoa(data, options["paritize"].count() > 0);
+
+    // Initialize Sylvan (the completion of the automaton compares labels as BDDs)
+    sylvan_set_limits(512LL << 22, 1, 14); // should be enough (2 gigabytes)
+    sylvan_init_package();
+    sylvan_init_mtbdd();
+    sylvan_init_zdd();
+    if (verbose) sylvan_gc_hook_pregc(TASK(gc_start));
+    if (verbose) sylvan_gc_hook_postgc(TASK(gc_end));
+
+    int ret = completeHoa(data);
+    if (ret != 0) return ret;
+    ret = paritizeHoa(data, options["paritize"].count() > 0);
     if (ret == 104) std::cerr << "(use --paritize to add the memory)" << std::endl;
     if (ret != 0) return ret;
     if (verbose && data->noStates != originalStates) {
@@ -254,14 +266,6 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         if (state_priorities) std::cerr << "priorities are on states" << std::endl;
         else std::cerr << "priorities are on transitions" << std::endl;
     }
-
-    // Initialize Sylvan
-    sylvan_set_limits(512LL << 22, 1, 14); // should be enough (2 gigabytes)
-    sylvan_init_package();
-    sylvan_init_mtbdd();
-    sylvan_init_zdd();
-    if (verbose) sylvan_gc_hook_pregc(TASK(gc_start));
-    if (verbose) sylvan_gc_hook_postgc(TASK(gc_end));
 
     bool explicit_solver = options["sym"].count() == 0;
     bool naive_splitting = options["naive"].count() > 0;

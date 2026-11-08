@@ -1,0 +1,14 @@
+/* expect: 20 */
+HOA: v1
+States: 2
+Start: 0
+AP: 2 "u" "c"
+controllable-AP: 1
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+--BODY--
+State: [0] 0
+1
+State: 1
+[t] 1 {0}
+--END--

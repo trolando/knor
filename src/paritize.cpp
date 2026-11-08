@@ -256,59 +256,6 @@ private:
     int base = 0;
 };
 
-void addProperty(std::vector<std::string>& properties, const char* p)
-{
-    if (std::find(properties.begin(), properties.end(), p) == properties.end()) properties.emplace_back(p);
-}
-
-std::vector<std::string> properties(const HoaData* data)
-{
-    std::vector<std::string> v;
-    for (int i = 0; i < data->noProps; i++) v.emplace_back(data->properties[i]);
-    return v;
-}
-
-// A malloc'd copy of the list (as in HoaData).
-char** mallocStrings(const std::vector<std::string>& v)
-{
-    char** list = static_cast<char**>(checkedCalloc(v.size(), sizeof(char*)));
-    try {
-        for (size_t i = 0; i < v.size(); i++) list[i] = mallocString(v[i]);
-    } catch (...) {
-        for (size_t i = 0; i < v.size(); i++) free(list[i]);
-        free(list);
-        throw;
-    }
-    return list;
-}
-
-void replaceStrings(char**& list, int& count, const std::vector<std::string>& v)
-{
-    char** fresh = mallocStrings(v);
-    for (int i = 0; i < count; i++) free(list[i]);
-    free(list);
-    list = fresh;
-    count = static_cast<int>(v.size());
-}
-
-// Is every edge in exactly one acceptance set, either directly (and states
-// have none) or through its state (and edges have none)?
-bool isColored(const HoaData* data)
-{
-    bool onEdges = true;
-    bool onStates = true;
-    for (int i = 0; i < data->noStates; i++) {
-        const State& s = data->states[i];
-        if (s.noAccSig != 0) onEdges = false;
-        if (s.noAccSig != 1) onStates = false;
-        for (int j = 0; j < s.noTrans; j++) {
-            if (s.transitions[j].noAccSig != 1) onEdges = false;
-            if (s.transitions[j].noAccSig != 0) onStates = false;
-        }
-    }
-    return onEdges || onStates;
-}
-
 uint64_t setMask(const int* sets, int count)
 {
     uint64_t m = 0;
@@ -406,32 +353,6 @@ void setParityAcceptance(HoaData* data, int noSets, bool product)
     data->accNameParameters = parameters;
     data->noANPs = 3;
 }
-
-// Free malloc'd blocks unless released.
-class MallocList final {
-public:
-    MallocList() = default;
-    MallocList(const MallocList&) = delete;
-    MallocList& operator=(const MallocList&) = delete;
-    ~MallocList()
-    {
-        for (void* p : blocks) free(p);
-    }
-
-    template <typename T>
-    T* allocate(size_t count)
-    {
-        if (blocks.size() == blocks.capacity()) blocks.reserve(2 * blocks.size() + 16);
-        T* p = static_cast<T*>(checkedMalloc(count * sizeof(T)));
-        blocks.push_back(p);
-        return p;
-    }
-
-    void release() { blocks.clear(); }
-
-private:
-    std::vector<void*> blocks;
-};
 
 // Recolor the edges in place: edge e gets priority[atom of e].
 void recolor(HoaData* data, const Atoms& atoms, std::vector<int> priority)
@@ -560,7 +481,7 @@ void paritize(HoaData* data, bool addMemory)
     short good;
     if (parityName(data, &max, &good) == 0
         && isParityCondition(data->acc, data->noAccSets, max, good, max ? data->noAccSets - 1 : 0, true)
-        && isColored(data)) {
+        && coloring(data) != Coloring::NONE) {
         // already usable as it is
         std::vector<std::string> props = properties(data);
         if (std::find(props.begin(), props.end(), "colored") == props.end()) {

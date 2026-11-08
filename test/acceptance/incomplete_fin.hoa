@@ -1,0 +1,12 @@
+/* expect: 20 */
+HOA: v1
+States: 1
+Start: 0
+AP: 2 "u" "c"
+controllable-AP: 1
+acc-name: co-Buchi
+Acceptance: 1 Fin(0)
+--BODY--
+State: 0
+[0] 0
+--END--
