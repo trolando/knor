@@ -108,6 +108,7 @@ handleOptions(int &argc, char**& argv)
             ("no-renumber", "Relaxed moves keep the controller's state numbering (not breadth- and depth-first)")
             ("no-output-codes", "No state codes with output bits")
             ("no-monitor-codes", "No state codes with monitor flags")
+            ("no-cube-codes", "No state codes as cubes (codes with a free bit)")
             ("no-layered", "With --permissive, minimise over the extended strategy directly")
             ("no-unclarified", "No candidate with the freedom of the unclarified strategy (--dc without --mealy-sat)")
             ("no-binary-dc", "No binary candidates with don't cares")
@@ -175,7 +176,7 @@ handleOptions(int &argc, char**& argv)
                 exit(255);
             }
         }
-        for (const char* name : {"no-relaxed-moves", "no-renumber", "no-output-codes", "no-monitor-codes"}) {
+        for (const char* name : {"no-relaxed-moves", "no-renumber", "no-output-codes", "no-monitor-codes", "no-cube-codes"}) {
             if (options.count(name) && !(dc && mealy)) {
                 std::cerr << "error parsing options: --" << name << " requires --mealy-sat --dc or --auto-encode" << std::endl;
                 exit(255);
@@ -616,6 +617,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         minimise.variants.renumber = options.count("no-renumber") == 0;
         minimise.variants.outputCodes = options.count("no-output-codes") == 0;
         minimise.variants.monitorCodes = options.count("no-monitor-codes") == 0;
+        minimise.variants.cubeCodes = options.count("no-cube-codes") == 0;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
         minimise.anyWork = auto_encode && options.count("mealy-any") == 0 ? minimise.work / AUTO_ANY_SHARE : minimise.work;

@@ -1159,6 +1159,62 @@ std::vector<int> positions(const std::vector<int>& order, size_t states, int& st
     return codes;
 }
 
+// Codes as cubes: with n states and b bits, the 2^b - n states whose code
+// with the most significant bit set is unused also get that code, as a cube
+// with that bit free, so that no code is unused and the moves into these
+// states leave that bit free. The states in breadth-first order get the
+// codes in order, or with byIncoming, the states with the most moves into
+// them get the cubes (the initial state keeps code 0). Returns the order of
+// the states, with their codes, the number of bits and the free bits (by
+// state), or nothing if every code is used.
+std::vector<int> cubeNumbering(int initial, const Moves& moves, bool byIncoming, std::vector<int>& codes,
+                               int& statebits, std::vector<uint32_t>& free)
+{
+    std::vector<int> order = numbering(initial, moves, false);
+    codes = positions(order, moves.size(), statebits);
+    const int n = static_cast<int>(order.size());
+    const int half = 1 << (statebits - 1);
+    if (n == 2 * half) return {};
+    if (byIncoming) {
+        std::vector<long> incoming(moves.size(), 0);
+        for (const auto& letters : moves) {
+            for (const auto& choices : letters) {
+                for (const Choice& choice : choices) incoming[choice.successor]++;
+            }
+        }
+        // the codes from n - half to half - 1 get cubes: give them to the states with the most
+        // incoming moves (stable, so ties keep the breadth-first order), the others keep theirs in order
+        std::vector<int> rest(order.begin() + 1, order.end());
+        std::stable_sort(rest.begin(), rest.end(), [&](int a, int b) { return incoming[a] > incoming[b]; });
+        const int cubes = 2 * half - n;
+        std::vector<int> chosen(rest.begin(), rest.begin() + std::min<int>(cubes, static_cast<int>(rest.size())));
+        std::vector<char> isChosen(moves.size(), 0);
+        for (int c : chosen) isChosen[c] = 1;
+        std::vector<int> others{initial};
+        for (int c : order) {
+            if (c != initial && !isChosen[c]) others.push_back(c);
+        }
+        // others take the codes below n - half and from half on, chosen the codes in between
+        order.clear();
+        size_t o = 0;
+        for (int code = 0; code < n; code++) {
+            const bool cube = code >= n - half && code < half;
+            if (cube && !chosen.empty()) {
+                order.push_back(chosen.front());
+                chosen.erase(chosen.begin());
+            } else {
+                order.push_back(others[o++]);
+            }
+        }
+        codes = positions(order, moves.size(), statebits);
+    }
+    free.assign(moves.size(), 0);
+    for (int c : order) {
+        if (codes[c] >= n - half && codes[c] < half) free[c] = static_cast<uint32_t>(half);
+    }
+    return order;
+}
+
 // A one-bit memory of the inputs and outputs: a flag that an input sets and
 // an output resets (next = (flag or set) and not reset, or, if the set wins,
 // set or (flag and not reset); set and reset are literals of an input and an
@@ -1359,13 +1415,38 @@ Moves keepFlags(const Moves& moves, const std::vector<Monitor>& chosen, const st
     return result;
 }
 
+// The cube of a state code over statevars (most significant bit first)
+// without the bits in free, then priority 0 over priovars (if any).
+MTBDD codeCube(uint32_t code, uint32_t free, MTBDD statevars, MTBDD priovars)
+{
+    std::vector<uint32_t> vars;
+    for (MTBDD v = statevars; v != mtbdd_set_empty(); v = mtbdd_set_next(v)) vars.push_back(mtbdd_set_first(v));
+    MTBDD cube = mtbdd_true;
+    for (size_t bit = 0; bit < vars.size(); bit++) {
+        const uint32_t var = vars[vars.size() - 1 - bit];
+        if ((free >> bit) & 1) continue;
+        cube = ((code >> bit) & 1) ? mtbdd_makenode(var, mtbdd_false, cube) : mtbdd_makenode(var, cube, mtbdd_false);
+    }
+    vars.clear();
+    for (MTBDD v = priovars; v != mtbdd_set_empty(); v = mtbdd_set_next(v)) vars.push_back(mtbdd_set_first(v));
+    while (!vars.empty()) {
+        cube = mtbdd_makenode(vars.back(), cube, mtbdd_false);
+        vars.pop_back();
+    }
+    return cube;
+}
+
 // The game whose states are the controller states reachable from the initial
 // one (in the given order, the initial one first, with the given codes; the
-// initial one has code 0), with exactly the controller's moves.
+// initial one has code 0), with exactly the controller's moves. With free (by
+// state), a state's code is a cube: the bits in its free mask take any value,
+// so its successors may set them freely, and every code of the cube behaves
+// as the state.
 std::unique_ptr<SymGame> toGame(SymGame& g, const std::vector<int>& order, const std::vector<int>& number,
                                 int statebits, const Moves& moves, const std::vector<MTBDD>& letterSets,
-                                const std::vector<MTBDD>& sets)
+                                const std::vector<MTBDD>& sets, const std::vector<uint32_t>& free = {})
 {
+    auto freeOf = [&](int state) { return free.empty() ? 0u : free[state]; };
     const int count = static_cast<int>(order.size());
     auto res = std::make_unique<SymGame>(statebits, g.priobits, g.uap_count, g.cap_count, g.maxprio);
 
@@ -1389,7 +1470,7 @@ std::unique_ptr<SymGame> toGame(SymGame& g, const std::vector<int>& order, const
     MTBDD state = mtbdd_false, input = mtbdd_false, move = mtbdd_false, target = mtbdd_false, step = mtbdd_false;
     for (MTBDD* r : {&state, &input, &move, &target, &step}) mtbdd_refs_pushptr(r);
     for (int i = 0; i < count; i++) {
-        state = BDDTools::encode_state(static_cast<uint32_t>(number[order[i]]), res->s_vars);
+        state = codeCube(static_cast<uint32_t>(number[order[i]]), freeOf(order[i]), res->s_vars, mtbdd_set_empty());
         for (size_t l = 0; l < letters.size(); l++) {
             for (const Choice& choice : moves[order[i]][l]) {
                 auto out = outputs.find(choice.outputs);
@@ -1398,8 +1479,8 @@ std::unique_ptr<SymGame> toGame(SymGame& g, const std::vector<int>& order, const
                 }
                 input = sylvan_and(state, letters[l]);
                 move = sylvan_and(input, out->second);
-                target = BDDTools::encode_priostate(static_cast<uint32_t>(number[choice.successor]), 0, res->ns_vars,
-                                                    res->np_vars);
+                target = codeCube(static_cast<uint32_t>(number[choice.successor]), freeOf(choice.successor), res->ns_vars,
+                                  res->np_vars);
                 step = sylvan_and(move, target);
                 res->strategies = sylvan_or(res->strategies, move);
                 res->trans = sylvan_or(res->trans, step);
@@ -1581,6 +1662,16 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
                 codes = positions(numbers, all.size(), statebits);
                 result.variants.push_back({toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()),
                                            depthFirst ? "relaxed, depth-first" : "relaxed, breadth-first"});
+            }
+            if (kinds.cubeCodes) {
+                for (const bool byIncoming : {false, true}) {
+                    std::vector<uint32_t> free;
+                    const std::vector<int> numbers = cubeNumbering(ctl.initial, all, byIncoming, codes, statebits, free);
+                    if (numbers.empty()) break;
+                    result.variants.push_back(
+                        {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets(), free),
+                         byIncoming ? "relaxed, cube codes by incoming moves" : "relaxed, cube codes"});
+                }
             }
         } else if (kinds.relaxed) {
             codes = positions(order, all.size(), statebits);

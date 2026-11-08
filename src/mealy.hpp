@@ -74,6 +74,7 @@ public:
         bool renumber = true;       // relaxed: number the states breadth-first and depth-first by these moves
         bool outputCodes = true;    // state codes with output bits
         bool monitorCodes = true;   // state codes with monitor flags
+        bool cubeCodes = true;      // relaxed and renumbered: state codes as cubes, so no code is unused
     };
 
     /**
