@@ -131,7 +131,8 @@ private:
                              sylvan::MTBDD* state_bdds);
     void rechoose(sylvan::MTBDD relation, const std::vector<bool>& live, const std::vector<uint32_t>& order,
                   uint32_t first, sylvan::MTBDD* cap_bdds, sylvan::MTBDD* state_bdds);
-    unsigned int latchFunction(sylvan::MTBDD h, sylvan::MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits);
+    unsigned int latchFunction(sylvan::MTBDD h, sylvan::MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits,
+                               std::deque<sylvan::MTBDD>& built);
 };
 
 #endif //KNOR_AIGENCODER_HPP

@@ -734,42 +734,6 @@ void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap
     mtbdd_refs_popptr(9);
 }
 
-// The next-state function h, as ITE(g, h where g holds, h where g does not
-// hold) for the output g whose logic the circuit already has, if the two
-// restrictions (by sylvan_restrict, so this is exact) are smaller than h. For
-// example a flag that a grant resets only needs the grant and a few gates.
-unsigned int AIGEncoder::latchFunction(MTBDD h, MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits)
-{
-    MTBDD high = mtbdd_false, low = mtbdd_false, bestHigh = mtbdd_false, bestLow = mtbdd_false;
-    for (MTBDD* r : {&high, &low, &bestHigh, &bestLow}) mtbdd_refs_pushptr(r);
-    size_t best = mtbdd_nodecount(h);
-    int output = -1;
-    for (int j = 0; j < game.cap_count; j++) {
-        if (sylvan_isconst(cap_bdds[j])) continue;
-        high = sylvan_restrict(h, cap_bdds[j]);
-        low = sylvan_restrict(h, sylvan_not(cap_bdds[j]));
-        const MTBDD both[2] = {high, low};
-        const size_t cost = mtbdd_nodecount_more(both, 2) + 3;
-        if (cost < best) {
-            best = cost;
-            output = j;
-            bestHigh = high;
-            bestLow = low;
-        }
-    }
-    unsigned int res;
-    if (output == -1) {
-        res = bddToAigRecursive(h);
-    } else {
-        const unsigned int g = output_lits[output];
-        const unsigned int a = bddToAigRecursive(bestHigh);
-        const unsigned int b = bddToAigRecursive(bestLow);
-        res = aiger_not(circuit->makeAnd(aiger_not(circuit->makeAnd(g, a)), aiger_not(circuit->makeAnd(aiger_not(g), b))));
-    }
-    mtbdd_refs_popptr(4);
-    return res;
-}
-
 namespace {
 
 // MTBDDs that stay protected as long as the pool exists; their addresses stay valid.
@@ -1171,7 +1135,72 @@ bool reorderFunctions(const std::vector<MTBDD*>& functions, const std::vector<ui
     return true;
 }
 
+// The gates of ITE(g, a, b) as latchFunction builds it, for constant a or b.
+unsigned int iteGates(MTBDD a, MTBDD b)
+{
+    const bool ca = sylvan_isconst(a), cb = sylvan_isconst(b);
+    if (ca && cb) return 0;                         // a constant, g or not g
+    if (ca) return a == mtbdd_false ? 1 : 2;        // not g and b, or g or b
+    if (cb) return b == mtbdd_false ? 1 : 2;
+    return 3;
+}
+
 }  // namespace
+
+// The next-state function h, as ITE(g, h where g holds, h where g does not
+// hold) for the output g whose logic the circuit already has, if the two
+// restrictions (by sylvan_restrict, so this is exact) need fewer gates on top
+// of the functions already in the circuit (built) than h does, in the gates of
+// the Shannon expansion. For example a flag that a grant resets only needs the
+// grant and a few gates. Adds the chosen functions to built, protected (the
+// caller unprotects them).
+unsigned int AIGEncoder::latchFunction(MTBDD h, MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits,
+                                       std::deque<MTBDD>& built)
+{
+    MTBDD high = mtbdd_false, low = mtbdd_false, bestHigh = mtbdd_false, bestLow = mtbdd_false;
+    for (MTBDD* r : {&high, &low, &bestHigh, &bestLow}) mtbdd_refs_pushptr(r);
+    long work = 0;  // not counted: the cost is that of building the circuit
+    const std::vector<MTBDD> inCircuit(built.begin(), built.end());
+    const unsigned int base = ShannonCost::of(inCircuit, work);
+    auto with = [&](std::initializer_list<MTBDD> more) {
+        std::vector<MTBDD> all = inCircuit;
+        all.insert(all.end(), more);
+        return ShannonCost::of(all, work) - base;
+    };
+    unsigned int best = with({h});
+    int output = -1;
+    for (int j = 0; j < game.cap_count; j++) {
+        if (sylvan_isconst(cap_bdds[j])) continue;
+        high = sylvan_restrict(h, cap_bdds[j]);
+        low = sylvan_restrict(h, sylvan_not(cap_bdds[j]));
+        const unsigned int cost = with({high, low}) + iteGates(high, low);
+        if (cost < best) {
+            best = cost;
+            output = j;
+            bestHigh = high;
+            bestLow = low;
+        }
+    }
+    unsigned int res;
+    auto keep = [&](MTBDD f) {
+        built.push_back(f);
+        mtbdd_protect(&built.back());
+    };
+    if (output == -1) {
+        res = bddToAigRecursive(h);
+        keep(h);
+    } else {
+        const unsigned int g = output_lits[output];
+        const unsigned int a = bddToAigRecursive(bestHigh);
+        const unsigned int b = bddToAigRecursive(bestLow);
+        res = aiger_not(circuit->makeAnd(aiger_not(circuit->makeAnd(g, a)), aiger_not(circuit->makeAnd(aiger_not(g), b))));
+        keep(bestHigh);
+        keep(bestLow);
+    }
+    mtbdd_refs_popptr(4);
+    return res;
+}
+
 
 // After reorderFunctions (order[position] is the variable renamed to first +
 // position), choose the functions again in that order: the choice among the
@@ -1382,17 +1411,21 @@ void AIGEncoder::processBinary()
             }
         }
         std::vector<unsigned int> output_lits;
+        std::deque<MTBDD> built;    // the functions in the circuit, protected
         for (int i=0; i<game.cap_count; i++) {
             auto res = bddToAigRecursive(cap_bdds[i]);
             circuit->makeOutput(res, cap_labels[i]);
             output_lits.push_back(res);
+            built.push_back(cap_bdds[i]);
+            mtbdd_protect(&built.back());
         }
         for (int i=0; i<game.statebits; i++) {
             if (!live[i]) continue;
-            auto res = dontcares && rules.latchSplit ? latchFunction(state_bdds[i], cap_bdds, output_lits)
+            auto res = dontcares && rules.latchSplit ? latchFunction(state_bdds[i], cap_bdds, output_lits, built)
                                                      : bddToAigRecursive(state_bdds[i]);
             circuit->setLatch(state_to_lit.at(i), res, "");
         }
+        for (MTBDD& f : built) mtbdd_unprotect(&f);
     }
 
     for (int i=0; i<game.cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
