@@ -1,0 +1,3 @@
+#!/bin/sh
+# SYNTCOMP parity-game realizability: knor with tangle learning
+exec /usr/local/bin/knor --real --paritize --tl "$1"

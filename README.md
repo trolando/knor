@@ -84,9 +84,20 @@ eHOA is HOA extended to record which atomic propositions are controllable, thus 
 See:
 1. Guillermo A. Pérez (2019). The Extended HOA Format for Synthesis. In CoRR, [http://arxiv.org/abs/1912.05793](http://arxiv.org/abs/1912.05793).
 
-## StarExec support
+## SYNTCOMP
 
-For the [SYNTCOMP competition](http://www.syntcomp.org/), the `prepare_se.sh` script prepares a gzipped tarball `knor.tar.gz` which can be uploaded to the StarExec environment.
+Since 2025, [SYNTCOMP](https://www.syntcomp.org/) runs the solvers as Docker images on the TGCC cluster.
+The `Dockerfile` builds such an image for the parity-game realizability track: Debian bookworm with `runlim`, and in `/home/solvers` one script per configuration, which takes the eHOA file as its only argument and runs `knor --real --paritize` with one solver:
+`knor_tl` (tangle learning, the default), `knor_npp` (priority promotion) and `knor_tlq` (quasi-polynomial recursive tangle learning).
+
+```
+docker build --platform linux/amd64 -t knor-syntcomp .
+docker run --rm -v "$PWD/examples:/in:ro" -v "$PWD/test/expected_verdicts.txt:/expected:ro" \
+    knor-syntcomp /usr/local/bin/syntcomp-test /in /expected
+```
+
+`syntcomp-test` runs every configuration through `runlim` as the competition does, and checks the output and the exit code.
+The workflow `.github/workflows/syntcomp.yml` builds and tests the image on every push, and publishes it as `ghcr.io/trolando/knor-syntcomp` for a version tag or a manual run.
 
 ## License
 

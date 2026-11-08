@@ -1,0 +1,8 @@
+# The image needs the sources of knor and its libraries (CMakeLists.txt also
+# defines the aigcheck target), and the SYNTCOMP scripts.
+*
+!CMakeLists.txt
+!src
+!libs
+!test/aigcheck.cpp
+!syntcomp

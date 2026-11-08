@@ -1,0 +1,3 @@
+#!/bin/sh
+# SYNTCOMP parity-game realizability: knor with priority promotion (NPP)
+exec /usr/local/bin/knor --real --paritize --npp "$1"

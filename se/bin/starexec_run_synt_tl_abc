@@ -1,3 +1,0 @@
-#!/bin/bash
-./knor $1 --rtl --best --drewrite --compress -a 2>/dev/null
-
