@@ -455,8 +455,12 @@ std::vector<int> incompatibleStates(const Machine& m, Overlap& overlap, bool str
                     ok = false;
                     for (const Option& oa : m.options[a][l]) {
                         for (const Option& ob : m.options[b][l]) {
-                            if (compatible[oa.successor][ob.successor] && overlap(oa.outputs, ob.outputs)) ok = true;
+                            if (compatible[oa.successor][ob.successor] && overlap(oa.outputs, ob.outputs)) {
+                                ok = true;
+                                break;
+                            }
                         }
+                        if (ok) break;
                     }
                 }
                 if (!ok) {
