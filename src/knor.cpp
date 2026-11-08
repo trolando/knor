@@ -34,7 +34,7 @@ using namespace sylvan;
 
 // with --auto-encode: the search over all winning moves, for controllers of at most so many states
 static constexpr int AUTO_ANY_STATES = 16;
-static constexpr double AUTO_ANY_SECONDS = 10.0;
+static constexpr long AUTO_ANY_CONFLICTS = 100000;
 
 // with --dc: the work (BDD nodes visited, see AIGEncoder::setReorder) for choosing the variable
 // order of the binary candidates by sifting (the best candidates first), and at most for each
@@ -81,7 +81,7 @@ handleOptions(int &argc, char**& argv)
             ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
             ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
             ("mealy-any", "With --mealy-sat or --auto-encode, also search for smaller controllers that may make any winning move, without limits (explicit solvers)")
-            ("mealy-time", "Seconds for the SAT searches of --mealy-sat, and as many for each wider search (with --auto-encode, 10 for all winning moves); the rest of the minimisation is not bounded", cxxopts::value<double>()->default_value("60"))
+            ("mealy-conflicts", "SAT solver conflicts for the search of --mealy-sat, and as many for each wider search (with --auto-encode, 100000 for all winning moves); counted instead of time, so the result does not depend on the machine", cxxopts::value<long>()->default_value("1000000"))
             ("bisim-game", "Apply bisimulation minimisation to the game")
             ("bisim-sol", "Apply bisimulation minimisation to the solution")
             ("bisim", "Apply bisimulation minimisation (--bisim-game and --bisim-sol)")
@@ -570,12 +570,12 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
     if (use_mealy) {
         const auto t_before = wctime();
         MealyMinimizer::Options minimise;
-        minimise.seconds = options["mealy-time"].as<double>();
+        minimise.conflicts = options["mealy-conflicts"].as<long>();
         minimise.verbose = verbose;
         minimise.relax = use_dc;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
-        minimise.anySeconds = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_SECONDS : minimise.seconds;
+        minimise.anyConflicts = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_CONFLICTS : minimise.conflicts;
         minimise.anyStates = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_STATES : 0;
         auto minimized = MealyMinimizer::minimize(*sym, minimise);
         run_stats.searches = minimized.searches;

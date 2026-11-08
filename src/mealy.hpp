@@ -42,7 +42,12 @@ public:
         int lowerBound = 0;     // pairwise incompatible states
         int found = 0;          // states of the controller found (the quotient if no smaller one), 0 if none
         bool proven = false;    // found is minimal for these moves
-        std::vector<std::pair<int, int>> calls;  // (states, 1 suffice, 0 do not suffice, -1 undecided, -2 too large)
+        struct Call {
+            int states;         // the number of controller states tried
+            int outcome;        // 1 suffice, 0 do not suffice, -1 undecided, -2 too large (not tried)
+            long conflicts;     // of the SAT solver (with losing cycles excluded, one per cycle)
+        };
+        std::vector<Call> calls;
     };
 
     /**
@@ -60,27 +65,31 @@ public:
         std::vector<Search> searches;   // the searches that were made
     };
 
+    /**
+     * The SAT searches are limited by the conflicts of the SAT solver, not by
+     * time, so that the result does not depend on the machine or its load.
+     */
     struct Options {
-        double seconds = 60;                    // for the search within the strategy, and the extended one
+        long conflicts = 1000000;               // for the search within the strategy, and the extended one
         bool verbose = false;
         bool relax = false;
         sylvan::MTBDD extended = sylvan::mtbdd_false;   // a winning multi-strategy that contains the strategy
         sylvan::MTBDD anyMoves = sylvan::mtbdd_false;   // all moves into the winning region
-        double anySeconds = 60;                 // for the search over anyMoves
+        long anyConflicts = 1000000;            // for the search over anyMoves
         int anyStates = 0;                      // search anyMoves only for controllers of at most this many states (0: all)
     };
 
     /**
      * Minimise the controller given by game.trans and game.strategies, using
-     * at most options.seconds. The result is a game with the controller's
+     * at most options.conflicts. The result is a game with the controller's
      * states as states, in which strategies and trans contain exactly the
      * controller's moves (with priority 0). With relax, the
      * variants are games of the same controller with other state codes,
      * most with every move that keeps the controller correct (possibly
      * several outputs and successors per state and input); only AIGEncoder
      * with setDontCares() may encode them. Then it searches the wider move
-     * sets of the options that are not mtbdd_false, each for at most its
-     * time, for a smaller controller that may make any of their moves: first
+     * sets of the options that are not mtbdd_false, each with at most its
+     * conflicts, for a smaller controller that may make any of their moves: first
      * extended, then anyMoves (only if the controller has at most anyStates
      * states; such controllers are checked for losing cycles unless the moves
      * form a winning multi-strategy). More freedom weakens the lower bound,

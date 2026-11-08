@@ -44,11 +44,11 @@ modes=(
     "--fpim --permissive --mealy-sat --dc"
     "--auto-encode"
     "--auto-encode --fpjm"
-    "--auto-encode --mealy-any --mealy-time 2"
+    "--auto-encode --mealy-any --mealy-conflicts 20000"
     "--auto-encode --compress"
     "--sym --mealy-sat --dc"
     "--bisim --mealy-sat --dc"
-    "--permissive --mealy-sat --mealy-any --mealy-time 2 --dc"
+    "--permissive --mealy-sat --mealy-any --mealy-conflicts 20000 --dc"
 )
 
 tmp=$(mktemp -d)

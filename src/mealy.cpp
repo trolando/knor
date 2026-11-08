@@ -3,7 +3,6 @@
  */
 
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <iostream>
@@ -29,8 +28,6 @@ extern "C" {
 using namespace sylvan;
 
 namespace {
-
-using Clock = std::chrono::steady_clock;
 
 // BDDs that are protected from garbage collection until destruction.
 class BddPool final {
@@ -73,8 +70,11 @@ struct Aborted {
     const char* reason;
 };
 
-// Limits on the sizes for which the lower bound and the SAT encoding are tried.
+// Limits on the sizes for which the lower bound and the SAT encoding are tried,
+// and on the work for the compatibility relation (pairs of options compared, a
+// few seconds), so that the minimisation does not depend on time.
 constexpr int MAX_COMPAT_STATES = 1500;
+constexpr long MAX_COMPAT_WORK = 2000000000;
 constexpr long MAX_CLAUSES = 20000000;
 // Monitor codes are tried if (inputs x controller states x monitors) is at
 // most MAX_MONITOR_WORK (a few seconds); splitting controller states for
@@ -404,24 +404,26 @@ std::vector<bool> forcedStates(const Machine& m)
 // they need distinct controller states: two states are compatible if, on
 // every letter, they have options with overlapping outputs whose successors
 // are compatible (greatest fixed point). Also gives the compatibility
-// relation, or an over-approximation of it if this takes too long (then the
-// set is just the initial state), or nothing for large machines.
-std::vector<int> incompatibleStates(const Machine& m, Overlap& overlap, Clock::time_point deadline,
-                                    std::vector<std::vector<char>>& compatible)
+// relation, or an over-approximation of it if this takes more than
+// MAX_COMPAT_WORK (then the set is just the initial state), or nothing for
+// large machines.
+std::vector<int> incompatibleStates(const Machine& m, Overlap& overlap, std::vector<std::vector<char>>& compatible)
 {
     const int n = m.states();
     std::vector<int> clique{m.initial};
     if (n > MAX_COMPAT_STATES) return clique;
     const std::vector<bool> forced = forcedStates(m);
     compatible.assign(n, std::vector<char>(n, 1));
+    long work = 0;
     for (bool changed = true; changed;) {
         changed = false;
         for (int a = 0; a < n; a++) {
-            if (Clock::now() > deadline) return clique;
+            if (work > MAX_COMPAT_WORK) return clique;
             for (int b = a + 1; b < n; b++) {
                 if (!compatible[a][b]) continue;
                 bool ok = true;
                 for (size_t l = 0; l < m.options[a].size() && ok; l++) {
+                    work += static_cast<long>(m.options[a][l].size() * m.options[b][l].size());
                     ok = false;
                     for (const Option& oa : m.options[a][l]) {
                         for (const Option& ob : m.options[b][l]) {
@@ -613,9 +615,8 @@ public:
         return size;
     }
 
-    // Add the clauses; false if they are trivially unsatisfiable. Throws
-    // Aborted when the deadline passes.
-    bool build(Clock::time_point deadline)
+    // Add the clauses; false if they are trivially unsatisfiable.
+    bool build()
     {
         trueVar = next++;
         for (int c = 0; c < k; c++) {
@@ -625,7 +626,6 @@ public:
         bool ok = clause({pos(trueVar)});
         for (int i = 0; i < anchored && ok; i++) ok = clause({pos(x(anchors[i], i))});
         for (int c = 0; c < k && ok; c++) {
-            if (Clock::now() > deadline) throw Aborted{"out of time"};
             const std::vector<int>& letterOf = classes(c).letter;
             sVar[c].resize(letterOf.size());
             for (int cls = 0; cls < static_cast<int>(letterOf.size()) && ok; cls++) {
@@ -666,15 +666,19 @@ public:
         return ok;
     }
 
-    // l_True, l_False, or l_Undef if the deadline passed.
-    int solve(Clock::time_point deadline)
+    // l_True, l_False, or l_Undef if it takes more than limit (at least 1)
+    // conflicts.
+    int solve(long limit)
     {
         sat_solver_setnvars(solver, next);
-        for (;;) {
-            const int r = sat_solver_solve(solver, nullptr, nullptr, CONFLICTS, 0, 0, 0);
-            if (r != l_Undef || Clock::now() > deadline) return r;
-        }
+        const ABC_INT64_T before = solver->stats.conflicts;
+        const int r = sat_solver_solve(solver, nullptr, nullptr, limit, 0, 0, 0);
+        used += solver->stats.conflicts - before;
+        return r;
     }
+
+    // The conflicts of all calls of solve().
+    long conflicts() const { return used; }
 
     // Exclude a losing cycle of the product, with its maximal (odd) priority
     // p: no cycle has maximal priority p iff there is a rank per pair (state,
@@ -711,8 +715,6 @@ public:
     }
 
 private:
-    static constexpr ABC_INT64_T CONFLICTS = 10000;
-
     static lit pos(int v) { return toLit(v); }
     static lit neg(int v) { return lit_neg(toLit(v)); }
 
@@ -895,6 +897,7 @@ private:
     const int states;
     const int letters;
     sat_solver* solver;
+    long used = 0;                              // conflicts of solve()
     std::vector<std::vector<int>> anchorsOf;    // per state: the anchors it is compatible with
     std::vector<std::vector<int>> servable;     // per anchor: the states compatible with it
     std::vector<int> allStates;
@@ -1633,15 +1636,13 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, bool relax
 // With relax, a controller that is not smaller still gives games with its
 // freedom to more, for the encoder to choose from (fewer states need not give
 // a smaller circuit).
-bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, double seconds, bool verbose, bool relax,
+bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long conflicts, bool verbose, bool relax,
                  MealyMinimizer::Result& result, std::vector<MealyMinimizer::Variant>& more,
                  std::vector<MealyMinimizer::Search>& searches)
 {
     const size_t index = searches.size();
     searches.emplace_back();
     searches[index].moves = name;
-    const Clock::time_point deadline =
-        Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(seconds));
     BddPool pool;
     Extraction ex(game, moves, pool);
     try {
@@ -1656,7 +1657,7 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, double
     const Machine q = quotient(ex.machine, block, checkCycles);
     Overlap overlap(ex.outputSets);
     std::vector<std::vector<char>> compatible;
-    const std::vector<int> anchors = incompatibleStates(q, overlap, deadline, compatible);
+    const std::vector<int> anchors = incompatibleStates(q, overlap, compatible);
     const int lowerBound = static_cast<int>(anchors.size());
     searches[index].machine = ex.machine.states();
     searches[index].quotient = q.states();
@@ -1679,52 +1680,57 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, double
     bool refuted = true;                    // were all failures refutations?
     bool bisect = false;
     int step = 1;
+    long remaining = conflicts;
     for (int k = failed + 1; failed + 1 < top;
          k = bisect ? failed + (top - failed) / 2 : std::min(failed + step, top - 1)) {
-        const Clock::time_point now = Clock::now();
-        if (now >= deadline) {
+        if (remaining <= 0) {
             refuted = false;
             break;
         }
         Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, checkCycles);
         if (enc.estimatedSize() > MAX_CLAUSES) {
             if (verbose) std::cerr << name << ": the encoding for " << k << " states is too large" << std::endl;
-            searches[index].calls.emplace_back(k, -2);
+            searches[index].calls.push_back({k, -2, 0});
             refuted = false;
             top = k;
             bisect = true;
             continue;
         }
+        // every attempt may use half of the remaining conflicts; an excluded losing cycle counts as
+        // one, which bounds the rounds of candidates and exclusions
+        const long allowance = (remaining + 1) / 2;
         int r;
         long cycles = 0;
         Controller candidate;
         try {
-            const Clock::time_point until = now + (deadline - now) / 2;
-            r = enc.build(until) ? enc.solve(until) : l_False;
+            r = enc.build() ? enc.solve(allowance) : l_False;
             while (r == l_True) {
                 candidate = enc.controller();
                 if (!checkCycles) break;
                 const std::vector<Step> cycle = losingCycle(ex.machine, block, ex.outputSets, candidate, firstCap);
                 if (cycle.empty()) break;
                 cycles++;
-                if (Clock::now() > until) {
+                const long left = allowance - enc.conflicts() - cycles;
+                if (left <= 0) {
                     r = l_Undef;
                     break;
                 }
-                r = enc.exclude(cycle) ? enc.solve(until) : l_False;
+                r = enc.exclude(cycle) ? enc.solve(left) : l_False;
             }
         } catch (const Aborted&) {
             r = l_Undef;
         }
+        const long used = enc.conflicts() + cycles;
+        remaining -= used;
         if (verbose) {
             // every correct controller only makes moves into the winning region, so over all
             // winning moves, "do not suffice" is a lower bound for every controller of the specification
             std::cerr << name << ": " << k << " states "
                       << (r == l_True ? "suffice" : r == l_False ? "do not suffice" : "undecided") << " ("
-                      << enc.variables() << " variables, " << enc.clauses() << " clauses, " << cycles
-                      << " losing cycles excluded)" << std::endl;
+                      << enc.variables() << " variables, " << enc.clauses() << " clauses, " << used
+                      << " conflicts, " << cycles << " losing cycles excluded)" << std::endl;
         }
-        searches[index].calls.emplace_back(k, r == l_True ? 1 : r == l_False ? 0 : -1);
+        searches[index].calls.push_back({k, r == l_True ? 1 : r == l_False ? 0 : -1, used});
         if (r == l_True) {
             best = std::move(candidate);
             top = static_cast<int>(reachableStates(best).size());
@@ -1772,7 +1778,6 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, double
 
 MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& options)
 {
-    const double seconds = options.seconds;
     const bool verbose = options.verbose;
     const bool relax = options.relax;
     Result result;
@@ -1780,8 +1785,6 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     searches.reserve(3);   // the strategy, the extended strategy and all winning moves: search stays valid
     Search& search = searches[0];
     search.moves = "strategy";
-    const Clock::time_point deadline =
-        Clock::now() + std::chrono::duration_cast<Clock::duration>(std::chrono::duration<double>(seconds));
     BddPool pool;
     Extraction ex(game, game.strategies, pool);
     try {
@@ -1805,7 +1808,7 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     const Machine q = quotient(ex.machine, block, false);
     Overlap overlap(ex.outputSets);
     std::vector<std::vector<char>> compatible;
-    const std::vector<int> anchors = incompatibleStates(q, overlap, deadline, compatible);
+    const std::vector<int> anchors = incompatibleStates(q, overlap, compatible);
     const int lowerBound = static_cast<int>(anchors.size());
     search.machine = ex.machine.states();
     search.quotient = q.states();
@@ -1820,8 +1823,8 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     // with as many states as the lower bound (which often suffices), then
     // with exponentially growing steps (small encodings are much easier, so
     // the search stays near the lower bound), and once one is found or the
-    // encoding is too large, by bisection. Every attempt gets half of the
-    // remaining time.
+    // encoding is too large, by bisection. Every attempt may use half of the
+    // remaining conflicts.
     const uint32_t firstCap = game.cap_count > 0 ? mtbdd_set_first(game.cap_vars) : 0;
     Controller best = fromQuotient(q, ex.outputSets, game);
     int found = static_cast<int>(reachableStates(best).size());
@@ -1830,35 +1833,31 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     bool proven = true;                     // were all failures refutations?
     bool bisect = false;
     int step = 1;
+    long remaining = options.conflicts;
     for (int k = lowerBound; failed + 1 < std::min(found, tooLarge);
          k = bisect ? failed + (std::min(found, tooLarge) - failed) / 2 : std::min(failed + step, std::min(found, tooLarge) - 1)) {
-        const Clock::time_point now = Clock::now();
-        if (now >= deadline) {
+        if (remaining <= 0) {
             proven = false;
             break;
         }
         Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, false);
         if (enc.estimatedSize() > MAX_CLAUSES) {
             if (verbose) std::cerr << "mealy minimisation: the encoding for " << k << " states is too large" << std::endl;
-            search.calls.emplace_back(k, -2);
+            search.calls.push_back({k, -2, 0});
             tooLarge = k;
             proven = false;
             bisect = true;
             continue;
         }
-        int r;
-        try {
-            const Clock::time_point until = now + (deadline - now) / 2;
-            r = enc.build(until) ? enc.solve(until) : l_False;
-        } catch (const Aborted&) {
-            r = l_Undef;
-        }
+        const int r = enc.build() ? enc.solve((remaining + 1) / 2) : l_False;
+        remaining -= enc.conflicts();
         if (verbose) {
             std::cerr << "mealy minimisation: " << k << " states "
                       << (r == l_True ? "suffice" : r == l_False ? "do not suffice" : "undecided") << " ("
-                      << enc.variables() << " variables, " << enc.clauses() << " clauses)" << std::endl;
+                      << enc.variables() << " variables, " << enc.clauses() << " clauses, " << enc.conflicts()
+                      << " conflicts)" << std::endl;
         }
-        search.calls.emplace_back(k, r == l_True ? 1 : r == l_False ? 0 : -1);
+        search.calls.push_back({k, r == l_True ? 1 : r == l_False ? 0 : -1, enc.conflicts()});
         if (r == l_True) {
             best = enc.controller();
             found = static_cast<int>(reachableStates(best).size());
@@ -1889,14 +1888,14 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     struct Wider {
         MTBDD moves;
         const char* name;
-        double seconds;
+        long conflicts;
         int maxStates;   // only search if the controller has at most this many states (0: always)
     };
-    for (const Wider& w : {Wider{options.extended, "extended strategy", seconds, 0},
-                           Wider{options.anyMoves, "all winning moves", options.anySeconds, options.anyStates}}) {
+    for (const Wider& w : {Wider{options.extended, "extended strategy", options.conflicts, 0},
+                           Wider{options.anyMoves, "all winning moves", options.anyConflicts, options.anyStates}}) {
         Result smaller;
         if (w.moves == mtbdd_false || (w.maxStates > 0 && result.states > w.maxStates)
-            || !searchWider(game, w.moves, w.name, result.states, w.seconds, verbose, relax, smaller, more, searches)) {
+            || !searchWider(game, w.moves, w.name, result.states, w.conflicts, verbose, relax, smaller, more, searches)) {
             continue;
         }
         if (relax) {

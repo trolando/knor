@@ -48,7 +48,8 @@ bool RunStats::write(const std::string& path) const
           << s.lowerBound << ", \"found\": " << s.found << ", \"proven\": " << (s.proven ? "true" : "false")
           << ", \"calls\": [";
         for (size_t j = 0; j < s.calls.size(); j++) {
-            o << (j ? ", " : "") << "[" << s.calls[j].first << ", " << quote(outcome(s.calls[j].second)) << "]";
+            const MealyMinimizer::Search::Call& call = s.calls[j];
+            o << (j ? ", " : "") << "[" << call.states << ", " << quote(outcome(call.outcome)) << ", " << call.conflicts << "]";
         }
         o << "]}";
     }
