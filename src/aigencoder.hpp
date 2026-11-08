@@ -80,6 +80,8 @@ public:
         bool latchSplit = true;         // with don't cares: a next-state function as ITE on an output, if smaller
         bool guardComplement = true;    // one-hot with don't cares: guard a function that most states use
                                         // by "none of the other states"
+        bool rechoose = true;           // binary with don't cares and reordering: choose the functions again
+                                        // in the new variable order, if that is smaller
     };
 
     AIGEncoder& setRules(const Rules& rules) {
@@ -125,7 +127,10 @@ private:
     void processOnehot();
     void processBinary();
     bool processOnehotDontCares(int maxStates);
-    void chooseWithDontCares(sylvan::MTBDD* cap_bdds, sylvan::MTBDD* state_bdds);
+    void chooseWithDontCares(sylvan::MTBDD relation, sylvan::MTBDD inputVars, sylvan::MTBDD* cap_bdds,
+                             sylvan::MTBDD* state_bdds);
+    void rechoose(sylvan::MTBDD relation, const std::vector<bool>& live, const std::vector<uint32_t>& order,
+                  uint32_t first, sylvan::MTBDD* cap_bdds, sylvan::MTBDD* state_bdds);
     unsigned int latchFunction(sylvan::MTBDD h, sylvan::MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits);
 };
 

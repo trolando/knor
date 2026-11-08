@@ -669,19 +669,21 @@ void AIGEncoder::processOnehot()
 // the latter and the simplification by sylvan_constrain. Each choice
 // restricts the remaining moves, so together
 // the functions select an allowed move in every state and for every input.
-// The bits are chosen in the order outputs, state, or the reverse.
-void AIGEncoder::chooseWithDontCares(MTBDD* cap_bdds, MTBDD* state_bdds)
+// The bits are chosen in the order outputs, state, or the reverse. The
+// relation is the moves (state, inputVars -> outputs, next state); the
+// functions are over its state and input variables.
+void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap_bdds, MTBDD* state_bdds)
 {
     MTBDD moves = mtbdd_false, out = mtbdd_false, bit = mtbdd_false, can1 = mtbdd_false, can0 = mtbdd_false;
     MTBDD fixed = mtbdd_false, must1 = mtbdd_false, candidate = mtbdd_false, link = mtbdd_false;
     for (MTBDD* r : {&moves, &out, &bit, &can1, &can0, &fixed, &must1, &candidate, &link}) mtbdd_refs_pushptr(r);
-    moves = sylvan_and_exists(game.strategies, game.trans, game.np_vars);
+    moves = relation;
     out = mtbdd_set_addall(game.cap_vars, game.ns_vars);
     // Every state with a move must have one for every input: elsewhere the bits are don't cares, so a
     // state without a move for some input would get an arbitrary one.
     can1 = sylvan_exists(moves, out);
-    can0 = sylvan_forall(can1, game.uap_vars);
-    fixed = sylvan_exists(can1, game.uap_vars);
+    can0 = sylvan_forall(can1, inputVars);
+    fixed = sylvan_exists(can1, inputVars);
     if (can0 != fixed) {
         std::cerr << "error: a state of the controller has no move for some input" << std::endl;
         exit(1);
@@ -1171,6 +1173,56 @@ bool reorderFunctions(const std::vector<MTBDD*>& functions, const std::vector<ui
 
 }  // namespace
 
+// After reorderFunctions (order[position] is the variable renamed to first +
+// position), choose the functions again in that order: the choice among the
+// simplifications of each bit (by node count) then sees the order of the
+// circuit. State bits that are not live stay 0. Keeps the new functions if
+// their Shannon expansion is smaller.
+void AIGEncoder::rechoose(MTBDD relation, const std::vector<bool>& live, const std::vector<uint32_t>& order,
+                          uint32_t first, MTBDD* cap_bdds, MTBDD* state_bdds)
+{
+    MTBDD map = mtbdd_map_empty(), var = mtbdd_false, renamed = mtbdd_false, inputs = mtbdd_set_empty();
+    for (MTBDD* r : {&map, &var, &renamed, &inputs}) mtbdd_refs_pushptr(r);
+    std::vector<uint32_t> inputPositions;
+    const uint32_t firstUap = mtbdd_set_first(game.uap_vars);
+    for (size_t pos = 0; pos < order.size(); pos++) {
+        var = sylvan_ithvar(first + static_cast<uint32_t>(pos));
+        map = mtbdd_map_add(map, order[pos], var);
+        if (order[pos] >= firstUap && order[pos] < firstUap + static_cast<uint32_t>(game.uap_count)) {
+            inputPositions.push_back(first + static_cast<uint32_t>(pos));
+        }
+    }
+    for (int i = 0; i < game.statebits; i++) {
+        if (!live[i]) map = mtbdd_map_add(map, mtbdd_set_first(game.s_vars) + static_cast<uint32_t>(i), mtbdd_false);
+    }
+    renamed = sylvan_compose(relation, map);
+    for (int i = 0; i < game.statebits; i++) {
+        if (live[i]) continue;
+        var = sylvan_nithvar(mtbdd_set_first(game.ns_vars) + static_cast<uint32_t>(i));
+        renamed = sylvan_and(renamed, var);
+    }
+    inputs = mtbdd_set_from_array(inputPositions.data(), inputPositions.size());
+    std::vector<MTBDD> caps(game.cap_count), states(game.statebits);
+    chooseWithDontCares(renamed, inputs, caps.data(), states.data());
+    std::vector<MTBDD> before, after;
+    for (int i = 0; i < game.cap_count; i++) {
+        before.push_back(cap_bdds[i]);
+        after.push_back(caps[i]);
+    }
+    for (int i = 0; i < game.statebits; i++) {
+        if (!live[i]) continue;
+        before.push_back(state_bdds[i]);
+        after.push_back(states[i]);
+    }
+    if (ShannonCost::of(after, reorderUsed) < ShannonCost::of(before, reorderUsed)) {
+        for (int i = 0; i < game.cap_count; i++) cap_bdds[i] = caps[i];
+        for (int i = 0; i < game.statebits; i++) state_bdds[i] = states[i];
+    }
+    for (MTBDD& f : caps) mtbdd_unprotect(&f);
+    for (MTBDD& f : states) mtbdd_unprotect(&f);
+    mtbdd_refs_popptr(4);
+}
+
 void AIGEncoder::processBinary()
 {
     MTBDD cap_bdds[game.cap_count];   // contains the solution: controllable ap bdds: state -> uap -> B
@@ -1180,8 +1232,11 @@ void AIGEncoder::processBinary()
 
     // we use the "strategies" field of the game class, which should only include state -> uap -> cap.
 
+    MTBDD relation = mtbdd_false;   // with don't cares: the moves (state, input -> output, next state)
+    mtbdd_refs_pushptr(&relation);
     if (dontcares) {
-        chooseWithDontCares(cap_bdds, state_bdds);
+        relation = sylvan_and_exists(game.strategies, game.trans, game.np_vars);
+        chooseWithDontCares(relation, game.uap_vars, cap_bdds, state_bdds);
         // A state bit whose next function is 0 is always 0 (latches start at 0): substitute 0 for
         // it in all functions and drop its latch, until no more bits become constant.
         MTBDD cube = mtbdd_false, set = mtbdd_false;
@@ -1215,7 +1270,11 @@ void AIGEncoder::processBinary()
             for (int i = 0; i < game.uap_count; i++) vars.push_back(mtbdd_set_first(game.uap_vars) + static_cast<uint32_t>(i));
             // fresh variables after all variables of the game (the next-state variables are last)
             const uint32_t first = mtbdd_set_first(game.ns_vars) + static_cast<uint32_t>(game.statebits);
-            if (!reorderFunctions(functions, vars, first, reorderWork, reorderUsed, order)) order.clear();
+            if (!reorderFunctions(functions, vars, first, reorderWork, reorderUsed, order)) {
+                order.clear();
+            } else if (rules.rechoose) {
+                rechoose(relation, live, order, first, cap_bdds, state_bdds);
+            }
         }
     } else {
         // compute the BDDs for the controllable APs
@@ -1338,6 +1397,7 @@ void AIGEncoder::processBinary()
 
     for (int i=0; i<game.cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
     for (int i=0; i<game.statebits; i++) mtbdd_unprotect(&state_bdds[i]);
+    mtbdd_refs_popptr(1);
 }
 
 std::unique_ptr<AIGCircuit> AIGEncoder::encode()
