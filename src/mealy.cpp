@@ -1224,6 +1224,123 @@ std::vector<int> cubeNumbering(int initial, const Moves& moves, bool byIncoming,
     return order;
 }
 
+// Better state codes by adjacency (as in the classical heuristics for the state
+// assignment of finite state machines): states that are related get codes
+// that differ in few bits. Two states are related for every letter on which
+// they can go to the same successor or give the same set of outputs (then their
+// functions agree, and can share a cube of codes), and the successors of a
+// state on different letters are related (then its next-state functions depend
+// little on the input). Swaps the codes (statebits bits, by state) of two of
+// the states in order (or of a state and an unused code) while that lowers the
+// sum of the weights times the Hamming distances, at most MAX_ADJACENCY_PASSES
+// times over all states; only the lowest free bits of a code may change (the
+// others are flags), and the first state in order (the initial one) keeps its
+// code; it stops after MAX_ADJACENCY_WORK terms of the cost (about half a
+// second). False (and the codes unchanged) for more than MAX_ADJACENCY_STATES
+// states.
+constexpr int MAX_ADJACENCY_STATES = 1024;
+constexpr int MAX_ADJACENCY_PASSES = 8;
+constexpr long MAX_ADJACENCY_WORK = 200000000;
+
+bool improveCodes(const Moves& moves, const std::vector<int>& order, std::vector<int>& codes, int statebits, int free)
+{
+    const int n = static_cast<int>(order.size());
+    if (n > MAX_ADJACENCY_STATES || n < 3 || free < 1) return false;
+    std::vector<int> index(moves.size(), -1);   // the position of each state in order
+    for (int i = 0; i < n; i++) index[order[i]] = i;
+    std::vector<std::vector<long>> weight(n, std::vector<long>(n, 0));
+    auto relate = [&](int a, int b) {
+        if (a == b || index[a] < 0 || index[b] < 0) return;
+        weight[index[a]][index[b]]++;
+        weight[index[b]][index[a]]++;
+    };
+    const size_t letters = moves[order[0]].size();
+    for (size_t l = 0; l < letters; l++) {
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+                bool successor = false, output = false;
+                for (const Choice& x : moves[order[i]][l]) {
+                    for (const Choice& y : moves[order[j]][l]) {
+                        successor = successor || x.successor == y.successor;
+                        output = output || x.outputs == y.outputs;
+                    }
+                }
+                if (successor) relate(order[i], order[j]);
+                if (output) relate(order[i], order[j]);
+            }
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        std::vector<int> next;
+        for (size_t l = 0; l < letters; l++) {
+            for (const Choice& x : moves[order[i]][l]) next.push_back(x.successor);
+        }
+        std::sort(next.begin(), next.end());
+        next.erase(std::unique(next.begin(), next.end()), next.end());
+        for (size_t a = 0; a < next.size(); a++) {
+            for (size_t b = a + 1; b < next.size(); b++) relate(next[a], next[b]);
+        }
+    }
+    // code[i]: the code of the state at position i; owner(c): the position with code c, or -1 (the
+    // codes may have up to 30 bits, so the owners are a map of the used codes)
+    std::vector<int> code(n);
+    std::unordered_map<int, int> owners;
+    for (int i = 0; i < n; i++) {
+        code[i] = codes[order[i]];
+        owners[code[i]] = i;
+    }
+    auto owner = [&](int c) {
+        const auto it = owners.find(c);
+        return it == owners.end() ? -1 : it->second;
+    };
+    auto distance = [](int x, int y) { return __builtin_popcount(static_cast<unsigned>(x ^ y)); };
+    // the change of the cost if position i takes code c (and the owner of c, if any, takes i's code)
+    auto delta = [&](int i, int c) {
+        const int j = owner(c);
+        long d = 0;
+        for (int k = 0; k < n; k++) {
+            if (k == i || k == j) continue;
+            d += weight[i][k] * (distance(c, code[k]) - distance(code[i], code[k]));
+            if (j >= 0) d += weight[j][k] * (distance(code[i], code[k]) - distance(c, code[k]));
+        }
+        return d;
+    };
+    const int span = 1 << free;
+    long work = 0;
+    for (int pass = 0; pass < MAX_ADJACENCY_PASSES && work < MAX_ADJACENCY_WORK; pass++) {
+        bool improved = false;
+        for (int i = 1; i < n && work < MAX_ADJACENCY_WORK; i++) {
+            const int base = code[i] & ~(span - 1);
+            int bestCode = -1;
+            long bestDelta = 0;
+            for (int c = base; c < base + span; c++) {
+                if (c == code[i] || owner(c) == 0) continue;     // the first state keeps its code
+                work += n;
+                const long d = delta(i, c);
+                if (d < bestDelta) {
+                    bestDelta = d;
+                    bestCode = c;
+                }
+            }
+            if (bestCode < 0) continue;
+            const int j = owner(bestCode);
+            const int old = code[i];
+            code[i] = bestCode;
+            owners[bestCode] = i;
+            if (j >= 0) {
+                owners[old] = j;
+                code[j] = old;
+            } else {
+                owners.erase(old);
+            }
+            improved = true;
+        }
+        if (!improved) break;
+    }
+    for (int i = 0; i < n; i++) codes[order[i]] = code[i];
+    return true;
+}
+
 // A one-bit memory of the inputs and outputs: a flag that an input sets and
 // an output resets (next = (flag or set) and not reset, or, if the set wins,
 // set or (flag and not reset); set and reset are literals of an input and an
@@ -1682,6 +1799,14 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
                          byIncoming ? "relaxed, cube codes by incoming moves" : "relaxed, cube codes"});
                 }
             }
+            if (kinds.adjacencyCodes) {
+                const std::vector<int> numbers = numbering(ctl.initial, all, false);
+                codes = positions(numbers, all.size(), statebits);
+                if (improveCodes(all, numbers, codes, statebits, statebits)) {
+                    result.variants.push_back(
+                        {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()), "relaxed, adjacency codes"});
+                }
+            }
         } else if (kinds.relaxed) {
             codes = positions(order, all.size(), statebits);
             result.variants.push_back({toGame(game, order, codes, statebits, all, ex.letterSets, table.sets()),
@@ -1708,6 +1833,11 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
                 }
                 result.variants.push_back(
                     {toGame(game, agreeingOrder, codes, statebits, agreeing, ex.letterSets, table.sets()), "output bits"});
+                // with the further bits by adjacency
+                if (kinds.adjacencyCodes && improveCodes(agreeing, agreeingOrder, codes, statebits, statebits - flags)) {
+                    result.variants.push_back({toGame(game, agreeingOrder, codes, statebits, agreeing, ex.letterSets,
+                                                      table.sets()), "output bits, adjacency codes"});
+                }
             }
         }
     }
@@ -1737,6 +1867,11 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
     if (correct(split.initial, free)) {
         result.variants.push_back({toGame(game, splitOrder, codes, statebits, free, ex.letterSets, table.sets()),
                                    "monitor codes, relaxed"});
+        // with the further bits by adjacency
+        if (kinds.adjacencyCodes && improveCodes(free, splitOrder, codes, statebits, statebits - flags)) {
+            result.variants.push_back({toGame(game, splitOrder, codes, statebits, free, ex.letterSets, table.sets()),
+                                       "monitor codes, relaxed, adjacency codes"});
+        }
     }
     return true;
 }

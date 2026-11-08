@@ -75,6 +75,7 @@ public:
         bool outputCodes = true;    // state codes with output bits
         bool monitorCodes = true;   // state codes with monitor flags
         bool cubeCodes = true;      // relaxed and renumbered: state codes as cubes, so no code is unused
+        bool adjacencyCodes = true; // relaxed and renumbered: related states get codes that differ in few bits
     };
 
     /**
