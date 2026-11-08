@@ -129,10 +129,17 @@ private:
     bool processOnehotDontCares(int maxStates);
     void chooseWithDontCares(sylvan::MTBDD relation, sylvan::MTBDD inputVars, sylvan::MTBDD* cap_bdds,
                              sylvan::MTBDD* state_bdds);
-    void rechoose(sylvan::MTBDD relation, const std::vector<bool>& live, const std::vector<uint32_t>& order,
+    bool rechoose(sylvan::MTBDD relation, const std::vector<bool>& live, const std::vector<uint32_t>& order,
                   uint32_t first, sylvan::MTBDD* cap_bdds, sylvan::MTBDD* state_bdds);
+    // A next-state function as ITE(cap_bdds[output], high, low), or itself if output is -1.
+    struct Split {
+        int output = -1;
+        sylvan::MTBDD high = sylvan::mtbdd_false;
+        sylvan::MTBDD low = sylvan::mtbdd_false;
+    };
+    Split chooseSplit(sylvan::MTBDD h, sylvan::MTBDD* cap_bdds, const std::vector<sylvan::MTBDD>& built, const Split* also);
     unsigned int latchFunction(sylvan::MTBDD h, sylvan::MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits,
-                               std::deque<sylvan::MTBDD>& built);
+                               std::deque<sylvan::MTBDD>& built, const Split* also);
 };
 
 #endif //KNOR_AIGENCODER_HPP

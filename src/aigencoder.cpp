@@ -1147,58 +1147,65 @@ unsigned int iteGates(MTBDD a, MTBDD b)
 
 }  // namespace
 
-// The next-state function h, as ITE(g, h where g holds, h where g does not
-// hold) for the output g whose logic the circuit already has, if the two
-// restrictions (by sylvan_restrict, so this is exact) need fewer gates on top
-// of the functions already in the circuit (built) than h does, in the gates of
-// the Shannon expansion. For example a flag that a grant resets only needs the
-// grant and a few gates. Adds the chosen functions to built, protected (the
-// caller unprotects them).
-unsigned int AIGEncoder::latchFunction(MTBDD h, MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits,
-                                       std::deque<MTBDD>& built)
+// How to build the next-state function h: as ITE(g, h where g holds, h where
+// g does not hold) for an output g whose logic the circuit already has, if the
+// two restrictions (by sylvan_restrict, so this is exact) need fewer gates on
+// top of the functions already in the circuit (built) than h does, in the
+// gates of the Shannon expansion; also considers the split also (if any). For
+// example a flag that a grant resets only needs the grant and a few gates.
+AIGEncoder::Split AIGEncoder::chooseSplit(MTBDD h, MTBDD* cap_bdds, const std::vector<MTBDD>& built, const Split* also)
 {
-    MTBDD high = mtbdd_false, low = mtbdd_false, bestHigh = mtbdd_false, bestLow = mtbdd_false;
-    for (MTBDD* r : {&high, &low, &bestHigh, &bestLow}) mtbdd_refs_pushptr(r);
+    Split best;
+    MTBDD high = mtbdd_false, low = mtbdd_false;
+    for (MTBDD* r : {&high, &low, &best.high, &best.low}) mtbdd_refs_pushptr(r);
     long work = 0;  // not counted: the cost is that of building the circuit
-    const std::vector<MTBDD> inCircuit(built.begin(), built.end());
-    const unsigned int base = ShannonCost::of(inCircuit, work);
+    const unsigned int base = ShannonCost::of(built, work);
     auto with = [&](std::initializer_list<MTBDD> more) {
-        std::vector<MTBDD> all = inCircuit;
+        std::vector<MTBDD> all = built;
         all.insert(all.end(), more);
         return ShannonCost::of(all, work) - base;
     };
-    unsigned int best = with({h});
-    int output = -1;
+    unsigned int bestCost = with({h});
+    auto consider = [&](int output, MTBDD a, MTBDD b) {
+        const unsigned int cost = with({a, b}) + iteGates(a, b);
+        if (cost < bestCost) {
+            bestCost = cost;
+            best.output = output;
+            best.high = a;
+            best.low = b;
+        }
+    };
     for (int j = 0; j < game.cap_count; j++) {
         if (sylvan_isconst(cap_bdds[j])) continue;
         high = sylvan_restrict(h, cap_bdds[j]);
         low = sylvan_restrict(h, sylvan_not(cap_bdds[j]));
-        const unsigned int cost = with({high, low}) + iteGates(high, low);
-        if (cost < best) {
-            best = cost;
-            output = j;
-            bestHigh = high;
-            bestLow = low;
-        }
+        consider(j, high, low);
     }
-    unsigned int res;
+    if (also != nullptr && also->output >= 0) consider(also->output, also->high, also->low);
+    mtbdd_refs_popptr(4);
+    return best;
+}
+
+// The next-state function h in the circuit, as chooseSplit chooses. Adds the
+// functions it builds to built, protected (the caller unprotects them).
+unsigned int AIGEncoder::latchFunction(MTBDD h, MTBDD* cap_bdds, const std::vector<unsigned int>& output_lits,
+                                       std::deque<MTBDD>& built, const Split* also)
+{
+    Split split = chooseSplit(h, cap_bdds, std::vector<MTBDD>(built.begin(), built.end()), also);
     auto keep = [&](MTBDD f) {
         built.push_back(f);
         mtbdd_protect(&built.back());
     };
-    if (output == -1) {
-        res = bddToAigRecursive(h);
+    if (split.output == -1) {
         keep(h);
-    } else {
-        const unsigned int g = output_lits[output];
-        const unsigned int a = bddToAigRecursive(bestHigh);
-        const unsigned int b = bddToAigRecursive(bestLow);
-        res = aiger_not(circuit->makeAnd(aiger_not(circuit->makeAnd(g, a)), aiger_not(circuit->makeAnd(aiger_not(g), b))));
-        keep(bestHigh);
-        keep(bestLow);
+        return bddToAigRecursive(h);
     }
-    mtbdd_refs_popptr(4);
-    return res;
+    keep(split.high);
+    keep(split.low);
+    const unsigned int g = output_lits[split.output];
+    const unsigned int a = bddToAigRecursive(split.high);
+    const unsigned int b = bddToAigRecursive(split.low);
+    return aiger_not(circuit->makeAnd(aiger_not(circuit->makeAnd(g, a)), aiger_not(circuit->makeAnd(aiger_not(g), b))));
 }
 
 
@@ -1206,8 +1213,8 @@ unsigned int AIGEncoder::latchFunction(MTBDD h, MTBDD* cap_bdds, const std::vect
 // position), choose the functions again in that order: the choice among the
 // simplifications of each bit (by node count) then sees the order of the
 // circuit. State bits that are not live stay 0. Keeps the new functions if
-// their Shannon expansion is smaller.
-void AIGEncoder::rechoose(MTBDD relation, const std::vector<bool>& live, const std::vector<uint32_t>& order,
+// their Shannon expansion is smaller, and then returns true.
+bool AIGEncoder::rechoose(MTBDD relation, const std::vector<bool>& live, const std::vector<uint32_t>& order,
                           uint32_t first, MTBDD* cap_bdds, MTBDD* state_bdds)
 {
     MTBDD map = mtbdd_map_empty(), var = mtbdd_false, renamed = mtbdd_false, inputs = mtbdd_set_empty();
@@ -1243,13 +1250,15 @@ void AIGEncoder::rechoose(MTBDD relation, const std::vector<bool>& live, const s
         before.push_back(state_bdds[i]);
         after.push_back(states[i]);
     }
-    if (ShannonCost::of(after, reorderUsed) < ShannonCost::of(before, reorderUsed)) {
+    const bool smaller = ShannonCost::of(after, reorderUsed) < ShannonCost::of(before, reorderUsed);
+    if (smaller) {
         for (int i = 0; i < game.cap_count; i++) cap_bdds[i] = caps[i];
         for (int i = 0; i < game.statebits; i++) state_bdds[i] = states[i];
     }
     for (MTBDD& f : caps) mtbdd_unprotect(&f);
     for (MTBDD& f : states) mtbdd_unprotect(&f);
     mtbdd_refs_popptr(4);
+    return smaller;
 }
 
 void AIGEncoder::processBinary()
@@ -1258,6 +1267,12 @@ void AIGEncoder::processBinary()
     MTBDD state_bdds[game.statebits]; // contains the solution: state bit bdds      : state -> uap -> B
     std::vector<bool> live(game.statebits, true);   // the state bits that get a latch
     std::vector<uint32_t> order;                     // with reordering: the variable at each position
+    std::vector<uint32_t> again;                     // after re-choosing: the order of the positions
+    std::vector<Split> splits(game.statebits);       // with reordering: how the latch functions are built
+    for (Split& s : splits) {
+        mtbdd_protect(&s.high);
+        mtbdd_protect(&s.low);
+    }
 
     // we use the "strategies" field of the game class, which should only include state -> uap -> cap.
 
@@ -1288,21 +1303,69 @@ void AIGEncoder::processBinary()
         }
         mtbdd_refs_popptr(2);
         if (reorderWork > 0 && !isop) {
-            std::vector<MTBDD*> functions;
+            // Sift the functions, choose them again in that order (rechoose), and decide how the
+            // circuit builds the latch functions (a function split on an output, see chooseSplit, as
+            // its two halves); then sift again with the rest of the work, the functions as the
+            // circuit builds them, so that the order suits these. After sifting, a split function
+            // is ITE(output, high, low) again.
+            auto split = [&]() {
+                std::vector<MTBDD> built(cap_bdds, cap_bdds + game.cap_count);
+                for (int i = 0; i < game.statebits; i++) {
+                    splits[i] = live[i] && rules.latchSplit ? chooseSplit(state_bdds[i], cap_bdds, built, nullptr) : Split{};
+                    if (!live[i]) continue;
+                    if (splits[i].output == -1) {
+                        built.push_back(state_bdds[i]);
+                    } else {
+                        built.push_back(splits[i].high);
+                        built.push_back(splits[i].low);
+                    }
+                }
+            };
+            auto functions = [&]() {
+                std::vector<MTBDD*> result;
+                for (int i = 0; i < game.cap_count; i++) result.push_back(&cap_bdds[i]);
+                for (int i = 0; i < game.statebits; i++) {
+                    if (!live[i]) continue;
+                    if (splits[i].output == -1) {
+                        result.push_back(&state_bdds[i]);
+                    } else {
+                        result.push_back(&splits[i].high);
+                        result.push_back(&splits[i].low);
+                    }
+                }
+                return result;
+            };
+            auto join = [&]() {
+                for (int i = 0; i < game.statebits; i++) {
+                    if (live[i] && splits[i].output >= 0) {
+                        state_bdds[i] = sylvan_ite(cap_bdds[splits[i].output], splits[i].high, splits[i].low);
+                    }
+                }
+            };
             std::vector<uint32_t> vars;
-            for (int i = 0; i < game.cap_count; i++) functions.push_back(&cap_bdds[i]);
             for (int i = 0; i < game.statebits; i++) {
-                if (!live[i]) continue;
-                functions.push_back(&state_bdds[i]);
-                vars.push_back(mtbdd_set_first(game.s_vars) + static_cast<uint32_t>(i));
+                if (live[i]) vars.push_back(mtbdd_set_first(game.s_vars) + static_cast<uint32_t>(i));
             }
             for (int i = 0; i < game.uap_count; i++) vars.push_back(mtbdd_set_first(game.uap_vars) + static_cast<uint32_t>(i));
             // fresh variables after all variables of the game (the next-state variables are last)
             const uint32_t first = mtbdd_set_first(game.ns_vars) + static_cast<uint32_t>(game.statebits);
-            if (!reorderFunctions(functions, vars, first, reorderWork, reorderUsed, order)) {
+            if (!reorderFunctions(functions(), vars, first, reorderWork, reorderUsed, order)) {
                 order.clear();
-            } else if (rules.rechoose) {
-                rechoose(relation, live, order, first, cap_bdds, state_bdds);
+            } else {
+                const bool rechosen = rules.rechoose && rechoose(relation, live, order, first, cap_bdds, state_bdds);
+                split();
+                bool anySplit = false;
+                for (const Split& s : splits) anySplit = anySplit || s.output >= 0;
+                // into the fresh variables after those of the first order
+                std::vector<uint32_t> positions;
+                for (size_t pos = 0; pos < order.size(); pos++) positions.push_back(first + static_cast<uint32_t>(pos));
+                const uint32_t second = first + static_cast<uint32_t>(order.size());
+                if ((rechosen || anySplit) && reorderUsed < reorderWork
+                    && reorderFunctions(functions(), positions, second, reorderWork - reorderUsed, reorderUsed, again)) {
+                    join();
+                } else {
+                    again.clear();
+                }
             }
         }
     } else {
@@ -1347,6 +1410,10 @@ void AIGEncoder::processBinary()
         const uint32_t first = mtbdd_set_first(game.ns_vars) + static_cast<uint32_t>(game.statebits);
         for (size_t pos = 0; pos < order.size(); pos++) {
             bddvar_to_lit.emplace(first + static_cast<uint32_t>(pos), bddvar_to_lit.at(order[pos]));
+        }
+        const uint32_t second = first + static_cast<uint32_t>(order.size());
+        for (size_t pos = 0; pos < again.size(); pos++) {
+            bddvar_to_lit.emplace(second + static_cast<uint32_t>(pos), bddvar_to_lit.at(again[pos]));
         }
     }
 
@@ -1421,7 +1488,7 @@ void AIGEncoder::processBinary()
         }
         for (int i=0; i<game.statebits; i++) {
             if (!live[i]) continue;
-            auto res = dontcares && rules.latchSplit ? latchFunction(state_bdds[i], cap_bdds, output_lits, built)
+            auto res = dontcares && rules.latchSplit ? latchFunction(state_bdds[i], cap_bdds, output_lits, built, &splits[i])
                                                      : bddToAigRecursive(state_bdds[i]);
             circuit->setLatch(state_to_lit.at(i), res, "");
         }
@@ -1430,6 +1497,10 @@ void AIGEncoder::processBinary()
 
     for (int i=0; i<game.cap_count; i++) mtbdd_unprotect(&cap_bdds[i]);
     for (int i=0; i<game.statebits; i++) mtbdd_unprotect(&state_bdds[i]);
+    for (Split& s : splits) {
+        mtbdd_unprotect(&s.high);
+        mtbdd_unprotect(&s.low);
+    }
     mtbdd_refs_popptr(1);
 }
 
