@@ -1741,6 +1741,86 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
     return true;
 }
 
+// The search for the smallest number of states that suffice, from a lower bound
+// to the states of a known controller: fewer states than a refuted number do not
+// suffice either, and more than a number that suffices do. Upwards with growing
+// steps (small encodings are much easier, so the search stays near the lower
+// bound), and by bisection once a controller is found or an encoding is too large.
+// With fewerFirst, after an undecided call first the numbers below it (in the
+// middle of the lowest gap between the refuted and the undecided numbers): their
+// encodings are smaller, and a controller with fewer states is often found much
+// faster.
+class StateSearch final {
+public:
+    StateSearch(int lowerBound, int known, bool fewerFirst)
+        : refuted(std::max(1, lowerBound) - 1), highest(refuted), found(known), top(known), fewerFirst(fewerFirst)
+    {
+    }
+
+    // The next number of states to try, or 0 if every number below the bound is decided or undecided.
+    int next() const
+    {
+        int low = refuted;
+        for (int u : undecided) {
+            if (fewerFirst && low + 1 < u) return low + (u - low) / 2;
+            low = u;
+        }
+        if (low + 1 >= top) return 0;
+        return bisect ? low + (top - low) / 2 : std::min(low + step, top - 1);
+    }
+
+    // A controller with this many (reachable) states was found.
+    void suffice(int states)
+    {
+        found = std::min(found, states);
+        bound(found);
+    }
+
+    // The encoding for k states is too large: search below k.
+    void tooLarge(int k) { bound(k); }
+
+    void refute(int k)
+    {
+        refuted = std::max(refuted, k);
+        undecided.erase(undecided.begin(), undecided.upper_bound(refuted));
+        failedAt(k);
+    }
+
+    void undecide(int k)
+    {
+        undecided.insert(k);
+        failedAt(k);
+    }
+
+    int states() const { return found; }
+    bool proven() const { return refuted + 1 >= found; }
+
+private:
+    void bound(int k)
+    {
+        top = std::min(top, k);
+        undecided.erase(undecided.lower_bound(top), undecided.end());
+        bisect = true;
+    }
+
+    void failedAt(int k)
+    {
+        if (k > highest) {
+            highest = k;
+            step *= 2;
+        }
+    }
+
+    int refuted;                // no number up to it suffices
+    int highest;                // the largest number that did not suffice or was undecided
+    int found;                  // the states of the best controller
+    int top;                    // search below it
+    bool fewerFirst;
+    bool bisect = false;
+    int step = 1;
+    std::set<int> undecided;    // between refuted and top
+};
+
 // Search for a small controller that may make any of the given moves, a
 // superset of the moves of the strategy. If they are a winning multi-strategy
 // (such as the permissive extension), the search starts from the controller of
@@ -1791,30 +1871,20 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
     const uint32_t firstCap = game.cap_count > 0 ? mtbdd_set_first(game.cap_vars) : 0;
     Controller best;
     bool haveController = false;            // best is a controller of these moves
-    int top = bound;                        // the number of states below which to search
+    int known = bound;                      // the number of states below which to search
     if (!checkCycles) {
         best = fromQuotient(q, ex.outputSets, game);
-        top = static_cast<int>(reachableStates(best).size());
+        known = static_cast<int>(reachableStates(best).size());
         haveController = true;
     }
-    int failed = std::max(1, lowerBound) - 1;   // the largest number of states that did not suffice
-    bool refuted = true;                    // were all failures refutations?
-    bool bisect = false;
-    int step = 1;
+    StateSearch sizes(lowerBound, known, options.fewerFirst);
     long remaining = work;
-    for (int k = failed + 1; failed + 1 < top;
-         k = bisect ? failed + (top - failed) / 2 : std::min(failed + step, top - 1)) {
-        if (remaining <= 0) {
-            refuted = false;
-            break;
-        }
+    for (int k = sizes.next(); k > 0 && remaining > 0; k = sizes.next()) {
         Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, checkCycles);
         if (enc.estimatedSize() > MAX_CLAUSES) {
             if (verbose) std::cerr << name << ": the encoding for " << k << " states is too large" << std::endl;
             searches[index].calls.push_back({k, -2, 0});
-            refuted = false;
-            top = k;
-            bisect = true;
+            sizes.tooLarge(k);
             continue;
         }
         // every attempt may use half of the remaining work, with its clauses and the rounds of
@@ -1848,18 +1918,18 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
         searches[index].calls.push_back({k, r == l_True ? 1 : r == l_False ? 0 : -1, enc.work()});
         if (r == l_True) {
             best = std::move(candidate);
-            top = static_cast<int>(reachableStates(best).size());
+            sizes.suffice(static_cast<int>(reachableStates(best).size()));
             haveController = true;
-            bisect = true;
+        } else if (r == l_False) {
+            sizes.refute(k);
         } else {
-            refuted = refuted && r == l_False;
-            failed = k;
-            step *= 2;
+            sizes.undecide(k);
         }
     }
     if (!haveController) return false;
+    const int top = sizes.states();
     searches[index].found = top;
-    searches[index].proven = refuted && failed + 1 >= top;
+    searches[index].proven = sizes.proven();
     if (top >= bound) {
         // not smaller than the controller of the strategy, but with more freedom
         MealyMinimizer::Result other;
@@ -1935,33 +2005,18 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     }
 
     // The bisimulation quotient is a controller; look for smaller ones, first
-    // with as many states as the lower bound (which often suffices), then
-    // with exponentially growing steps (small encodings are much easier, so
-    // the search stays near the lower bound), and once one is found or the
-    // encoding is too large, by bisection. Every attempt may use half of the
-    // remaining work.
+    // with as many states as the lower bound (which often suffices), as
+    // StateSearch chooses. Every attempt may use half of the remaining work.
     const uint32_t firstCap = game.cap_count > 0 ? mtbdd_set_first(game.cap_vars) : 0;
     Controller best = fromQuotient(q, ex.outputSets, game);
-    int found = static_cast<int>(reachableStates(best).size());
-    int tooLarge = found;                   // the smallest number of states whose encoding is too large
-    int failed = lowerBound - 1;            // the largest number of states that did not suffice
-    bool proven = true;                     // were all failures refutations?
-    bool bisect = false;
-    int step = 1;
+    StateSearch sizes(lowerBound, static_cast<int>(reachableStates(best).size()), options.fewerFirst);
     long remaining = options.work;
-    for (int k = lowerBound; failed + 1 < std::min(found, tooLarge);
-         k = bisect ? failed + (std::min(found, tooLarge) - failed) / 2 : std::min(failed + step, std::min(found, tooLarge) - 1)) {
-        if (remaining <= 0) {
-            proven = false;
-            break;
-        }
+    for (int k = sizes.next(); k > 0 && remaining > 0; k = sizes.next()) {
         Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, false);
         if (enc.estimatedSize() > MAX_CLAUSES) {
             if (verbose) std::cerr << "mealy minimisation: the encoding for " << k << " states is too large" << std::endl;
             search.calls.push_back({k, -2, 0});
-            tooLarge = k;
-            proven = false;
-            bisect = true;
+            sizes.tooLarge(k);
             continue;
         }
         const int r = enc.build() ? enc.solve((remaining + 1) / 2) : l_False;
@@ -1975,19 +2030,18 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
         search.calls.push_back({k, r == l_True ? 1 : r == l_False ? 0 : -1, enc.work()});
         if (r == l_True) {
             best = enc.controller();
-            found = static_cast<int>(reachableStates(best).size());
-            bisect = true;
+            sizes.suffice(static_cast<int>(reachableStates(best).size()));
+        } else if (r == l_False) {
+            sizes.refute(k);
         } else {
-            proven = proven && r == l_False;
-            failed = k;
-            step *= 2;
+            sizes.undecide(k);
         }
     }
-    if (verbose && !proven) {
-        std::cerr << "mealy minimisation: " << found << " states, not proven minimal for this strategy" << std::endl;
+    if (verbose && !sizes.proven()) {
+        std::cerr << "mealy minimisation: " << sizes.states() << " states, not proven minimal for this strategy" << std::endl;
     }
-    search.found = found;
-    search.proven = proven;
+    search.found = sizes.states();
+    search.proven = sizes.proven();
     if (!emit(game, ex, best, options, false, pool, result)) {
         // cannot happen; keep the original controller rather than risk a wrong one
         std::cerr << "error: the minimised controller makes moves the strategy does not allow" << std::endl;

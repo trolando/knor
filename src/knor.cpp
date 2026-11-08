@@ -113,6 +113,7 @@ handleOptions(int &argc, char**& argv)
             ("no-output-codes", "No state codes with output bits")
             ("no-monitor-codes", "No state codes with monitor flags")
             ("no-cube-codes", "No state codes as cubes (codes with a free bit)")
+            ("no-fewer-first", "After an undecided SAT call of the minimiser, do not try fewer states first")
             ("no-layered", "With --permissive, minimise over the extended strategy directly")
             ("no-extension", "--auto-encode without the permissive extension")
             ("no-unclarified", "No candidate with the freedom of the unclarified strategy (--dc without --mealy-sat)")
@@ -188,6 +189,10 @@ handleOptions(int &argc, char**& argv)
                 std::cerr << "error parsing options: --" << name << " requires --mealy-sat --dc or --auto-encode" << std::endl;
                 exit(255);
             }
+        }
+        if (options.count("no-fewer-first") && !mealy) {
+            std::cerr << "error parsing options: --no-fewer-first requires --mealy-sat or --auto-encode" << std::endl;
+            exit(255);
         }
         if (options.count("no-extension") && !options.count("auto-encode")) {
             std::cerr << "error parsing options: --no-extension requires --auto-encode" << std::endl;
@@ -635,6 +640,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         minimise.variants.outputCodes = options.count("no-output-codes") == 0;
         minimise.variants.monitorCodes = options.count("no-monitor-codes") == 0;
         minimise.variants.cubeCodes = options.count("no-cube-codes") == 0;
+        minimise.fewerFirst = options.count("no-fewer-first") == 0;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
         minimise.anyWork = auto_encode && options.count("mealy-any") == 0 ? minimise.work / AUTO_ANY_SHARE : minimise.work;
