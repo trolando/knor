@@ -667,20 +667,27 @@ public:
     }
 
     // l_True, l_False, or l_Undef if the work (with the clauses) reaches
-    // limit first.
+    // limit first. The solver stops on propagations only, so it runs in chunks
+    // of at most CHUNK propagations, and the work is checked in between.
     int solve(long limit)
     {
-        if (work() >= limit) return l_Undef;
         sat_solver_setnvars(solver, next);
-        const ABC_INT64_T before = solver->stats.propagations;
-        const int r = sat_solver_solve(solver, nullptr, nullptr, 0, limit - work(), 0, 0);
-        propagations += solver->stats.propagations - before;
-        return r;
+        while (work() < limit) {
+            const long chunk = std::min(CHUNK, limit - work());
+            const ABC_INT64_T props = solver->stats.propagations, inspects = solver->stats.inspects;
+            const int r = sat_solver_solve(solver, nullptr, nullptr, 0, chunk, 0, 0);
+            propagations += solver->stats.propagations - props;
+            inspections += solver->stats.inspects - inspects;
+            if (r != l_Undef) return r;
+        }
+        return l_Undef;
     }
 
-    // The work so far: the clauses added and the propagations of solve(). Every
-    // call of solve() propagates, which bounds the rounds of exclude() and solve().
-    long work() const { return added + propagations; }
+    // The work so far, which follows the time closely: the clauses added, and
+    // the propagations of solve() with a fifth of the clauses it inspects (a
+    // propagation inspects 2 to 13 clauses). Every call of solve() propagates,
+    // which bounds the rounds of exclude() and solve().
+    long work() const { return added + propagations + inspections / 5; }
 
     // Exclude a losing cycle of the product, with its maximal (odd) priority
     // p: no cycle has maximal priority p iff there is a rank per pair (state,
@@ -905,6 +912,8 @@ private:
     sat_solver* solver;
     long added = 0;                             // clauses
     long propagations = 0;                      // of solve()
+    long inspections = 0;                       // of clauses, by solve()
+    static constexpr long CHUNK = 10000000;
     std::vector<std::vector<int>> anchorsOf;    // per state: the anchors it is compatible with
     std::vector<std::vector<int>> servable;     // per anchor: the states compatible with it
     std::vector<int> allStates;

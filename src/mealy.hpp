@@ -45,7 +45,7 @@ public:
         struct Call {
             int states;         // the number of controller states tried
             int outcome;        // 1 suffice, 0 do not suffice, -1 undecided, -2 too large (not tried)
-            long work;          // propagations of the SAT solver and clauses added
+            long work;          // see Options
         };
         std::vector<Call> calls;
     };
@@ -78,9 +78,10 @@ public:
     };
 
     /**
-     * The SAT searches are limited by their work, the propagations of the SAT
-     * solver and the clauses added (about 20 million per second), not by time,
-     * so that the result does not depend on the machine or its load.
+     * The SAT searches are limited by their work, which follows the time
+     * closely (the propagations of the SAT solver, the clauses it inspects and
+     * the clauses added; about 25 million per second), not by time, so that the
+     * result does not depend on the machine or its load.
      */
     struct Options {
         long work = 1000000000;                 // for the search within the strategy, and the extended one
