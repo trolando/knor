@@ -122,7 +122,12 @@ private:
         if (marks[i] == 0) touched.push_back(i);
         marks[i] |= bit;
         stack.emplace_back(u, m);
+        work++;
     }
+
+public:
+    long work = 0;      // (vertex, level) pairs visited by all checks
+private:
 
     const Restricted& r;
     const int words;
@@ -492,7 +497,8 @@ std::vector<std::vector<int>> PermissiveStrategy::fpjm(const pg::Game& game, std
 }
 
 std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, int initial,
-                                                         std::vector<std::vector<int>> allowed, Stats& stats)
+                                                         std::vector<std::vector<int>> allowed, long budget,
+                                                         Stats& stats)
 {
     const int n = game.vertexcount();
     Restricted r(game, allowed);
@@ -510,6 +516,10 @@ std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, i
                 const int w = *e;
                 if (game.getWinner(w) != 0) continue;
                 if (std::find(allowed[v].begin(), allowed[v].end(), w) != allowed[v].end()) continue;
+                if (budget > 0 && check.work >= budget) {
+                    stats.stopped = true;
+                    break;
+                }
                 stats.candidates++;
                 if (check.closesOddCycle(v, w)) continue;
                 allowed[v].push_back(w);
@@ -523,6 +533,7 @@ std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, i
             }
         });
     }
+    stats.work = check.work;
     return allowed;
 }
 

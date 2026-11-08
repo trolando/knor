@@ -22,6 +22,8 @@ public:
         long vertices = 0;      // reachable vertices of Even that were extended
         long candidates = 0;    // edges that were considered
         long added = 0;         // edges that were added
+        long work = 0;          // (vertex, level) pairs visited by the cycle checks
+        bool stopped = false;   // the budget ran out
     };
 
     /**
@@ -52,11 +54,13 @@ public:
      * fpim() or fpjm()): visit the vertices reachable from the initial vertex
      * breadth-first, and allow each further successor of a vertex of Even if
      * that keeps the multi-strategy winning, i.e., if the new edge closes no
-     * cycle whose maximal priority is odd. Returns the allowed successors of
-     * each vertex owned and won by Even (empty for others).
+     * cycle whose maximal priority is odd. With a budget (not 0), no further
+     * edges are considered once the cycle checks have visited that many
+     * (vertex, level) pairs; the result is still winning. Returns the allowed
+     * successors of each vertex owned and won by Even (empty for others).
      */
     static std::vector<std::vector<int>> extend(const pg::Game& game, int initial,
-                                                std::vector<std::vector<int>> allowed, Stats& stats);
+                                                std::vector<std::vector<int>> allowed, long budget, Stats& stats);
 
     /**
      * Check independently that the multi-strategy is winning from the initial

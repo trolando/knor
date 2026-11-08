@@ -77,6 +77,7 @@ handleOptions(int &argc, char**& argv)
             ("real", "Only check realizability (no synthesis)")
             ("paritize", "Convert any acceptance condition (e.g. generalized Buchi) to parity, adding memory")
             ("permissive", "Greedily extend the strategy to a winning multi-strategy (explicit solvers; slow on large games)")
+            ("permissive-work", "Work of --permissive: (vertex, priority) pairs its cycle checks visit (0: no limit)", cxxopts::value<long>()->default_value("0"))
             ("fpim", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers)")
             ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
             ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
@@ -469,7 +470,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                 if (options["permissive"].count() > 0) {
                     const double t_before = wctime();
                     PermissiveStrategy::Stats stats;
-                    extended = PermissiveStrategy::extend(*game, vstart, allowed, stats);
+                    extended = PermissiveStrategy::extend(*game, vstart, allowed, options["permissive-work"].as<long>(), stats);
                     if (!PermissiveStrategy::verify(*game, vstart, extended)) {
                         // cannot happen; keep the strategy that was extended rather than risk a wrong controller
                         std::cerr << "error: the multi-strategy is not winning, using the strategy before extending it" << std::endl;
@@ -478,7 +479,8 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
                     run_stats.time("extension", wctime() - t_before);
                     if (verbose) {
                         std::cerr << "multi-strategy: " << stats.added << " of " << stats.candidates
-                                  << " further edges allowed at " << stats.vertices << " reachable vertices" << std::endl;
+                                  << " further edges allowed at " << stats.vertices << " reachable vertices, work "
+                                  << stats.work << (stats.stopped ? " (stopped)" : "") << std::endl;
                         std::cerr << "\033[1;37mfinished extending the strategy in " << std::fixed << (wctime() - t_before) << " sec.\033[m" << std::endl;
                     }
                 }
