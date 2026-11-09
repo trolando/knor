@@ -119,7 +119,8 @@ for example in "${examples[@]}"; do
 done
 
 f="$dir/../examples/full_arbiter.tlsf.ehoa"
-for mode in "--mealy-any" "--sym --mealy-sat --mealy-any" "--sym --permissive" "--sym --fpim" "--dc --onehot" "--dc --sop" "--auto-encode --onehot"; do
+for mode in "--mealy-any" "--sym --mealy-sat --mealy-any" "--sym --permissive" "--sym --fpim" "--dc --onehot" "--dc --sop" "--auto-encode --onehot" \
+            "--auto-encode --permissive --no-extension" "--auto-encode --mealy-work -1" "--permissive --permissive-work -1"; do
     # shellcheck disable=SC2086
     "$knor" -a $mode "$f" >/dev/null 2>&1
     res=$?

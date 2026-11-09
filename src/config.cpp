@@ -37,7 +37,7 @@ Config Config::parse(int argc, char** argv)
             ("real", "Only check realizability (no synthesis)")
             ("paritize", "Convert any acceptance condition (e.g. generalized Buchi) to parity, adding memory")
             ("permissive", "Greedily extend the strategy to a winning multi-strategy (explicit solvers; slow on large games)")
-            ("permissive-work", "Work of --permissive: (vertex, priority) pairs its cycle checks visit (0: no limit; --auto-encode: 20 million)", cxxopts::value<long>())
+            ("permissive-work", "Work of --permissive: (vertex, priority) pairs its cycle checks visit (default 0: no limit; the extension of --auto-encode without --permissive: 20 million)", cxxopts::value<long>())
             ("fpim", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers)")
             ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
             ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
@@ -166,6 +166,16 @@ Config Config::parse(int argc, char** argv)
         if (options.count("no-extension") && !options.count("auto-encode")) {
             std::cerr << "error parsing options: --no-extension requires --auto-encode" << std::endl;
             exit(255);
+        }
+        if (options.count("no-extension") && options.count("permissive")) {
+            std::cerr << "error parsing options: --no-extension and --permissive exclude each other" << std::endl;
+            exit(255);
+        }
+        for (const char* name : {"permissive-work", "mealy-work", "mealy-any-work", "reorder-work"}) {
+            if (options.count(name) && options[name].as<long>() < 0) {
+                std::cerr << "error parsing options: --" << name << " must not be negative" << std::endl;
+                exit(255);
+            }
         }
         if (options.count("no-layered") && !((options.count("permissive") && mealy) || options.count("auto-encode"))) {
             std::cerr << "error parsing options: --no-layered requires --permissive with --mealy-sat, or --auto-encode" << std::endl;
