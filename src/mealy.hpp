@@ -42,6 +42,8 @@ public:
         int lowerBound = 0;     // pairwise incompatible states
         int found = 0;          // states of the controller found (the quotient if no smaller one), 0 if none
         bool proven = false;    // found is minimal for these moves
+        std::string stop;       // why it stopped: "proven", "work" (the work ran out) or "undecided"
+                                // (every number left to try was undecided or too large)
         struct Call {
             int states;         // the number of controller states tried
             int outcome;        // 1 suffice, 0 do not suffice, -1 undecided, -2 too large (not tried)
@@ -63,6 +65,7 @@ public:
         relaxedMonitorCodes,    // relaxed, with monitor flags as state bits
         unclarified,            // without a minimised controller: the freedom of the strategy itself
     };
+    static const char* name(Kind kind);
     struct Variant {
         std::unique_ptr<SymGame> game;
         std::string name;       // what it is, e.g. "relaxed, breadth-first"

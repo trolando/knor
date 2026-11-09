@@ -7,6 +7,7 @@
 
 #include <iosfwd>
 #include <string>
+#include <vector>
 
 #include <aigencoder.hpp>
 #include <mealy.hpp>
@@ -70,7 +71,16 @@ struct Config final {
     // Parse and check the command line; exits on --help, --solvers and errors (255).
     static Config parse(int argc, char** argv);
 
-    // The resolved configuration, a line per stage, named after the options.
+    // A resolved setting, named after its option.
+    struct Setting {
+        std::string stage;      // "game", "strategy", "minimiser" or "encoding"
+        std::string name;
+        std::string value;      // a flag is "yes" or "no"
+        enum class Type { flag, number, text } type;
+    };
+    std::vector<Setting> settings() const;
+
+    // The settings, a line per stage.
     void print(std::ostream& out) const;
 };
 

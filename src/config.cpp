@@ -271,32 +271,84 @@ Config Config::parse(int argc, char** argv)
     }
 }
 
+std::vector<Config::Setting> Config::settings() const
+{
+    std::vector<Setting> result;
+    std::string stage;
+    auto flag = [&](const char* name, bool value) {
+        result.push_back({stage, name, value ? "yes" : "no", Setting::Type::flag});
+    };
+    auto number = [&](const char* name, long value) {
+        result.push_back({stage, name, std::to_string(value), Setting::Type::number});
+    };
+    auto text = [&](const char* name, const std::string& value) {
+        result.push_back({stage, name, value, Setting::Type::text});
+    };
+    stage = "game";
+    text("input", input.empty() ? "stdin" : input);
+    flag("paritize", paritize);
+    text("solver", symbolic ? "sym" : solver);
+    flag("naive", naiveSplitting);
+    flag("explicit", explicitSplitting);
+    flag("bisim-game", bisimGame);
+    flag("bisim-sol", bisimSolution);
+    flag("real", realizability);
+    stage = "strategy";
+    flag("fpim", fpim);
+    flag("fpjm", fpjm);
+    flag("permissive", permissive);
+    number("permissive-work", permissiveWork);
+    flag("layered", layered);
+    flag("any-moves", anyMoves);
+    stage = "minimiser";
+    const MealyMinimizer::Options& m = minimiser;
+    flag("mealy-sat", minimise);
+    number("work", m.work);
+    number("any-work", m.anyWork);
+    number("any-states", m.anyStates);
+    flag("fewer-first", m.fewerFirst);
+    flag("strong-bound", m.strongBound);
+    flag("winning-bound", m.winningBound);
+    flag("relaxed-moves", m.variants.relaxed);
+    flag("renumber", m.variants.renumber);
+    flag("output-codes", m.variants.outputCodes);
+    flag("monitor-codes", m.variants.monitorCodes);
+    flag("cube-codes", m.variants.cubeCodes);
+    flag("adjacency-codes", m.variants.adjacencyCodes);
+    stage = "encoding";
+    flag("isop", isop);
+    flag("onehot", onehot);
+    flag("sop", sop);
+    flag("or-gate", rules.orGate);
+    flag("dead-latches", rules.deadLatches);
+    flag("latch-ite", rules.latchSplit);
+    flag("rechoose", rules.rechoose);
+    flag("marginal-choice", rules.marginalChoice);
+    flag("guard-complement", rules.guardComplement);
+    flag("dc", dontCares);
+    flag("dc-all", everyCandidate);
+    flag("binary-dc", binaryCandidates);
+    flag("onehot-dc", onehotCandidates);
+    flag("isop-candidate", isopCandidate);
+    flag("all-candidates", boundCandidates);
+    flag("unclarified", unclarified);
+    flag("gates-only", gatesOnly);
+    number("reorder-work", reorderWork);
+    flag("drewrite", drewrite);
+    flag("compress", compress);
+    return result;
+}
+
 void Config::print(std::ostream& out) const
 {
-    const char* yes = "yes";
-    const char* no = "no";
-    auto f = [&](bool value) { return value ? yes : no; };
-    const MealyMinimizer::Options& m = minimiser;
-    out << "configuration of the game: input=" << (input.empty() ? "stdin" : input) << " paritize=" << f(paritize)
-        << " solver=" << (symbolic ? "sym" : solver) << " naive=" << f(naiveSplitting)
-        << " explicit=" << f(explicitSplitting) << " bisim-game=" << f(bisimGame) << " bisim-sol=" << f(bisimSolution)
-        << " real=" << f(realizability) << std::endl;
-    out << "configuration of the strategy: fpim=" << f(fpim) << " fpjm=" << f(fpjm) << " permissive=" << f(permissive)
-        << " permissive-work=" << permissiveWork << " layered=" << f(layered) << " any-moves=" << f(anyMoves)
-        << std::endl;
-    out << "configuration of the minimiser: mealy-sat=" << f(minimise) << " work=" << m.work << " any-work=" << m.anyWork
-        << " any-states=" << m.anyStates << " fewer-first=" << f(m.fewerFirst) << " strong-bound=" << f(m.strongBound)
-        << " winning-bound=" << f(m.winningBound) << " relaxed-moves=" << f(m.variants.relaxed)
-        << " renumber=" << f(m.variants.renumber) << " output-codes=" << f(m.variants.outputCodes)
-        << " monitor-codes=" << f(m.variants.monitorCodes) << " cube-codes=" << f(m.variants.cubeCodes)
-        << " adjacency-codes=" << f(m.variants.adjacencyCodes) << std::endl;
-    out << "configuration of the encoding: isop=" << f(isop) << " onehot=" << f(onehot) << " sop=" << f(sop)
-        << " or-gate=" << f(rules.orGate) << " dead-latches=" << f(rules.deadLatches)
-        << " latch-ite=" << f(rules.latchSplit) << " rechoose=" << f(rules.rechoose)
-        << " marginal-choice=" << f(rules.marginalChoice) << " guard-complement=" << f(rules.guardComplement)
-        << " dc=" << f(dontCares) << " dc-all=" << f(everyCandidate) << " binary-dc=" << f(binaryCandidates)
-        << " onehot-dc=" << f(onehotCandidates) << " isop-candidate=" << f(isopCandidate)
-        << " all-candidates=" << f(boundCandidates) << " unclarified=" << f(unclarified)
-        << " gates-only=" << f(gatesOnly) << " reorder-work=" << reorderWork << " drewrite=" << f(drewrite)
-        << " compress=" << f(compress) << std::endl;
+    std::string stage;
+    for (const Setting& setting : settings()) {
+        if (setting.stage != stage) {
+            if (!stage.empty()) out << std::endl;
+            stage = setting.stage;
+            out << "configuration of the " << stage << ":";
+        }
+        out << " " << setting.name << "=" << setting.value;
+    }
+    if (!stage.empty()) out << std::endl;
 }

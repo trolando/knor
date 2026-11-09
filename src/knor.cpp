@@ -72,6 +72,7 @@ TASK_1(int, main_task, const Config*, _config)
     if (verbose) config.print(std::cerr);
     stats_file.path = config.statsPath;
     RunStats& run_stats = stats_file.stats;
+    run_stats.configuration = config.settings();
 
     // First initialize the HOA data structure
     const auto t_before_parsing = wctime();
@@ -309,6 +310,7 @@ TASK_1(int, main_task, const Config*, _config)
                     const double t_before = wctime();
                     PermissiveStrategy::Stats stats;
                     extended = PermissiveStrategy::extend(*game, vstart, allowed, config.permissiveWork, stats);
+                    run_stats.extension = RunStats::Extension{true, config.permissiveWork, stats};
                     if (!PermissiveStrategy::verify(*game, vstart, extended)) {
                         // cannot happen; keep the strategy that was extended rather than risk a wrong controller
                         std::cerr << "error: the multi-strategy is not winning, using the strategy before extending it" << std::endl;

@@ -2168,6 +2168,7 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
             sizes.undecide(k);
         }
     }
+    searches[index].stop = sizes.proven() ? "proven" : remaining <= 0 ? "work" : "undecided";
     if (!haveController) return false;
     const int top = sizes.states();
     searches[index].found = top;
@@ -2204,6 +2205,21 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
 }
 
 }  // namespace
+
+const char* MealyMinimizer::name(Kind kind)
+{
+    switch (kind) {
+        case Kind::controller: return "controller";
+        case Kind::relaxed: return "relaxed";
+        case Kind::cubeCodes: return "cube codes";
+        case Kind::adjacencyCodes: return "adjacency codes";
+        case Kind::outputCodes: return "output codes";
+        case Kind::monitorCodes: return "monitor codes";
+        case Kind::relaxedMonitorCodes: return "relaxed monitor codes";
+        case Kind::unclarified: return "unclarified";
+    }
+    return "";
+}
 
 MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& options)
 {
@@ -2288,6 +2304,7 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     }
     search.found = sizes.states();
     search.proven = sizes.proven();
+    search.stop = sizes.proven() ? "proven" : remaining <= 0 ? "work" : "undecided";
     if (!emit(game, ex, best, options, false, pool, result)) {
         // cannot happen; keep the original controller rather than risk a wrong one
         std::cerr << "error: the minimised controller makes moves the strategy does not allow" << std::endl;
@@ -2309,10 +2326,14 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     for (const Wider& w : {Wider{options.extended, "extended strategy", options.work, 0},
                            Wider{options.anyMoves, "all winning moves", options.anyWork, options.anyStates}}) {
         Result smaller;
-        if (w.moves == mtbdd_false || (w.maxStates > 0 && result.states > w.maxStates)
-            || !searchWider(game, w.moves, w.name, result.states, w.work, options, smaller, more, searches)) {
+        if (w.moves == mtbdd_false) continue;
+        if (w.maxStates > 0 && result.states > w.maxStates) {
+            searches.emplace_back();
+            searches.back().moves = w.name;
+            searches.back().skipped = "the controller has more than " + std::to_string(w.maxStates) + " states";
             continue;
         }
+        if (!searchWider(game, w.moves, w.name, result.states, w.work, options, smaller, more, searches)) continue;
         if (relax) {
             more.push_back({std::move(result.game), current + ": controller", Kind::controller, false});
             for (auto& variant : result.variants) {

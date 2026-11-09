@@ -46,6 +46,12 @@ private:
         size_t game;
         Setting setting;
     };
+    struct Game {
+        SymGame* game;
+        std::string name;
+        std::string kind;       // see MealyMinimizer::Kind
+        bool chosen;            // of the controller that the minimiser returned
+    };
 
     std::vector<Setting> settings() const;
     long size(const std::unique_ptr<AIGCircuit>& circuit) const;
@@ -55,7 +61,7 @@ private:
     HoaData& data;
     const Config& config;
     RunStats& stats;
-    std::vector<std::pair<SymGame*, std::string>> games;
+    std::vector<Game> games;
     std::unique_ptr<AIGCircuit> best;
     std::vector<Binary> binaries;   // the binary candidates, to reorder the best ones
     long reorderLeft = 0;
