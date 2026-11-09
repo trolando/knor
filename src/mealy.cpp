@@ -664,8 +664,9 @@ public:
         return size;
     }
 
-    // Add the clauses; false if they are trivially unsatisfiable.
-    bool build()
+    // Add the clauses: l_False if they are trivially unsatisfiable, l_Undef
+    // (and stops) once more than limit clauses are added, else l_True.
+    int build(long limit)
     {
         trueVar = next++;
         for (int c = 0; c < k; c++) {
@@ -689,6 +690,7 @@ public:
             ok = ok && !some.empty() && clause(some) && atMostOne(some);
         }
         for (int c = 0; c < k && ok; c++) {
+            if (added > limit) return l_Undef;
             const std::vector<int>& letterOf = classes(c).letter;
             sVar[c].resize(letterOf.size());
             for (int cls = 0; cls < static_cast<int>(letterOf.size()) && ok; cls++) {
@@ -726,7 +728,7 @@ public:
                 }
             }
         }
-        return ok;
+        return !ok ? l_False : added > limit ? l_Undef : l_True;
     }
 
     // l_True, l_False, or l_Undef if the work (with the clauses) reaches
@@ -2098,7 +2100,8 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
         long cycles = 0;
         Controller candidate;
         try {
-            r = enc.build() ? enc.solve(allowance) : l_False;
+            r = enc.build(allowance);
+            if (r == l_True) r = enc.solve(allowance);
             while (r == l_True) {
                 candidate = enc.controller();
                 if (!checkCycles) break;
@@ -2223,7 +2226,9 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
             sizes.tooLarge(k);
             continue;
         }
-        const int r = enc.build() ? enc.solve((remaining + 1) / 2) : l_False;
+        const long allowance = (remaining + 1) / 2;
+        int r = enc.build(allowance);
+        if (r == l_True) r = enc.solve(allowance);
         remaining -= enc.work();
         if (verbose) {
             std::cerr << "mealy minimisation: " << k << " states "
