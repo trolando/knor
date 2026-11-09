@@ -479,7 +479,7 @@ TASK_1(int, main_task, const Config*, _config)
         relational->trans = sym->trans;
         relational->strategies = sym->strategies;
         relational->restrictToReachable(false);
-        variants.push_back({std::move(relational), "unclarified strategy"});
+        variants.push_back({std::move(relational), "unclarified strategy", MealyMinimizer::Kind::unclarified});
     }
 
     {

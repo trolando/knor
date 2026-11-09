@@ -102,10 +102,13 @@ std::unique_ptr<AIGCircuit> EncodingSearch::encode(SymGame& controller,
         std::cerr << "without don't cares: " << best->getNumAnds() << " gates and " << best->getNumLatches()
                   << " latches" << std::endl;
     }
-    // not the deterministic monitor-coded game (its relaxed version suffices), unless --dc-all
+    // not the deterministic monitor-coded game of the chosen controller (its relaxed version
+    // suffices), unless --dc-all
     games = {{&controller, "controller"}};
     for (const auto& variant : variants) {
-        if (config.everyCandidate || variant.name != "monitor codes") games.emplace_back(variant.game.get(), variant.name);
+        if (config.everyCandidate || variant.kind != MealyMinimizer::Kind::monitorCodes || !variant.chosen) {
+            games.emplace_back(variant.game.get(), variant.name);
+        }
     }
     const std::vector<Setting> all = settings();
     reorderLeft = config.reorderWork;

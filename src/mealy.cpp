@@ -1970,12 +1970,13 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
                 const std::vector<int> numbers = numbering(ctl.initial, all, depthFirst);
                 codes = positions(numbers, all.size(), statebits);
                 result.variants.push_back({toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()),
-                                           depthFirst ? "relaxed, depth-first" : "relaxed, breadth-first"});
+                                           depthFirst ? "relaxed, depth-first" : "relaxed, breadth-first",
+                                           MealyMinimizer::Kind::relaxed});
             }
         } else if (kinds.relaxed) {
             codes = positions(order, all.size(), statebits);
             result.variants.push_back({toGame(game, order, codes, statebits, all, ex.letterSets, table.sets()),
-                                       "relaxed"});
+                                       "relaxed", MealyMinimizer::Kind::relaxed});
         }
         if (kinds.relaxed && kinds.cubeCodes) {
             for (const bool byIncoming : {false, true}) {
@@ -1984,7 +1985,7 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
                 if (numbers.empty()) break;
                 result.variants.push_back(
                     {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets(), free),
-                     byIncoming ? "relaxed, cube codes by incoming moves" : "relaxed, cube codes"});
+                     byIncoming ? "relaxed, cube codes by incoming moves" : "relaxed, cube codes", MealyMinimizer::Kind::cubeCodes});
             }
         }
         if (kinds.relaxed && kinds.adjacencyCodes) {
@@ -1992,7 +1993,8 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
             codes = positions(numbers, all.size(), statebits);
             if (improveCodes(all, numbers, codes, statebits, statebits)) {
                 result.variants.push_back(
-                    {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()), "relaxed, adjacency codes"});
+                    {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()), "relaxed, adjacency codes",
+                     MealyMinimizer::Kind::adjacencyCodes});
             }
         }
         // state bits that are output bits cost (almost) no gates
@@ -2015,11 +2017,11 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
                               << " further bits for " << agreeingOrder.size() << " states" << std::endl;
                 }
                 result.variants.push_back(
-                    {toGame(game, agreeingOrder, codes, statebits, agreeing, ex.letterSets, table.sets()), "output bits"});
+                    {toGame(game, agreeingOrder, codes, statebits, agreeing, ex.letterSets, table.sets()), "output bits", MealyMinimizer::Kind::outputCodes});
                 // with the further bits by adjacency
                 if (kinds.adjacencyCodes && improveCodes(agreeing, agreeingOrder, codes, statebits, statebits - flags)) {
                     result.variants.push_back({toGame(game, agreeingOrder, codes, statebits, agreeing, ex.letterSets,
-                                                      table.sets()), "output bits, adjacency codes"});
+                                                      table.sets()), "output bits, adjacency codes", MealyMinimizer::Kind::outputCodes});
                 }
             }
         }
@@ -2043,17 +2045,17 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
     }
     // with the controller's moves, and with the freedom that keeps the flags
     result.variants.push_back({toGame(game, splitOrder, codes, statebits, exact, ex.letterSets, table.sets()),
-                               "monitor codes"});
+                               "monitor codes", MealyMinimizer::Kind::monitorCodes});
     if (!kinds.relaxed) return true;
     const Moves free = keepFlags(relaxedMoves(ex.machine, ex.outputSets, exact.size(), splitPairs, table), chosen,
                                  codes, statebits - flags, inputs, game.cap_count, table, game.cap_vars);
     if (correct(split.initial, free)) {
         result.variants.push_back({toGame(game, splitOrder, codes, statebits, free, ex.letterSets, table.sets()),
-                                   "monitor codes, relaxed"});
+                                   "monitor codes, relaxed", MealyMinimizer::Kind::relaxedMonitorCodes});
         // with the further bits by adjacency
         if (kinds.adjacencyCodes && improveCodes(free, splitOrder, codes, statebits, statebits - flags)) {
             result.variants.push_back({toGame(game, splitOrder, codes, statebits, free, ex.letterSets, table.sets()),
-                                       "monitor codes, relaxed, adjacency codes"});
+                                       "monitor codes, relaxed, adjacency codes", MealyMinimizer::Kind::relaxedMonitorCodes});
         }
     }
     return true;
@@ -2175,8 +2177,10 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
         MealyMinimizer::Result other;
         if (relax && !checkCycles && emit(game, ex, best, options, false, pool, other)) {
             const std::string prefix = std::string(name) + ": ";
-            more.push_back({std::move(other.game), prefix + "controller"});
-            for (auto& variant : other.variants) more.push_back({std::move(variant.game), prefix + variant.name});
+            more.push_back({std::move(other.game), prefix + "controller", MealyMinimizer::Kind::controller, false});
+            for (auto& variant : other.variants) {
+                more.push_back({std::move(variant.game), prefix + variant.name, variant.kind, false});
+            }
         }
         return false;
     }
@@ -2310,8 +2314,10 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
             continue;
         }
         if (relax) {
-            more.push_back({std::move(result.game), current + ": controller"});
-            for (auto& variant : result.variants) more.push_back({std::move(variant.game), current + ": " + variant.name});
+            more.push_back({std::move(result.game), current + ": controller", Kind::controller, false});
+            for (auto& variant : result.variants) {
+                more.push_back({std::move(variant.game), current + ": " + variant.name, variant.kind, false});
+            }
         }
         result = std::move(smaller);
         current = w.name;

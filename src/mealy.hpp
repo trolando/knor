@@ -53,9 +53,21 @@ public:
     /**
      * With relax: another game of the controller (other state codes, more moves) for --dc.
      */
+    enum class Kind {
+        controller,             // a controller of another search (not the one returned)
+        relaxed,                // with every move that keeps the controller correct, numbered by them
+        cubeCodes,              // relaxed, with state codes as cubes
+        adjacencyCodes,         // relaxed, with codes that differ in few bits for related states
+        outputCodes,            // with output bits as state bits
+        monitorCodes,           // the controller's own moves, with monitor flags as state bits
+        relaxedMonitorCodes,    // relaxed, with monitor flags as state bits
+        unclarified,            // without a minimised controller: the freedom of the strategy itself
+    };
     struct Variant {
         std::unique_ptr<SymGame> game;
         std::string name;       // what it is, e.g. "relaxed, breadth-first"
+        Kind kind;
+        bool chosen = true;     // of the controller that minimize() returns, not of another one
     };
 
     struct Result {
