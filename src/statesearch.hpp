@@ -16,11 +16,16 @@
 // With fewerFirst, after an undecided call first the numbers below it (in the
 // middle of the lowest gap between the refuted and the undecided numbers): their
 // encodings are smaller, and a controller with fewer states is often found much
-// faster.
+// faster. With unit, upwards by one state, up to the first undecided number: where
+// every further state multiplies the cost of a call (as when the candidates are
+// checked for losing cycles), a call above the minimum costs more than all the
+// calls below it, and a call above an undecided one cannot be decided with half
+// of its allowance either.
 class StateSearch final {
 public:
-    StateSearch(int lowerBound, int known, bool fewerFirst)
-        : refuted(std::max(1, lowerBound) - 1), highest(refuted), found(known), top(known), fewerFirst(fewerFirst)
+    StateSearch(int lowerBound, int known, bool fewerFirst, bool unit = false)
+        : refuted(std::max(1, lowerBound) - 1), highest(refuted), found(known), top(known), fewerFirst(fewerFirst),
+          unit(unit)
     {
     }
 
@@ -33,7 +38,9 @@ public:
             low = u;
         }
         if (low + 1 >= top) return 0;
-        return bisect ? low + (top - low) / 2 : std::min(low + step, top - 1);
+        if (bisect) return low + (top - low) / 2;
+        if (unit) return undecided.empty() ? low + 1 : 0;
+        return std::min(low + step, top - 1);
     }
 
     // A controller with this many (reachable) states was found.
@@ -83,6 +90,7 @@ private:
     int found;                  // the states of the best controller
     int top;                    // search below it
     bool fewerFirst;
+    bool unit;
     bool bisect = false;
     int step = 1;
     std::set<int> undecided;    // between refuted and top

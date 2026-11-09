@@ -108,6 +108,8 @@ public:
         sylvan::MTBDD anyMoves = sylvan::mtbdd_false;   // all moves into the winning region
         long anyWork = 2000000000;              // for the search over anyMoves
         bool fewerFirst = true;                 // after an undecided SAT call, try fewer states first
+        bool unitSteps = true;                  // with cycle checks (anyMoves): upwards by one state, up to the first
+                                                // undecided number (see StateSearch)
         bool strongBound = true;                // lower bound from all unavoidable states, the initial one optional
         bool winningBound = true;               // over anyMoves, from the states that every winning controller visits
         int anyStates = 0;                      // search anyMoves only for controllers of at most this many states (0: all)

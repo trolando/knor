@@ -45,13 +45,13 @@ auto-encode	Gamelogic.tlsf.ehoa	10	0ba390ee5b545bf9	s:3+ e:3+ a:3+
 auto-encode	generalized_buffer_unreal1.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
 auto-encode	KitchenTimerV4.tlsf.ehoa	10	6b0d9e709d2ea912	s: e: a:
 auto-encode	lilydemo14.tlsf.ehoa	10	87b616e7704fda02	s:2+ e:2+ a:1-
-auto-encode	lilydemo18.tlsf.ehoa	10	ba0828da4b431379	s:4+ e:4+ a:1-,3-
+auto-encode	lilydemo18.tlsf.ehoa	10	ba0828da4b431379	s:4+ e:4+ a:1-,2-,3-
 auto-encode	loadfull4.tlsf.ehoa	10	881c610a456ea302	s:1+ e:1+ a:
-auto-encode	ltl2dba05.tlsf.ehoa	10	a449c28c408758d4	s: e: a:1-,3-,4-
-auto-encode	ltl2dba06.tlsf.ehoa	10	271b302115a777bf	s: e: a:1-,3-,4-
+auto-encode	ltl2dba05.tlsf.ehoa	10	a449c28c408758d4	s: e: a:1-,2-,3-,4-
+auto-encode	ltl2dba06.tlsf.ehoa	10	271b302115a777bf	s: e: a:1-,2-,3-,4-
 auto-encode	ltl2dba12.tlsf.ehoa	10	6ad33e4655973c13	s:2+ e:2+ a:1-
 auto-encode	ltl2dba_alpha.tlsf.ehoa	10	a3f53162a65b8b7c	s:3+ e:3+ a:1-,2-
-auto-encode	ltl2dpa16.tlsf.ehoa	10	8de9cb801b58379c	s: e: a:1-,3-
+auto-encode	ltl2dpa16.tlsf.ehoa	10	8de9cb801b58379c	s: e: a:1-,2-,3-
 auto-encode	round_robin_arbiter.tlsf.ehoa	10	bb81351b1f19b490	s:3+ e:3+ a:1-,2+
 auto-encode	SPIWriteManag.tlsf.ehoa	10	1eb162af192dba1e	s: e: a:1-
 auto-encode	TorcsGearing.tlsf.ehoa	10	a8d926fc212f6939	s:2+ e:2+ a:2+

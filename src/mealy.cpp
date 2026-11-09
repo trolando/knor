@@ -2118,7 +2118,7 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
         known = static_cast<int>(reachableStates(best).size());
         haveController = true;
     }
-    StateSearch sizes(lowerBound, known, options.fewerFirst);
+    StateSearch sizes(lowerBound, known, options.fewerFirst, checkCycles && options.unitSteps);
     long remaining = work;
     for (int k = sizes.next(); k > 0 && remaining > 0; k = sizes.next()) {
         Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, checkCycles);

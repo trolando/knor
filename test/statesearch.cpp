@@ -12,7 +12,8 @@
 // controller, and conclude only what the oracle allows. With fewerFirst, it
 // must go below an undecided number when it can and stop only when nothing is
 // left to try (without, the search goes upwards past the undecided numbers and
-// leaves the numbers it stepped over).
+// leaves the numbers it stepped over). Each search also runs with unit steps,
+// which stop at the first undecided number.
 // Exhaustive for small searches, random (with a fixed seed) for larger ones.
 
 #include <cstdint>
@@ -33,6 +34,7 @@ struct Scenario {
     int tooLargeFrom;       // the encodings for this many states or more are too large (0: none)
     uint32_t seed;          // chooses the reachable states of the controllers found
     bool fewerFirst;
+    bool unit = false;
 };
 
 std::string describe(const Scenario& sc)
@@ -42,7 +44,7 @@ std::string describe(const Scenario& sc)
         << ", undecided {";
     for (int u : sc.undecided) out << " " << u;
     out << " }, too large from " << sc.tooLargeFrom << ", seed " << sc.seed
-        << (sc.fewerFirst ? ", fewer first" : "");
+        << (sc.fewerFirst ? ", fewer first" : "") << (sc.unit ? ", unit steps" : "");
     return out.str();
 }
 
@@ -62,7 +64,7 @@ void fail(const Scenario& sc, const std::string& what)
 // Runs the search as the minimiser does and checks it; returns the number of calls.
 int run(const Scenario& sc)
 {
-    StateSearch sizes(sc.lowerBound, sc.known, sc.fewerFirst);
+    StateSearch sizes(sc.lowerBound, sc.known, sc.fewerFirst, sc.unit);
     uint32_t random = sc.seed;
     std::set<int> tried, undecidedSeen;
     int refuted = std::max(1, sc.lowerBound) - 1;    // what the oracle has refuted so far
@@ -109,9 +111,15 @@ int run(const Scenario& sc)
                                           std::to_string(found));
     if (sizes.proven() && sc.minimum < found) fail(sc, "proven, but " + std::to_string(found) + " is not minimal");
     // with fewerFirst, it stops only when every number between the refuted ones and the best is
-    // undecided (or too large)
+    // undecided (or too large); unit steps also stop above the first undecided number, and only
+    // there: every number below it is refuted
     for (int j = refuted + 1; sc.fewerFirst && j < std::min(found, tooLarge); j++) {
+        if (sc.unit && !undecidedSeen.empty() && j > *undecidedSeen.begin()) continue;
         if (!undecidedSeen.count(j)) fail(sc, "stops with " + std::to_string(j) + " states untried");
+    }
+    if (sc.unit && !undecidedSeen.empty() && *undecidedSeen.begin() != refuted + 1 && tooLarge == sc.known
+        && found == sc.known) {
+        fail(sc, "unit steps leave a number below the first undecided one");
     }
     // with an oracle that decides everything, the search finds and proves the minimum
     if (sc.undecided.empty() && sc.tooLargeFrom == 0 && sc.lowerBound <= sc.minimum
@@ -140,8 +148,11 @@ int main()
                     for (int tooLargeFrom : {0, first + range / 2 + 1}) {
                         for (bool fewerFirst : {false, true}) {
                             for (uint32_t seed : {1u, 2u, 3u}) {
-                                calls += run({lowerBound, known, minimum, undecided, tooLargeFrom, seed, fewerFirst});
-                                scenarios++;
+                                for (bool unit : {false, true}) {
+                                    calls += run({lowerBound, known, minimum, undecided, tooLargeFrom, seed, fewerFirst,
+                                                  unit});
+                                    scenarios++;
+                                }
                             }
                         }
                     }
@@ -163,7 +174,8 @@ int main()
         }
         const int tooLargeFrom = nextRandom(random) % 3 == 0 ? first + static_cast<int>(nextRandom(random) % known) : 0;
         const uint32_t seed = nextRandom(random);
-        calls += run({lowerBound, known, minimum, undecided, tooLargeFrom, seed, nextRandom(random) % 2 == 0});
+        const bool fewerFirst = nextRandom(random) % 2 == 0;
+        calls += run({lowerBound, known, minimum, undecided, tooLargeFrom, seed, fewerFirst, nextRandom(random) % 2 == 0});
         scenarios++;
     }
     if (failures > 0) {
