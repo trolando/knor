@@ -1,0 +1,58 @@
+plain	abcg_arbiter.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+plain	amba_decomposed_arbiter_2.tlsf.ehoa	10	7abafc0ed23a1a58	-
+plain	amba_decomposed_encode.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+plain	amba_decomposed_encode_9.tlsf.ehoa	10	c4a32179173bc350	-
+plain	amba_decomposed_lock_10.tlsf.ehoa	10	40377d6cf6f40339	-
+plain	amba_decomposed_lock_13.tlsf.ehoa	10	981ddf98e293c28d	-
+plain	amba_decomposed_shift.tlsf.ehoa	10	0ff04da26def6a68	-
+plain	arbiter.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+plain	arbiter_with_buffer.tlsf.ehoa	10	119f6342f8be4599	-
+plain	arbiter_with_cancel.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+plain	detector.tlsf.ehoa	10	5593adadb30f7384	-
+plain	detector_unreal.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+plain	EscalatorBidirectionalInit.tlsf.ehoa	10	d87c014e773b9e16	-
+plain	EscalatorCountingInit.tlsf.ehoa	10	e2f48115c81c2b6d	-
+plain	Gamelogic.tlsf.ehoa	10	81377fca855a8b46	-
+plain	generalized_buffer_unreal1.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+plain	KitchenTimerV4.tlsf.ehoa	10	26ce2e52ab913bf4	-
+plain	lilydemo14.tlsf.ehoa	10	bfa0818fe786f098	-
+plain	lilydemo18.tlsf.ehoa	10	0e6ace7e72935910	-
+plain	loadfull4.tlsf.ehoa	10	d91f9a831be358f5	-
+plain	ltl2dba05.tlsf.ehoa	10	54391c226a6b0efc	-
+plain	ltl2dba06.tlsf.ehoa	10	93310d6e5437a268	-
+plain	ltl2dba12.tlsf.ehoa	10	33a85baf1b69921f	-
+plain	ltl2dba_alpha.tlsf.ehoa	10	cb22914ad58cf2e4	-
+plain	ltl2dpa16.tlsf.ehoa	10	d113f90a64506599	-
+plain	round_robin_arbiter.tlsf.ehoa	10	8bad5ffe1d2b547f	-
+plain	SPIWriteManag.tlsf.ehoa	10	a7310622864284cb	-
+plain	TorcsGearing.tlsf.ehoa	10	c3a28057a8354584	-
+plain	TwoCountersInRangeA6.tlsf.ehoa	10	7b970a8f8af680c2	-
+auto-encode	abcg_arbiter.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+auto-encode	amba_decomposed_arbiter_2.tlsf.ehoa	10	80f5bcd9bf7efe9f	s:3+ e:3+ a:2-
+auto-encode	amba_decomposed_encode.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+auto-encode	amba_decomposed_encode_9.tlsf.ehoa	10	cc318a7bb5bd1f80	s:9+ e:9+ a:9+
+auto-encode	amba_decomposed_lock_10.tlsf.ehoa	10	2a817874a23ae0e3	s:3+ e:3+ a:3+
+auto-encode	amba_decomposed_lock_13.tlsf.ehoa	10	ebfcc3fd070053cc	s:3+ e:3+ a:3+
+auto-encode	amba_decomposed_shift.tlsf.ehoa	10	3655c86205768b98	s:2+ e:2+ a:2+
+auto-encode	arbiter.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+auto-encode	arbiter_with_buffer.tlsf.ehoa	10	32ae42be26b867fa	s: e:1+ a:
+auto-encode	arbiter_with_cancel.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+auto-encode	detector.tlsf.ehoa	10	279a605a6fdeeb6c	s:2+ e:1-,2+ a:1-
+auto-encode	detector_unreal.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+auto-encode	EscalatorBidirectionalInit.tlsf.ehoa	10	c314db508c1b02bc	s:3+ e:3+ a:3+
+auto-encode	EscalatorCountingInit.tlsf.ehoa	10	03c38018462917ea	s:3+ e:3+ a:3+
+auto-encode	Gamelogic.tlsf.ehoa	10	0ba390ee5b545bf9	s:3+ e:3+ a:3+
+auto-encode	generalized_buffer_unreal1.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
+auto-encode	KitchenTimerV4.tlsf.ehoa	10	6b0d9e709d2ea912	s: e: a:
+auto-encode	lilydemo14.tlsf.ehoa	10	87b616e7704fda02	s:2+ e:2+ a:1-
+auto-encode	lilydemo18.tlsf.ehoa	10	ba0828da4b431379	s:4+ e:4+ a:1-,3-
+auto-encode	loadfull4.tlsf.ehoa	10	881c610a456ea302	s:1+ e:1+ a:
+auto-encode	ltl2dba05.tlsf.ehoa	10	a449c28c408758d4	s: e: a:1-,3-,4-
+auto-encode	ltl2dba06.tlsf.ehoa	10	271b302115a777bf	s: e: a:1-,3-,4-
+auto-encode	ltl2dba12.tlsf.ehoa	10	6ad33e4655973c13	s:2+ e:2+ a:1-
+auto-encode	ltl2dba_alpha.tlsf.ehoa	10	a3f53162a65b8b7c	s:3+ e:3+ a:1-,2-
+auto-encode	ltl2dpa16.tlsf.ehoa	10	8de9cb801b58379c	s: e: a:1-,3-
+auto-encode	round_robin_arbiter.tlsf.ehoa	10	bb81351b1f19b490	s:3+ e:3+ a:1-,2+
+auto-encode	SPIWriteManag.tlsf.ehoa	10	1eb162af192dba1e	s: e: a:1-
+auto-encode	TorcsGearing.tlsf.ehoa	10	a8d926fc212f6939	s:2+ e:2+ a:2+
+auto-encode	TwoCountersInRangeA6.tlsf.ehoa	10	9dd9952c68ffc39f	s:1+ e:1+ a:1+

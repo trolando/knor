@@ -75,6 +75,13 @@ add_test(NAME controllers
 add_test(NAME aigcheck
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/aigcheck.sh $<TARGET_FILE:knor> $<TARGET_FILE:aigcheck>)
 add_test(NAME statesearch COMMAND statesearch)
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME fingerprints
+        COMMAND bash ${CMAKE_SOURCE_DIR}/test/fingerprints.sh $<TARGET_FILE:knor>)
+else()
+    message(STATUS "Python 3 not found: the test fingerprints is skipped")
+endif()
 
 # Optional: check the controllers and aigcheck itself with Spot, which shares no code with knor
 find_program(AUTFILT autfilt)
