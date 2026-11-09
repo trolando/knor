@@ -52,6 +52,13 @@ target_sources(aigcheck
 target_compile_features(aigcheck PUBLIC c_std_11 cxx_std_17)
 target_compile_options(aigcheck PRIVATE -Wall -Wextra -fno-strict-aliasing -Wno-deprecated -Wno-unused-parameter)
 target_include_directories(aigcheck PRIVATE src)
+
+# The search over the number of controller states of the minimiser, against an oracle
+add_executable(statesearch)
+target_sources(statesearch PRIVATE test/statesearch.cpp)
+target_compile_features(statesearch PUBLIC cxx_std_17)
+target_compile_options(statesearch PRIVATE -Wall -Wextra)
+target_include_directories(statesearch PRIVATE src)
 find_package(Threads REQUIRED)
 target_link_libraries(aigcheck PRIVATE Threads::Threads)
 
@@ -67,6 +74,7 @@ add_test(NAME controllers
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/controllers.sh $<TARGET_FILE:knor> $<TARGET_FILE:aigcheck>)
 add_test(NAME aigcheck
     COMMAND bash ${CMAKE_SOURCE_DIR}/test/aigcheck.sh $<TARGET_FILE:knor> $<TARGET_FILE:aigcheck>)
+add_test(NAME statesearch COMMAND statesearch)
 
 # Optional: check the controllers and aigcheck itself with Spot, which shares no code with knor
 find_program(AUTFILT autfilt)
