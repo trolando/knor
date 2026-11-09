@@ -6,8 +6,10 @@
 # both exit with the expected verdict, and a realizable example must give an
 # AIGER file with one input per uncontrollable and one output per controllable
 # AP, which aigcheck accepts; so must the binary AIGER file of --auto-encode,
-# whose --stats must be valid JSON (if python3 is found). Invalid combinations
-# must exit with 255, and ABC must leave no abc.history behind.
+# whose --stats must be consistent (if python3 is found: schema 2, the
+# configuration, a selected candidate of the size of the circuit, proven where a
+# search stopped as proven). Invalid combinations must exit with 255, and ABC
+# must leave no abc.history behind.
 #
 # Usage: test/controllers.sh [path/to/knor [path/to/aigcheck]]
 #        (default: build/knor and build/aigcheck)
@@ -54,11 +56,11 @@ modes=(
     "--auto-encode --mealy-work 0 --mealy-any-work 0 --permissive-work 0"
     "--auto-encode --mealy-work 1 --mealy-any-work 1 --permissive-work 1"
     "--fpim --permissive --permissive-work 1 --mealy-sat --mealy-any --mealy-any-work 1000 --dc"
-    "--fpim --mealy-sat --dc-all"
+    "--fpim --mealy-sat --dc --dc-all"
     # the ablation options, each in one of these
-    "--auto-encode --no-relaxed-moves --no-monitor-codes --no-or-gate"
-    "--auto-encode --no-cube-codes --no-adjacency-codes --no-rechoose --no-extension --no-winning-bound"
-    "--auto-encode --no-renumber --no-output-codes --no-latch-ite --no-dead-latches"
+    "--auto-encode --no-relaxed-moves --no-or-gate"
+    "--auto-encode --no-cube-codes --no-adjacency-codes --no-rechoose --no-extension --no-winning-bound --no-unit-steps"
+    "--auto-encode --no-renumber --no-output-codes --no-monitor-codes --no-latch-ite --no-dead-latches"
     "--auto-encode --no-binary-dc --no-guard-complement --no-isop-candidate"
     "--auto-encode --no-onehot-dc --no-all-candidates --reorder-work 0 --gates-only --no-marginal-choice"
     "--fpim --permissive --mealy-sat --dc --no-layered --no-fewer-first --no-strong-bound"
@@ -113,8 +115,19 @@ for example in "${examples[@]}"; do
     elif ! out=$("$aigcheck" "$f" "$tmp/out.aig" 2>&1); then
         fail "$f -b --auto-encode: $out"
     fi
-    if [ -n "$python" ] && ! "$python" -c 'import json, sys; json.load(open(sys.argv[1]))' "$tmp/stats.json" 2>/dev/null; then
-        fail "$f --auto-encode --stats: not valid JSON"
+    if [ -n "$python" ] && ! out=$("$python" - "$tmp/stats.json" 2>&1 <<'EOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d["schema"] == 2, "schema"
+assert set(d["configuration"]) == {"game", "strategy", "minimiser", "encoding"}, "configuration"
+c, s = d["candidates"], d["selected"]
+assert 0 <= s < len(c), "selected"
+assert c[s]["ands"] == d["circuit"]["ands"] and c[s]["latches"] == d["circuit"]["latches"], "selected size"
+for search in d["searches"]:
+    assert search.get("stop") != "proven" or search["proven"], "proven: " + search["moves"]
+EOF
+); then
+        fail "$f --auto-encode --stats: $out"
     fi
 done
 
