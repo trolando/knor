@@ -1,12 +1,13 @@
 #!/bin/bash
 #
 # Regression test for the controller options (--auto-encode, --permissive,
-# --fpim, --fpjm, --mealy-sat, --mealy-any, --dc, --compress). For every example
-# and every combination of options, knor --real and knor -a must both exit with
-# the expected verdict, and a realizable example must give an AIGER file with
-# one input per uncontrollable and one output per controllable AP, which
-# aigcheck accepts. Invalid combinations must exit with 255, and ABC must leave
-# no abc.history behind.
+# --fpim, --fpjm, --mealy-sat, --mealy-any, --dc, --compress, the budgets). For
+# every example and every combination of options, knor --real and knor -a must
+# both exit with the expected verdict, and a realizable example must give an
+# AIGER file with one input per uncontrollable and one output per controllable
+# AP, which aigcheck accepts; so must the binary AIGER file of --auto-encode,
+# whose --stats must be valid JSON (if python3 is found). Invalid combinations
+# must exit with 255, and ABC must leave no abc.history behind.
 #
 # Usage: test/controllers.sh [path/to/knor [path/to/aigcheck]]
 #        (default: build/knor and build/aigcheck)
@@ -49,6 +50,11 @@ modes=(
     "--sym --mealy-sat --dc"
     "--bisim --mealy-sat --dc"
     "--permissive --mealy-sat --mealy-any --mealy-work 20000000 --dc"
+    # zero, tiny and explicit budgets, and every encoding candidate
+    "--auto-encode --mealy-work 0 --mealy-any-work 0 --permissive-work 0"
+    "--auto-encode --mealy-work 1 --mealy-any-work 1 --permissive-work 1"
+    "--fpim --permissive --permissive-work 1 --mealy-sat --mealy-any --mealy-any-work 1000 --dc"
+    "--fpim --mealy-sat --dc-all"
     # the ablation options, each in one of these
     "--auto-encode --no-relaxed-moves --no-monitor-codes --no-or-gate"
     "--auto-encode --no-cube-codes --no-adjacency-codes --no-rechoose --no-extension --no-winning-bound"
@@ -92,6 +98,24 @@ for example in "${examples[@]}"; do
             fi
         fi
     done
+done
+
+python=$(command -v python3)
+for example in "${examples[@]}"; do
+    f=${example% *}
+    [ "${example##* }" = 10 ] || continue
+    "$knor" -b --auto-encode --stats "$tmp/stats.json" "$f" >"$tmp/out.aig" 2>/dev/null
+    res=$?
+    [ "$res" = 10 ] || fail "$f -b --auto-encode (exit code $res, expected 10)"
+    read -r format _ < "$tmp/out.aig"
+    if [ "$format" != aig ]; then
+        fail "$f -b --auto-encode (header \"$(head -c 40 "$tmp/out.aig" | head -1)\", expected binary AIGER)"
+    elif ! out=$("$aigcheck" "$f" "$tmp/out.aig" 2>&1); then
+        fail "$f -b --auto-encode: $out"
+    fi
+    if [ -n "$python" ] && ! "$python" -c 'import json, sys; json.load(open(sys.argv[1]))' "$tmp/stats.json" 2>/dev/null; then
+        fail "$f --auto-encode --stats: not valid JSON"
+    fi
 done
 
 f="$dir/../examples/full_arbiter.tlsf.ehoa"
