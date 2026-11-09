@@ -17,6 +17,9 @@
 #include <mealy.hpp>
 #include <permissive.hpp>
 
+#include <oink/game.hpp>
+#include <oink/oink.hpp>
+
 // ABC's headers have unused variables
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-variable"
@@ -433,20 +436,128 @@ std::vector<bool> forcedStates(const Machine& m, bool strong)
     return forced;
 }
 
+// Adds the states that every winning controller visits, for moves that are
+// not all winning (the search over all winning moves): q is unavoidable if
+// the controller loses the parity game of the machine in which the moves
+// into q lose. One game per state (solved by Oink), except for the states
+// known to be unavoidable and those that the winning strategy of an earlier
+// game avoids. Stops after MAX_WINNING_WORK edges of the games; the states not
+// decided by then count as avoidable.
+constexpr long MAX_WINNING_WORK = 100000000;
+
+void addWinningUnavoidable(const Machine& m, std::vector<bool>& unavoidable)
+{
+    // vertices: the states (the environment chooses a letter), per state and
+    // letter one of the controller (it chooses an option), per priority and
+    // successor a move, and a losing sink for the moves into q
+    const int n = m.states();
+    int count = n;
+    std::map<std::pair<int, int>, int> moves;      // (priority, successor) -> vertex
+    for (const std::vector<std::vector<Option>>& letters : m.options) {
+        count += static_cast<int>(letters.size());
+        for (const std::vector<Option>& options : letters) {
+            for (const Option& o : options) moves.emplace(std::make_pair(o.priority, o.successor), 0);
+        }
+    }
+    int maxPriority = 0;
+    for (auto& [move, vertex] : moves) {
+        vertex = count++;
+        maxPriority = std::max(maxPriority, move.first);
+    }
+    const int sink = count++;
+    std::vector<std::vector<std::vector<int>>> choices(n);    // per state and letter: the moves
+    long edges = static_cast<long>(moves.size()) + 1;
+    for (int s = 0; s < n; s++) {
+        for (const std::vector<Option>& options : m.options[s]) {
+            std::vector<int> targets;
+            for (const Option& o : options) targets.push_back(moves.at(std::make_pair(o.priority, o.successor)));
+            std::sort(targets.begin(), targets.end());
+            targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
+            edges += static_cast<long>(targets.size()) + 1;
+            choices[s].push_back(std::move(targets));
+        }
+    }
+
+    std::vector<bool> avoidable(n, false);
+    std::vector<int> mapping(count);
+    std::ostream discard(nullptr);
+    long work = 0;
+    for (int q = 0; q < n && work < MAX_WINNING_WORK; q++) {
+        if (unavoidable[q] || avoidable[q]) continue;
+        work += edges;
+        pg::Game game(count);
+        int v = n;
+        for (int s = 0; s < n; s++) {
+            game.init_vertex(s, 0, 1);
+            game.e_start(s);
+            for (size_t l = 0; l < choices[s].size(); l++) game.e_add(s, v + static_cast<int>(l));
+            game.e_finish();
+            for (const std::vector<int>& targets : choices[s]) {
+                game.init_vertex(v, 0, 0);
+                game.e_start(v);
+                for (int t : targets) game.e_add(v, t);
+                game.e_finish();
+                v++;
+            }
+        }
+        for (const auto& [move, vertex] : moves) {
+            game.init_vertex(vertex, move.first, 1);
+            game.e_start(vertex);
+            game.e_add(vertex, move.second == q ? sink : move.second);
+            game.e_finish();
+        }
+        game.init_vertex(sink, maxPriority % 2 == 1 ? maxPriority : maxPriority + 1, 1);
+        game.e_start(sink);
+        game.e_add(sink, sink);
+        game.e_finish();
+        // Oink orders the vertices by priority; keep the numbering
+        game.sort(mapping.data());
+        pg::Oink engine(game, discard);
+        engine.setSolver("tl");
+        engine.run();
+        game.permute(mapping.data());
+        if (game.getWinner(m.initial) != 0) {
+            unavoidable[q] = true;
+            continue;
+        }
+        // the winning strategy avoids q and every state that it does not reach
+        std::vector<char> seen(count, 0);
+        std::vector<int> todo{m.initial};
+        seen[m.initial] = 1;
+        while (!todo.empty()) {
+            const int u = todo.back();
+            todo.pop_back();
+            const int chosen = game.owner(u) == 0 ? game.getStrategy(u) : -1;
+            for (const int* e = game.outs(u); *e != -1; e++) {
+                if (chosen != -1 && *e != chosen) continue;
+                if (!seen[*e]) {
+                    seen[*e] = 1;
+                    todo.push_back(*e);
+                }
+            }
+        }
+        for (int s = 0; s < n; s++) {
+            if (!seen[s]) avoidable[s] = true;
+        }
+    }
+}
+
 // A set of pairwise incompatible states that every controller visits, so
 // they need distinct controller states: two states are compatible if, on
 // every letter, they have options with overlapping outputs whose successors
-// are compatible (greatest fixed point). Also gives the compatibility
-// relation, or an over-approximation of it if this takes more than
-// MAX_COMPAT_WORK (then the set is just the initial state), or nothing for
-// large machines.
-std::vector<int> incompatibleStates(const Machine& m, Overlap& overlap, bool strong,
+// are compatible (greatest fixed point). With winners (for moves that are not
+// all winning), the states that every winning controller visits. Also gives
+// the compatibility relation, or an over-approximation of it if this takes
+// more than MAX_COMPAT_WORK (then the set is just the initial state), or
+// nothing for large machines.
+std::vector<int> incompatibleStates(const Machine& m, Overlap& overlap, bool strong, bool winners,
                                     std::vector<std::vector<char>>& compatible)
 {
     const int n = m.states();
     std::vector<int> clique{m.initial};
     if (n > MAX_COMPAT_STATES) return clique;
-    const std::vector<bool> forced = forcedStates(m, strong);
+    std::vector<bool> forced = forcedStates(m, strong);
+    if (winners) addWinningUnavoidable(m, forced);
     compatible.assign(n, std::vector<char>(n, 1));
     long work = 0;
     for (bool changed = true; changed;) {
@@ -2064,7 +2175,8 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
     const Machine q = quotient(ex.machine, block, checkCycles);
     Overlap overlap(ex.outputSets);
     std::vector<std::vector<char>> compatible;
-    const std::vector<int> anchors = incompatibleStates(q, overlap, options.strongBound, compatible);
+    const std::vector<int> anchors = incompatibleStates(q, overlap, options.strongBound,
+                                                        options.winningBound && checkCycles, compatible);
     const int lowerBound = static_cast<int>(anchors.size());
     searches[index].machine = ex.machine.states();
     searches[index].quotient = q.states();
@@ -2200,7 +2312,7 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     const Machine q = quotient(ex.machine, block, false);
     Overlap overlap(ex.outputSets);
     std::vector<std::vector<char>> compatible;
-    const std::vector<int> anchors = incompatibleStates(q, overlap, options.strongBound, compatible);
+    const std::vector<int> anchors = incompatibleStates(q, overlap, options.strongBound, false, compatible);
     const int lowerBound = static_cast<int>(anchors.size());
     search.machine = ex.machine.states();
     search.quotient = q.states();

@@ -117,6 +117,7 @@ handleOptions(int &argc, char**& argv)
             ("no-adjacency-codes", "No state codes that give related states codes close together")
             ("no-fewer-first", "After an undecided SAT call of the minimiser, do not try fewer states first")
             ("no-strong-bound", "Lower bound of the minimiser only from states forced along single successors, with the initial one")
+            ("no-winning-bound", "Lower bound over all winning moves only from the states that the environment forces, not also those that every winning controller visits")
             ("no-layered", "With --permissive, minimise over the extended strategy directly")
             ("no-extension", "--auto-encode without the permissive extension")
             ("no-unclarified", "No candidate with the freedom of the unclarified strategy (--dc without --mealy-sat)")
@@ -195,7 +196,7 @@ handleOptions(int &argc, char**& argv)
                 exit(255);
             }
         }
-        for (const char* name : {"no-fewer-first", "no-strong-bound"}) {
+        for (const char* name : {"no-fewer-first", "no-strong-bound", "no-winning-bound"}) {
             if (options.count(name) && !mealy) {
                 std::cerr << "error parsing options: --" << name << " requires --mealy-sat or --auto-encode" << std::endl;
                 exit(255);
@@ -654,6 +655,7 @@ TASK_1(int, main_task, cxxopts::ParseResult*, _options)
         minimise.variants.adjacencyCodes = options.count("no-adjacency-codes") == 0;
         minimise.fewerFirst = options.count("no-fewer-first") == 0;
         minimise.strongBound = options.count("no-strong-bound") == 0;
+        minimise.winningBound = options.count("no-winning-bound") == 0;
         minimise.extended = extendedMoves;
         minimise.anyMoves = anyMoves;
         minimise.anyWork = options.count("mealy-any-work") ? options["mealy-any-work"].as<long>()
