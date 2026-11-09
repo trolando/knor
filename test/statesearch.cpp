@@ -160,6 +160,16 @@ int main()
             }
         }
     }
+    // long chains of refutations up to a minimum far above the lower bound
+    for (int known : {40, 64, 200, 1500}) {
+        for (bool unit : {false, true}) {
+            for (bool fewerFirst : {false, true}) {
+                calls += run({1, known, known, {}, 0, 7u, fewerFirst, unit});
+                calls += run({1, known, known - 1, {}, 0, 7u, fewerFirst, unit});
+                scenarios += 2;
+            }
+        }
+    }
     // random: larger searches
     uint32_t random = 12345;
     for (int i = 0; i < 20000; i++) {

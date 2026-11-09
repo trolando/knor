@@ -41,7 +41,8 @@ public:
         int quotient = 0;       // after merging bisimilar states
         int lowerBound = 0;     // pairwise incompatible states
         int found = 0;          // states of the controller found (the quotient if no smaller one), 0 if none
-        bool proven = false;    // found is minimal for these moves
+        bool proven = false;    // no controller of these moves has fewer states than found (or, if found
+                                // is 0, than the controller of the search before)
         std::string stop;       // why it stopped: "proven", "work" (the work ran out) or "undecided"
                                 // (every number left to try was undecided or too large)
         struct Call {
@@ -85,7 +86,8 @@ public:
      * switch them off).
      */
     struct Variants {
-        bool relaxed = true;        // with every move that keeps the controller correct (else its own moves)
+        bool relaxed = true;        // with every move that keeps the controller within the pairs it reaches
+                                    // (see relaxedMoves; else its own moves)
         bool renumber = true;       // relaxed: number the states breadth-first and depth-first by these moves
         bool outputCodes = true;    // state codes with output bits
         bool monitorCodes = true;   // state codes with monitor flags
@@ -97,7 +99,8 @@ public:
      * The SAT searches are limited by their work, which follows the time
      * closely (the propagations of the SAT solver, the clauses it inspects and
      * the clauses added; about 25 million per second), not by time, so that the
-     * result does not depend on the machine or its load.
+     * result does not depend on the load of the machine (it is reproducible
+     * on one platform; across platforms, the order of BDD nodes can break ties).
      */
     struct Options {
         long work = 2000000000;                 // for the search within the strategy, and the extended one

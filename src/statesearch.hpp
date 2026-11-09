@@ -17,10 +17,11 @@
 // middle of the lowest gap between the refuted and the undecided numbers): their
 // encodings are smaller, and a controller with fewer states is often found much
 // faster. With unit, upwards by one state, up to the first undecided number: where
-// every further state multiplies the cost of a call (as when the candidates are
-// checked for losing cycles), a call above the minimum costs more than all the
-// calls below it, and a call above an undecided one cannot be decided with half
-// of its allowance either.
+// every further state multiplies the cost of a call (as observed when the
+// candidates are checked for losing cycles), a call above the minimum costs more
+// than all the calls below it, and a call above an undecided one, with half of
+// its allowance, is unlikely to be decided (a scheduling choice: an undecided
+// number never counts as refuted).
 class StateSearch final {
 public:
     StateSearch(int lowerBound, int known, bool fewerFirst, bool unit = false)
@@ -81,9 +82,11 @@ private:
     {
         if (k > highest) {
             highest = k;
-            step *= 2;
+            if (!unit && step < MAX_STEP) step *= 2;
         }
     }
+
+    static constexpr int MAX_STEP = 1 << 20;
 
     int refuted;                // no number up to it suffices
     int highest;                // the largest number that did not suffice or was undecided

@@ -1731,6 +1731,7 @@ MTBDD codeCube(uint32_t code, uint32_t free, MTBDD statevars, MTBDD priovars)
     std::vector<uint32_t> vars;
     for (MTBDD v = statevars; v != mtbdd_set_empty(); v = mtbdd_set_next(v)) vars.push_back(mtbdd_set_first(v));
     MTBDD cube = mtbdd_true;
+    mtbdd_refs_pushptr(&cube);
     for (size_t bit = 0; bit < vars.size(); bit++) {
         const uint32_t var = vars[vars.size() - 1 - bit];
         if ((free >> bit) & 1) continue;
@@ -1742,6 +1743,7 @@ MTBDD codeCube(uint32_t code, uint32_t free, MTBDD statevars, MTBDD priovars)
         cube = mtbdd_makenode(vars.back(), cube, mtbdd_false);
         vars.pop_back();
     }
+    mtbdd_refs_popptr(1);
     return cube;
 }
 
@@ -2070,7 +2072,8 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
 // which are then excluded by rank constraints. The lower bound of these moves
 // is weaker than that of the strategy (more states are compatible), so the
 // encoding grows with the square of the number of states: search upwards from
-// the lower bound with growing steps, and bisect once a controller is found.
+// the lower bound (by one state when the candidates are checked for losing
+// cycles, see StateSearch), and bisect once a controller is found.
 // Fills in the result if a controller with fewer than bound states is found.
 // With relax, a controller that is not smaller still gives games with its
 // freedom to more, for the encoder to choose from (fewer states need not give
@@ -2169,10 +2172,10 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
         }
     }
     searches[index].stop = sizes.proven() ? "proven" : remaining <= 0 ? "work" : "undecided";
+    searches[index].proven = sizes.proven();
     if (!haveController) return false;
     const int top = sizes.states();
     searches[index].found = top;
-    searches[index].proven = sizes.proven();
     if (top >= bound) {
         // not smaller than the controller of the strategy, but with more freedom
         MealyMinimizer::Result other;

@@ -97,6 +97,9 @@ std::unique_ptr<AIGCircuit> EncodingSearch::encode(SymGame& controller,
                                                    const std::vector<MealyMinimizer::Variant>& variants)
 {
     const auto start = std::chrono::steady_clock::now();
+    games.clear();
+    binaries.clear();
+    best.reset();
     AIGEncoder encoder(data, controller);
     encoder.setRules(config.rules);
     if (config.verbose) encoder.setVerbose();
