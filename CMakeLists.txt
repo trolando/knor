@@ -23,6 +23,7 @@ target_sources(knor
         src/bisim.cpp
         src/complete.cpp
         src/config.cpp
+        src/encodingsearch.cpp
         src/gameconstructor.cpp
         src/knor.cpp
         src/mealy.cpp

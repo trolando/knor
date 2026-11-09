@@ -2,7 +2,6 @@
  * Copyright Tom van Dijk
  *************************************************************************/
 
-#include <algorithm>
 #include <cstring> // for strcmp
 #include <iostream>
 #include <map>
@@ -13,10 +12,10 @@
 #include <oink/game.hpp>
 #include <oink/oink.hpp>
 #include <config.hpp>
+#include <encodingsearch.hpp>
 #include <symgame.hpp>
 #include <bisim.hpp>
 #include <complete.hpp>
-#include <aigencoder.hpp>
 #include <abcminimization.hpp>
 #include <gameconstructor.hpp>
 #include <mealy.hpp>
@@ -534,106 +533,8 @@ TASK_1(int, main_task, const Config*, _config)
         exit(10);
     }
 
-    const AIGEncoder::Rules& rules = config.rules;
-    AIGEncoder encoder(*data, *sym);
-    encoder.setRules(rules);
-    if (verbose) encoder.setVerbose();
-    if (config.isop) encoder.setIsop();
-    if (config.onehot) encoder.setOneHot();
-    if (config.sop) encoder.setSop();
     const double t_before_enc = wctime();
-    auto circuit = encoder.encode();
-    run_stats.candidates.push_back(RunStats::Candidate{"controller", "plain", false, false, false, false,
-                                                       circuit->getNumAnds(), circuit->getNumLatches(),
-                                                       wctime() - t_before_enc});
-    if (config.dontCares) {
-        // the encoding, the numbering of the states, the order of the bits and the simplifications
-        // matter, in no predictable way: keep the smallest circuit (gates and latches, or with
-        // --gates-only gates), also compared to the one without don't cares
-        const bool gates_only = config.gatesOnly;
-        auto size = [gates_only](const std::unique_ptr<AIGCircuit>& c) {
-            return c->getNumAnds() + (gates_only ? 0 : c->getNumLatches());
-        };
-        if (verbose) {
-            std::cerr << "without don't cares: " << circuit->getNumAnds() << " gates and " << circuit->getNumLatches()
-                      << " latches" << std::endl;
-        }
-        // By default only the candidates that ever gave the smallest circuit on the examples
-        // (measured with --dc-all --stats): all simplifications of each signal, binary also without
-        // the irredundant sum of products, and not the deterministic monitor-coded game (its relaxed
-        // version suffices). With --dc-all every candidate, for experiments; the ablation options
-        // leave out some.
-        const bool all = config.everyCandidate;
-        const bool no_isop = !config.isopCandidate;
-        const bool no_all = !config.boundCandidates;
-        std::vector<std::pair<SymGame*, std::string>> games{{sym.get(), "controller"}};
-        for (const auto& variant : variants) {
-            if (all || variant.name != "monitor codes") games.emplace_back(variant.game.get(), variant.name);
-        }
-        // how each game is encoded: binary or one-hot, which signals are chosen first, and which
-        // simplifications of each signal are considered (see AIGEncoder::setDontCares)
-        struct Setting {
-            bool onehot, statesFirst, allCandidates, isopCandidate;
-        };
-        std::vector<Setting> settings;
-        for (const bool onehot : {false, true}) {
-            if (!(onehot ? config.onehotCandidates : config.binaryCandidates)) continue;
-            for (const bool isopCandidate : {true, false}) {
-                if (no_isop && isopCandidate) continue;
-                if (!all && !no_isop && onehot && !isopCandidate) continue;
-                for (const bool allCandidates : {false, true}) {
-                    if (no_all ? allCandidates : !all && !allCandidates) continue;
-                    for (const bool statesFirst : {false, true}) {
-                        settings.push_back(Setting{onehot, statesFirst, allCandidates, isopCandidate});
-                    }
-                }
-            }
-        }
-        struct Binary {
-            long size;
-            size_t game;
-            Setting setting;
-        };
-        std::vector<Binary> binaries;   // the binary candidates, to reorder the best ones
-        const long reorder_work = config.reorderWork;
-        long reorder_left = reorder_work;
-        auto encodeCandidate = [&](size_t g, const Setting& s, long reorder) {
-            const double t_start = wctime();
-            AIGEncoder other(*data, *games[g].first);
-            other.setRules(rules);
-            if (config.isop) other.setIsop();
-            if (s.onehot) other.setOneHot();
-            auto candidate = other.setDontCares(s.statesFirst, s.allCandidates, s.isopCandidate).setReorder(reorder).encode();
-            if (candidate == nullptr) return false;   // too many states for one-hot
-            reorder_left -= other.getReorderWork();
-            run_stats.candidates.push_back(RunStats::Candidate{games[g].second, s.onehot ? "one-hot" : "binary",
-                                                               s.statesFirst, s.allCandidates, s.isopCandidate,
-                                                               reorder > 0, candidate->getNumAnds(),
-                                                               candidate->getNumLatches(), wctime() - t_start});
-            if (verbose) {
-                std::cerr << "don't cares (" << games[g].second << ", " << (s.onehot ? "one-hot, " : "binary, ")
-                          << (s.statesFirst ? "state" : "outputs") << " first"
-                          << (s.allCandidates ? ", all candidates" : "") << (s.isopCandidate ? "" : ", no isop")
-                          << (reorder > 0 ? ", reordered" : "") << "): " << candidate->getNumAnds() << " gates and "
-                          << candidate->getNumLatches() << " latches" << std::endl;
-            }
-            if (!s.onehot && reorder == 0) binaries.push_back(Binary{size(candidate), g, s});
-            if (size(candidate) < size(circuit)) circuit = std::move(candidate);
-            return true;
-        };
-        for (size_t g = 0; g < games.size(); g++) {
-            bool onehotFits = true;
-            for (const Setting& s : settings) {
-                if (s.onehot && !onehotFits) continue;
-                if (!encodeCandidate(g, s, 0)) onehotFits = false;
-            }
-        }
-        // the variable order matters a lot, but sifting costs time: the best binary candidates first
-        std::sort(binaries.begin(), binaries.end(), [](const Binary& a, const Binary& b) { return a.size < b.size; });
-        for (size_t k = 0; k < binaries.size() && reorder_left > 0 && !config.isop; k++) {
-            encodeCandidate(binaries[k].game, binaries[k].setting, std::min(reorder_left, std::max(1L, reorder_work / 3)));
-        }
-    }
+    auto circuit = EncodingSearch(*data, config, run_stats).encode(*sym, variants);
     const double t_after_enc = wctime();
     run_stats.time("encoding", t_after_enc - t_before_enc);
     if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after_enc - t_before_enc) << " sec.\033[m" << std::endl;
