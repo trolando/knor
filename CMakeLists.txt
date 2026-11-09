@@ -22,6 +22,7 @@ target_sources(knor
         src/bddtools.cpp
         src/bisim.cpp
         src/complete.cpp
+        src/config.cpp
         src/gameconstructor.cpp
         src/knor.cpp
         src/mealy.cpp
