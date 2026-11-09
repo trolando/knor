@@ -157,61 +157,71 @@ private:
     }
 
     // The letters are the classes of inputs that every state treats alike:
-    // follow the uap variables in all states at once.
+    // follow the uap variables in all states at once, level by level, with
+    // the inputs that reach each tuple of nodes (as a BDD), so that the work
+    // is in the number of distinct tuples, not of paths. The letters are
+    // numbered by their least input valuation (the order in which a
+    // depth-first search, low first, meets them).
     void findLetters()
     {
         uapCount = static_cast<size_t>(g.uap_count);
         if (uapCount > 0) firstUap = mtbdd_set_first(g.uap_vars);
-        path.assign(uapCount, 2);
-        split(0, tops);
-        MTBDD set = mtbdd_false;
-        MTBDD cube = mtbdd_false;
-        mtbdd_refs_pushptr(&set);
-        mtbdd_refs_pushptr(&cube);
-        for (const std::vector<std::vector<uint8_t>>& cubes : letterPaths) {
-            set = mtbdd_false;
-            for (const std::vector<uint8_t>& path : cubes) {
-                std::vector<uint8_t> values(path);
-                cube = sylvan_cube(g.uap_vars, values.data());
-                set = sylvan_or(set, cube);
+        BddPool local;                      // the inputs of the tuples of the levels
+        std::map<std::vector<MTBDD>, MTBDD> level{{tops, mtbdd_true}};
+        MTBDD literal = mtbdd_false, part = mtbdd_false;
+        mtbdd_refs_pushptr(&literal);
+        mtbdd_refs_pushptr(&part);
+        auto merge = [&](std::map<std::vector<MTBDD>, MTBDD>& into, const std::vector<MTBDD>& nodes, MTBDD inputs) {
+            auto it = into.find(nodes);
+            if (it == into.end()) {
+                into.emplace(nodes, local.keep(inputs));
+            } else {
+                it->second = local.keep(sylvan_or(it->second, inputs));
             }
-            letterSets.push_back(pool.keep(set));
+        };
+        for (size_t i = 0; i < uapCount; i++) {
+            const uint32_t var = firstUap + static_cast<uint32_t>(i);
+            std::map<std::vector<MTBDD>, MTBDD> next;
+            for (const auto& [nodes, inputs] : level) {
+                bool depends = false;
+                for (MTBDD n : nodes) depends = depends || (!mtbdd_isleaf(n) && mtbdd_getvar(n) == var);
+                if (!depends) {
+                    merge(next, nodes, inputs);
+                    continue;
+                }
+                std::vector<MTBDD> low(nodes), high(nodes);
+                for (size_t k = 0; k < nodes.size(); k++) {
+                    if (!mtbdd_isleaf(nodes[k]) && mtbdd_getvar(nodes[k]) == var) {
+                        low[k] = mtbdd_getlow(nodes[k]);
+                        high[k] = mtbdd_gethigh(nodes[k]);
+                    }
+                }
+                literal = sylvan_nithvar(var);
+                part = sylvan_and(inputs, literal);
+                merge(next, low, part);
+                literal = sylvan_ithvar(var);
+                part = sylvan_and(inputs, literal);
+                merge(next, high, part);
+            }
+            if (static_cast<long>(next.size()) > MAX_CLASSES) {
+                mtbdd_refs_popptr(2);
+                throw Aborted{"too many classes of inputs"};
+            }
+            level = std::move(next);
         }
         mtbdd_refs_popptr(2);
-    }
-
-    void split(size_t i, const std::vector<MTBDD>& nodes)
-    {
-        if (i == uapCount) {
-            const auto inserted = letterOf.emplace(nodes, static_cast<int>(letterNodes.size()));
-            if (inserted.second) {
-                letterNodes.push_back(nodes);
-                letterPaths.emplace_back();
-            }
-            if (++paths > MAX_PATHS) throw Aborted{"too many classes of inputs"};
-            letterPaths[inserted.first->second].push_back(path);
-            return;
+        // number the letters by their least input valuation
+        std::vector<std::pair<std::vector<uint8_t>, const std::pair<const std::vector<MTBDD>, MTBDD>*>> letters;
+        std::vector<uint8_t> bits(uapCount);
+        for (const auto& entry : level) {
+            mtbdd_enum_all_first(entry.second, g.uap_vars, bits.data(), nullptr);
+            letters.emplace_back(bits, &entry);
         }
-        const uint32_t var = firstUap + static_cast<uint32_t>(i);
-        bool depends = false;
-        for (MTBDD n : nodes) depends = depends || (!mtbdd_isleaf(n) && mtbdd_getvar(n) == var);
-        if (!depends) {
-            path[i] = 2;
-            split(i + 1, nodes);
-            return;
+        std::sort(letters.begin(), letters.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (const auto& [least, entry] : letters) {
+            letterNodes.push_back(entry->first);
+            letterSets.push_back(pool.keep(entry->second));
         }
-        std::vector<MTBDD> low(nodes), high(nodes);
-        for (size_t k = 0; k < nodes.size(); k++) {
-            if (!mtbdd_isleaf(nodes[k]) && mtbdd_getvar(nodes[k]) == var) {
-                low[k] = mtbdd_getlow(nodes[k]);
-                high[k] = mtbdd_gethigh(nodes[k]);
-            }
-        }
-        path[i] = 0;
-        split(i + 1, low);
-        path[i] = 1;
-        split(i + 1, high);
-        path[i] = 2;
     }
 
     // The options of a state on a letter: for every next priostate that
@@ -268,7 +278,7 @@ private:
         return inserted.first->second;
     }
 
-    static constexpr long MAX_PATHS = long(1) << 20;
+    static constexpr long MAX_CLASSES = long(1) << 20;
     static constexpr size_t MAX_INPUT_BITS = 14;
 
     SymGame& g;
@@ -279,11 +289,7 @@ private:
     std::vector<MTBDD> tops;            // per state: trans and strategies below the state variables
     size_t uapCount = 0;
     uint32_t firstUap = 0;
-    std::vector<uint8_t> path;
-    long paths = 0;
-    std::map<std::vector<MTBDD>, int> letterOf;
     std::vector<std::vector<MTBDD>> letterNodes;
-    std::vector<std::vector<std::vector<uint8_t>>> letterPaths;
     std::map<MTBDD, int> outputIndex;
 };
 
