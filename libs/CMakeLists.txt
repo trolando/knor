@@ -10,7 +10,15 @@ endif()
 
 find_package(oink QUIET)
 if(NOT oink_FOUND)
+    # knor reads no compressed games through Oink; without these optional dependencies (shared
+    # libraries on most systems) knor still links statically on Linux
+    set(CMAKE_DISABLE_FIND_PACKAGE_ZLIB ON)
+    set(CMAKE_DISABLE_FIND_PACKAGE_BZip2 ON)
+    set(CMAKE_DISABLE_FIND_PACKAGE_LibLZMA ON)
     add_subdirectory(oink)
+    unset(CMAKE_DISABLE_FIND_PACKAGE_ZLIB)
+    unset(CMAKE_DISABLE_FIND_PACKAGE_BZip2)
+    unset(CMAKE_DISABLE_FIND_PACKAGE_LibLZMA)
 endif()
 
 find_package(abc QUIET)

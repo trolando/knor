@@ -3,6 +3,8 @@
  */
 
 #include <iostream>
+#include <string>
+#include <vector>
 
 #include <oink/solvers.hpp>
 #include <config.hpp>
@@ -38,8 +40,8 @@ Config Config::parse(int argc, char** argv)
             ("paritize", "Convert any acceptance condition (e.g. generalized Buchi) to parity, adding memory")
             ("permissive", "Greedily extend the strategy to a winning multi-strategy (explicit solvers; slow on large games)")
             ("permissive-work", "Work of --permissive: (vertex, priority) pairs its cycle checks visit (default 0: no limit; the extension of --auto-encode without --permissive: 20 million)", cxxopts::value<long>())
-            ("fpim", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers)")
-            ("fpjm", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers)")
+            ("multi-fpi", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers; knor's own, not Oink's solver --fpim)")
+            ("multi-fpj", "Use the multi-strategy of fixpoint iteration with justifications (explicit solvers; knor's own, not Oink's solver --fpjm)")
             ("mealy-sat", "Minimise the controller as a Mealy machine with a SAT solver")
             ("mealy-any", "With --mealy-sat or --auto-encode, also search for smaller controllers that may make any winning move, without the 16-state cap of --auto-encode (explicit solvers)")
             ("mealy-work", "Work of the SAT searches of --mealy-sat (solver propagations, clauses inspected and added; about 25 million per second), as much for each wider search (with --auto-encode, a fifth for all winning moves); counted, not timed, so the result does not depend on the load (it is reproducible on one platform)", cxxopts::value<long>()->default_value("2000000000"))
@@ -54,7 +56,7 @@ Config Config::parse(int argc, char** argv)
             ("dc-all", "With --dc, try every encoding candidate, not only those that pay off (for experiments; slower)")
             ("compress", "Compress the generated AIG using ABC")
             ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
-            ("auto-encode", "Synthesize a small controller: --mealy-sat --dc with --fpim (unless --fpjm or --sym), --permissive with a work budget, and for a small controller a short search over all winning moves")
+            ("auto-encode", "Synthesize a small controller: --mealy-sat --dc with --multi-fpi (unless --multi-fpj or --sym), --permissive with a work budget, and for a small controller a short search over all winning moves")
             ("no-solve", "Do not solve, halt after constructing the parity game")
             ("print-game", "Just print the parity game (implies no-solve)")
             ("print-witness", "Print the witness parity game")
@@ -97,9 +99,14 @@ Config Config::parse(int argc, char** argv)
             ("solvers", "List available solvers")
             ;
 
-        // Add solvers
+        // Oink's solvers, except any whose names knor's own options have
+        std::vector<std::string> solvers;
         for (const auto & id : pg::Solvers::getSolverIDs()) {
-            opts.add_options()(id, pg::Solvers::desc(id));
+            try {
+                opts.add_options()(id, pg::Solvers::desc(id));
+                solvers.push_back(id);
+            } catch (const cxxopts::exceptions::option_already_exists&) {
+            }
         }
 
         // Parse command line
@@ -124,12 +131,12 @@ Config Config::parse(int argc, char** argv)
             std::cerr << "error parsing options: --permissive requires an explicit solver (not --sym)" << std::endl;
             exit(255);
         }
-        if ((options.count("fpim") || options.count("fpjm")) && options.count("sym")) {
-            std::cerr << "error parsing options: --fpim and --fpjm require an explicit solver (not --sym)" << std::endl;
+        if ((options.count("multi-fpi") || options.count("multi-fpj")) && options.count("sym")) {
+            std::cerr << "error parsing options: --multi-fpi and --multi-fpj require an explicit solver (not --sym)" << std::endl;
             exit(255);
         }
-        if (options.count("fpim") && options.count("fpjm")) {
-            std::cerr << "error parsing options: --fpim and --fpjm exclude each other" << std::endl;
+        if (options.count("multi-fpi") && options.count("multi-fpj")) {
+            std::cerr << "error parsing options: --multi-fpi and --multi-fpj exclude each other" << std::endl;
             exit(255);
         }
 
@@ -183,7 +190,7 @@ Config Config::parse(int argc, char** argv)
             exit(255);
         }
         if (options.count("auto-encode") && options.count("sym")) {
-            std::cerr << "warning: --auto-encode works best with an explicit solver and --fpim (the default) or --fpjm;"
+            std::cerr << "warning: --auto-encode works best with an explicit solver and --multi-fpi (the default) or --multi-fpj;"
                          " with --sym, the search over all winning moves is skipped" << std::endl;
         }
 
@@ -194,7 +201,7 @@ Config Config::parse(int argc, char** argv)
 
         config.paritize = options.count("paritize") > 0;
         config.symbolic = options.count("sym") > 0;
-        for (const auto & id : pg::Solvers::getSolverIDs()) {
+        for (const auto & id : solvers) {
             if (options.count(id)) config.solver = id;
         }
         config.naiveSplitting = options.count("naive") > 0;
@@ -205,12 +212,12 @@ Config Config::parse(int argc, char** argv)
         config.bisimSolution = options.count("bisim") > 0 || options.count("bisim-sol") > 0;
         config.realizability = options.count("real") > 0;
 
-        // --auto-encode is --mealy-sat --dc with --fpim (unless --fpjm or --sym is given), with the permissive
+        // --auto-encode is --mealy-sat --dc with --multi-fpi (unless --multi-fpj or --sym is given), with the permissive
         // extension (with a work budget) and the search over all winning moves for small controllers
         // (explicit solvers)
         const bool auto_encode = options.count("auto-encode") > 0;
-        config.fpim = options.count("fpim") > 0 || (auto_encode && !options.count("fpjm") && !options.count("sym"));
-        config.fpjm = options.count("fpjm") > 0;
+        config.fpim = options.count("multi-fpi") > 0 || (auto_encode && !options.count("multi-fpj") && !options.count("sym"));
+        config.fpjm = options.count("multi-fpj") > 0;
         config.permissive = options.count("permissive") > 0
                             || (auto_encode && !options.count("no-extension") && !options.count("sym"));
         config.permissiveWork = options.count("permissive-work") ? options["permissive-work"].as<long>()
@@ -296,8 +303,8 @@ std::vector<Config::Setting> Config::settings() const
     flag("bisim-sol", bisimSolution);
     flag("real", realizability);
     stage = "strategy";
-    flag("fpim", fpim);
-    flag("fpjm", fpjm);
+    flag("multi-fpi", fpim);
+    flag("multi-fpj", fpjm);
     flag("permissive", permissive);
     number("permissive-work", permissiveWork);
     flag("layered", layered);

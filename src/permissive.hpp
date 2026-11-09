@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <oink/game.hpp>
+#include <oink/solution.hpp>
 
 /**
  * Multi-strategies for player Even (the controller) in a parity game solved
@@ -27,10 +28,11 @@ public:
     };
 
     /**
-     * The positional winning strategy that Oink computed, as a multi-strategy:
-     * the successor of each vertex owned and won by Even (empty for others).
+     * The positional winning strategy that Oink computed (the solution of the
+     * game), as a multi-strategy: the successor of each vertex owned and won by
+     * Even (empty for others).
      */
-    static std::vector<std::vector<int>> positional(const pg::Game& game);
+    static std::vector<std::vector<int>> positional(const pg::Game& game, const pg::Solution& solution);
 
     /**
      * Solve the game by fixpoint iteration with freezing (FPI), as the
@@ -59,14 +61,15 @@ public:
      * (vertex, level) pairs; the result is still winning. Returns the allowed
      * successors of each vertex owned and won by Even (empty for others).
      */
-    static std::vector<std::vector<int>> extend(const pg::Game& game, int initial,
+    static std::vector<std::vector<int>> extend(const pg::Game& game, const pg::Solution& solution, int initial,
                                                 std::vector<std::vector<int>> allowed, long budget, Stats& stats);
 
     /**
      * Check independently that the multi-strategy is winning from the initial
      * vertex: no cycle reachable under it has an odd maximal priority.
      */
-    static bool verify(const pg::Game& game, int initial, const std::vector<std::vector<int>>& allowed);
+    static bool verify(const pg::Game& game, const pg::Solution& solution, int initial,
+                       const std::vector<std::vector<int>>& allowed);
 };
 
 /**

@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Regression test for the controller options (--auto-encode, --permissive,
-# --fpim, --fpjm, --mealy-sat, --mealy-any, --dc, --compress, the budgets). For
+# --multi-fpi, --multi-fpj, --mealy-sat, --mealy-any, --dc, --compress, the budgets). For
 # every example and every combination of options, knor --real and knor -a must
 # both exit with the expected verdict, and a realizable example must give an
 # AIGER file with one input per uncontrollable and one output per controllable
@@ -43,10 +43,10 @@ modes=(
     "--mealy-sat --dc"
     "--permissive --mealy-sat"
     "--permissive --mealy-sat --dc"
-    "--fpim --mealy-sat"
-    "--fpim --permissive --mealy-sat --dc"
+    "--multi-fpi --mealy-sat"
+    "--multi-fpi --permissive --mealy-sat --dc"
     "--auto-encode"
-    "--auto-encode --fpjm"
+    "--auto-encode --multi-fpj"
     "--auto-encode --mealy-any --mealy-work 20000000"
     "--auto-encode --compress"
     "--sym --mealy-sat --dc"
@@ -55,15 +55,15 @@ modes=(
     # zero, tiny and explicit budgets, and every encoding candidate
     "--auto-encode --mealy-work 0 --mealy-any-work 0 --permissive-work 0"
     "--auto-encode --mealy-work 1 --mealy-any-work 1 --permissive-work 1"
-    "--fpim --permissive --permissive-work 1 --mealy-sat --mealy-any --mealy-any-work 1000 --dc"
-    "--fpim --mealy-sat --dc --dc-all"
+    "--multi-fpi --permissive --permissive-work 1 --mealy-sat --mealy-any --mealy-any-work 1000 --dc"
+    "--multi-fpi --mealy-sat --dc --dc-all"
     # the ablation options, each in one of these
     "--auto-encode --no-relaxed-moves --no-or-gate"
     "--auto-encode --no-cube-codes --no-adjacency-codes --no-rechoose --no-extension --no-winning-bound --no-unit-steps"
     "--auto-encode --no-renumber --no-output-codes --no-monitor-codes --no-latch-ite --no-dead-latches"
     "--auto-encode --no-binary-dc --no-guard-complement --no-isop-candidate"
     "--auto-encode --no-onehot-dc --no-all-candidates --reorder-work 0 --gates-only --no-marginal-choice"
-    "--fpim --permissive --mealy-sat --dc --no-layered --no-fewer-first --no-strong-bound"
+    "--multi-fpi --permissive --mealy-sat --dc --no-layered --no-fewer-first --no-strong-bound"
     "--dc --no-unclarified"
 )
 
@@ -132,7 +132,7 @@ EOF
 done
 
 f="$dir/../examples/full_arbiter.tlsf.ehoa"
-for mode in "--mealy-any" "--sym --mealy-sat --mealy-any" "--sym --permissive" "--sym --fpim" "--dc --onehot" "--dc --sop" "--auto-encode --onehot" \
+for mode in "--mealy-any" "--sym --mealy-sat --mealy-any" "--sym --permissive" "--sym --multi-fpi" "--dc --onehot" "--dc --sop" "--auto-encode --onehot" \
             "--auto-encode --permissive --no-extension" "--auto-encode --mealy-work -1" "--permissive --permissive-work -1"; do
     # shellcheck disable=SC2086
     "$knor" -a $mode "$f" >/dev/null 2>&1

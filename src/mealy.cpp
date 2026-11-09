@@ -512,13 +512,14 @@ void addWinningUnavoidable(const Machine& m, std::vector<bool>& unavoidable)
         game.e_start(sink);
         game.e_add(sink, sink);
         game.e_finish();
-        // Oink orders the vertices by priority; keep the numbering
+        // Oink orders the vertices by priority; keep the numbering, of the game and its solution
         game.sort(mapping.data());
         pg::Oink engine(game, discard);
         engine.setSolver("tl");
         engine.run();
-        game.permute(mapping.data());
-        if (game.getWinner(m.initial) != 0) {
+        pg::permute(game, engine.solution(), mapping.data());
+        const pg::Solution& solution = engine.solution();
+        if (solution.winner(m.initial) != 0) {
             unavoidable[q] = true;
             continue;
         }
@@ -529,7 +530,7 @@ void addWinningUnavoidable(const Machine& m, std::vector<bool>& unavoidable)
         while (!todo.empty()) {
             const int u = todo.back();
             todo.pop_back();
-            const int chosen = game.owner(u) == 0 ? game.getStrategy(u) : -1;
+            const int chosen = game.owner(u) == 0 ? solution.strategy(u) : -1;
             for (const int* e = game.outs(u); *e != -1; e++) {
                 if (chosen != -1 && *e != chosen) continue;
                 if (!seen[*e]) {

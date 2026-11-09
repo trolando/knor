@@ -112,8 +112,8 @@ TASK_1(int, main_task, const Config*, _config)
     sylvan_init_package();
     sylvan_init_mtbdd();
     sylvan_init_zdd();
-    if (verbose) sylvan_gc_hook_pregc(TASK(gc_start));
-    if (verbose) sylvan_gc_hook_postgc(TASK(gc_end));
+    if (verbose) sylvan_gc_hook_pregc(gc_start_CALL);
+    if (verbose) sylvan_gc_hook_postgc(gc_end_CALL);
 
     int ret = completeHoa(data);
     if (ret != 0) return ret;
@@ -261,11 +261,12 @@ TASK_1(int, main_task, const Config*, _config)
             std::cerr << "\033[1;37mfinished solving game in " << std::fixed << (end - begin) << " sec.\033[m" << std::endl;
         }
 
-        // undo the sorting ## FOR SOME REASON, THIS CAN BE SLOW!
-        game->permute(mapping.data());
+        // undo the sorting, of the game and of its solution ## FOR SOME REASON, THIS CAN BE SLOW!
+        pg::permute(*game, engine.solution(), mapping.data());
         mapping.clear(); // erase result, we don't need it anymore
+        const pg::Solution& solution = engine.solution();
 
-        realizable = game->getWinner(vstart) == 0;
+        realizable = solution.winner(vstart) == 0;
 
         // finally, check if the initial vertex is won by controller or environment, and unless
         // only the verdict is asked for, get the strategy
@@ -273,9 +274,9 @@ TASK_1(int, main_task, const Config*, _config)
             if (sym != nullptr && config.anyMoves) {
                 std::map<MTBDD, std::vector<MTBDD>> str;  // cap to winning priostates
                 for (int v=0; v<game->vertexcount(); v++) {
-                    if (game->owner(v) != 0 || game->getWinner(v) != 0) continue;
+                    if (game->owner(v) != 0 || solution.winner(v) != 0) continue;
                     for (const int* e = game->outs(v); *e != -1; e++) {
-                        if (game->getWinner(*e) == 0) str[vertex_to_bdd.at(v)].push_back(vertex_to_bdd.at(*e));
+                        if (solution.winner(*e) == 0) str[vertex_to_bdd.at(v)].push_back(vertex_to_bdd.at(*e));
                     }
                 }
                 if (sym->applyMultiStrategy(str)) anyMoves = sym->strategies;
@@ -283,15 +284,15 @@ TASK_1(int, main_task, const Config*, _config)
             const bool fpim = config.fpim;
             const bool fpjm = config.fpjm;
             if (sym != nullptr && (fpim || fpjm || config.permissive)) {
-                auto allowed = PermissiveStrategy::positional(*game);
+                auto allowed = PermissiveStrategy::positional(*game, solution);
                 if (fpim || fpjm) {
                     const double t_before = wctime();
                     const char* name = fpim ? "fixpoint iteration" : "fixpoint iteration with justifications";
                     std::vector<int> winner;
                     auto multi = fpim ? PermissiveStrategy::fpim(*game, winner) : PermissiveStrategy::fpjm(*game, winner);
                     bool agrees = true;
-                    for (int v=0; v<game->vertexcount(); v++) agrees = agrees && winner[v] == game->getWinner(v);
-                    if (agrees && PermissiveStrategy::verify(*game, vstart, multi)) {
+                    for (int v=0; v<game->vertexcount(); v++) agrees = agrees && winner[v] == solution.winner(v);
+                    if (agrees && PermissiveStrategy::verify(*game, solution, vstart, multi)) {
                         allowed = std::move(multi);
                     } else {
                         // cannot happen; keep the positional strategy rather than risk a wrong controller
@@ -309,9 +310,9 @@ TASK_1(int, main_task, const Config*, _config)
                 if (config.permissive) {
                     const double t_before = wctime();
                     PermissiveStrategy::Stats stats;
-                    extended = PermissiveStrategy::extend(*game, vstart, allowed, config.permissiveWork, stats);
+                    extended = PermissiveStrategy::extend(*game, solution, vstart, allowed, config.permissiveWork, stats);
                     run_stats.extension = RunStats::Extension{true, config.permissiveWork, stats};
-                    if (!PermissiveStrategy::verify(*game, vstart, extended)) {
+                    if (!PermissiveStrategy::verify(*game, solution, vstart, extended)) {
                         // cannot happen; keep the strategy that was extended rather than risk a wrong controller
                         std::cerr << "error: the multi-strategy is not winning, using the strategy before extending it" << std::endl;
                         extended.clear();
@@ -346,9 +347,9 @@ TASK_1(int, main_task, const Config*, _config)
                 std::map<MTBDD, MTBDD> str;  // cap to priostate
                 for (int v=0; v<game->vertexcount(); v++) {
                     // good cap states are owned and won by 0
-                    if (game->owner(v) == 0 && game->getWinner(v) == 0) {
+                    if (game->owner(v) == 0 && solution.winner(v) == 0) {
                         auto a = vertex_to_bdd.at(v);
-                        auto b = vertex_to_bdd.at(game->getStrategy(v));
+                        auto b = vertex_to_bdd.at(solution.strategy(v));
                         str[a] = b;
                     }
                 }

@@ -68,7 +68,7 @@ Example command line:
 - Use `--bisim` to minimize the state space using bisimulation minimization prior to synthesis.
 - Use `--onehot` to encode the states using one-hot encoding instead of logarithmic encoding.
 - Use `--isop` to use ZDD covers for the conversion to AIG. By default, a direct conversion based on ITE (Shannon expansion) is used.
-- Use `--auto-encode` for a small controller: the multi-strategy of fixpoint iteration (`--fpim`), minimisation of the controller as a Mealy machine with a SAT solver (`--mealy-sat`), encoding with don't cares (`--dc`), and for small controllers a short search over all winning moves. It works with an explicit solver; `--fpjm` may replace `--fpim`.
+- Use `--auto-encode` for a small controller: the multi-strategy of fixpoint iteration (`--multi-fpi`), minimisation of the controller as a Mealy machine with a SAT solver (`--mealy-sat`), encoding with don't cares (`--dc`), and for small controllers a short search over all winning moves. It works with an explicit solver; `--fpjm` may replace `--fpim`.
 - Use `--compress` to compress the AIG after construction using ABC.
 - **Recommendation**: `--auto-encode` for the smallest result, optionally with `--compress`; `--bisim --onehot` for a fast result.
 

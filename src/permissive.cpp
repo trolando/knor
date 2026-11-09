@@ -290,11 +290,11 @@ std::vector<int> byPriority(const pg::Game& game)
 
 }  // namespace
 
-std::vector<std::vector<int>> PermissiveStrategy::positional(const pg::Game& game)
+std::vector<std::vector<int>> PermissiveStrategy::positional(const pg::Game& game, const pg::Solution& solution)
 {
     std::vector<std::vector<int>> allowed(game.vertexcount());
     for (int v = 0; v < game.vertexcount(); v++) {
-        if (game.owner(v) == 0 && game.getWinner(v) == 0) allowed[v].push_back(game.getStrategy(v));
+        if (game.owner(v) == 0 && solution.winner(v) == 0) allowed[v].push_back(solution.strategy(v));
     }
     return allowed;
 }
@@ -496,7 +496,7 @@ std::vector<std::vector<int>> PermissiveStrategy::fpjm(const pg::Game& game, std
     return allowed;
 }
 
-std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, int initial,
+std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, const pg::Solution& solution, int initial,
                                                          std::vector<std::vector<int>> allowed, long budget,
                                                          Stats& stats)
 {
@@ -514,7 +514,7 @@ std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, i
             stats.vertices++;
             for (const int* e = game.outs(v); *e != -1; e++) {
                 const int w = *e;
-                if (game.getWinner(w) != 0) continue;
+                if (solution.winner(w) != 0) continue;
                 if (std::find(allowed[v].begin(), allowed[v].end(), w) != allowed[v].end()) continue;
                 if (budget > 0 && check.work >= budget) {
                     stats.stopped = true;
@@ -537,12 +537,13 @@ std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, i
     return allowed;
 }
 
-bool PermissiveStrategy::verify(const pg::Game& game, int initial, const std::vector<std::vector<int>>& allowed)
+bool PermissiveStrategy::verify(const pg::Game& game, const pg::Solution& solution, int initial,
+                                const std::vector<std::vector<int>>& allowed)
 {
     Restricted r(game, allowed);
     const std::vector<int> region = reachable(r, initial);
     for (int v : region) {
-        if (game.getWinner(v) != 0) return false;
+        if (solution.winner(v) != 0) return false;
     }
     return !hasOddCycle(r, region);
 }
