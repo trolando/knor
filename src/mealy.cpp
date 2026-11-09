@@ -1972,28 +1972,28 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
                 result.variants.push_back({toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()),
                                            depthFirst ? "relaxed, depth-first" : "relaxed, breadth-first"});
             }
-            if (kinds.cubeCodes) {
-                for (const bool byIncoming : {false, true}) {
-                    std::vector<uint32_t> free;
-                    const std::vector<int> numbers = cubeNumbering(ctl.initial, all, byIncoming, codes, statebits, free);
-                    if (numbers.empty()) break;
-                    result.variants.push_back(
-                        {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets(), free),
-                         byIncoming ? "relaxed, cube codes by incoming moves" : "relaxed, cube codes"});
-                }
-            }
-            if (kinds.adjacencyCodes) {
-                const std::vector<int> numbers = numbering(ctl.initial, all, false);
-                codes = positions(numbers, all.size(), statebits);
-                if (improveCodes(all, numbers, codes, statebits, statebits)) {
-                    result.variants.push_back(
-                        {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()), "relaxed, adjacency codes"});
-                }
-            }
         } else if (kinds.relaxed) {
             codes = positions(order, all.size(), statebits);
             result.variants.push_back({toGame(game, order, codes, statebits, all, ex.letterSets, table.sets()),
                                        "relaxed"});
+        }
+        if (kinds.relaxed && kinds.cubeCodes) {
+            for (const bool byIncoming : {false, true}) {
+                std::vector<uint32_t> free;
+                const std::vector<int> numbers = cubeNumbering(ctl.initial, all, byIncoming, codes, statebits, free);
+                if (numbers.empty()) break;
+                result.variants.push_back(
+                    {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets(), free),
+                     byIncoming ? "relaxed, cube codes by incoming moves" : "relaxed, cube codes"});
+            }
+        }
+        if (kinds.relaxed && kinds.adjacencyCodes) {
+            const std::vector<int> numbers = numbering(ctl.initial, all, false);
+            codes = positions(numbers, all.size(), statebits);
+            if (improveCodes(all, numbers, codes, statebits, statebits)) {
+                result.variants.push_back(
+                    {toGame(game, numbers, codes, statebits, all, ex.letterSets, table.sets()), "relaxed, adjacency codes"});
+            }
         }
         // state bits that are output bits cost (almost) no gates
         std::vector<int> outputOrder;
