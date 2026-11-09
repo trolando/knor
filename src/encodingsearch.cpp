@@ -125,10 +125,10 @@ std::unique_ptr<AIGCircuit> EncodingSearch::encode(SymGame& controller,
         std::cerr << "without don't cares: " << best->getNumAnds() << " gates and " << best->getNumLatches()
                   << " latches" << std::endl;
     }
-    // not the deterministic monitor-coded games (their relaxed versions suffice), unless --dc-all
+    // not the deterministic monitor-coded games whose relaxed versions exist (those suffice), unless --dc-all
     games = {{&controller, "controller", "controller", true}};
     for (const auto& variant : variants) {
-        if (config.everyCandidate || variant.kind != MealyMinimizer::Kind::monitorCodes) {
+        if (config.everyCandidate || !variant.covered) {
             games.push_back({variant.game.get(), variant.name, MealyMinimizer::name(variant.kind), variant.chosen});
         }
     }

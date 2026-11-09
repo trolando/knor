@@ -442,8 +442,9 @@ std::vector<bool> forcedStates(const Machine& m, bool strong)
 // the controller loses the parity game of the machine in which the moves
 // into q lose. One game per state (solved by Oink), except for the states
 // known to be unavoidable and those that the winning strategy of an earlier
-// game avoids. Stops after MAX_WINNING_WORK edges of the games; the states not
-// decided by then count as avoidable.
+// game avoids. Stops before the edges of the games would exceed
+// MAX_WINNING_WORK (a bound on their size, not on Oink's work for solving them);
+// the states not decided by then count as avoidable, which is sound.
 constexpr long MAX_WINNING_WORK = 100000000;
 
 void addWinningUnavoidable(const Machine& m, std::vector<bool>& unavoidable)
@@ -483,7 +484,7 @@ void addWinningUnavoidable(const Machine& m, std::vector<bool>& unavoidable)
     std::vector<int> mapping(count);
     std::ostream discard(nullptr);
     long work = 0;
-    for (int q = 0; q < n && work < MAX_WINNING_WORK; q++) {
+    for (int q = 0; q < n && work + edges <= MAX_WINNING_WORK; q++) {
         if (unavoidable[q] || avoidable[q]) continue;
         work += edges;
         pg::Game game(count);
@@ -2048,10 +2049,12 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
     // with the controller's moves, and with the freedom that keeps the flags
     result.variants.push_back({toGame(game, splitOrder, codes, statebits, exact, ex.letterSets, table.sets()),
                                "monitor codes", MealyMinimizer::Kind::monitorCodes});
+    const size_t exactVariant = result.variants.size() - 1;
     if (!kinds.relaxed) return true;
     const Moves free = keepFlags(relaxedMoves(ex.machine, ex.outputSets, exact.size(), splitPairs, table), chosen,
                                  codes, statebits - flags, inputs, game.cap_count, table, game.cap_vars);
     if (correct(split.initial, free)) {
+        result.variants[exactVariant].covered = true;
         result.variants.push_back({toGame(game, splitOrder, codes, statebits, free, ex.letterSets, table.sets()),
                                    "monitor codes, relaxed", MealyMinimizer::Kind::relaxedMonitorCodes});
         // with the further bits by adjacency
@@ -2183,7 +2186,7 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
             const std::string prefix = std::string(name) + ": ";
             more.push_back({std::move(other.game), prefix + "controller", MealyMinimizer::Kind::controller, false});
             for (auto& variant : other.variants) {
-                more.push_back({std::move(variant.game), prefix + variant.name, variant.kind, false});
+                more.push_back({std::move(variant.game), prefix + variant.name, variant.kind, false, variant.covered});
             }
         }
         return false;
@@ -2340,7 +2343,8 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
         if (relax) {
             more.push_back({std::move(result.game), current + ": controller", Kind::controller, false});
             for (auto& variant : result.variants) {
-                more.push_back({std::move(variant.game), current + ": " + variant.name, variant.kind, false});
+                more.push_back({std::move(variant.game), current + ": " + variant.name, variant.kind, false,
+                                variant.covered});
             }
         }
         result = std::move(smaller);

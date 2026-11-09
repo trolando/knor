@@ -72,6 +72,7 @@ public:
         std::string name;       // what it is, e.g. "relaxed, breadth-first"
         Kind kind;
         bool chosen = true;     // of the controller that minimize() returns, not of another one
+        bool covered = false;   // a relaxed variant with the same state codes exists (for monitor codes)
     };
 
     struct Result {
