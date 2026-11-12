@@ -32,6 +32,115 @@ make
 
 Run the regression tests (verdicts of all examples, parser, acceptance conditions) with `make test` in the build directory.
 
+For the Docker build, which includes the compiler and dependencies, see [Docker](#docker).
+
+## Docker
+
+The Docker image contains Knor's sources and build dependencies on
+`debian:trixie-slim`, for both `linux/amd64` and `linux/arm64`. Docker must
+be installed and its daemon running. The image's entrypoint forwards all
+arguments directly to Knor, so options can be chosen from the host.
+
+### Pull or build the image
+
+To use the published image:
+
+```bash
+docker pull ghcr.io/trolando/knor:encoding
+```
+
+The `encoding` tag follows the encoding branch; `latest` follows the default
+branch. Published version and `sha-...` tags identify particular builds.
+
+Alternatively, build the image from this repository, including its submodules:
+
+```bash
+git submodule update --init --recursive
+docker build --pull -t knor:local .
+```
+
+The commands below use the published image. If you built it locally,
+replace `ghcr.io/trolando/knor:encoding` with `knor:local`.
+Building the Docker image installs the dependencies and copies the sources;
+compile Knor separately on the machine that will run it.
+
+### Compile once and keep the build
+
+Compile a Release binary into a named Docker volume. Docker creates this
+volume on first use:
+
+```bash
+docker run --rm --entrypoint /bin/bash \
+    -v knor-trixie-build:/opt/knor/build \
+    ghcr.io/trolando/knor:encoding ./scripts/compile.sh
+```
+
+The compiler uses `-march=native` by default for Knor and its bundled
+libraries. For a portable build, add `-e KNOR_NATIVE=OFF` before the image
+name in the compilation command.
+
+The `--rm` flag removes the temporary container after compilation, while
+the named volume keeps the compiled binary. Mount the same volume on each
+subsequent run. Repeating the compilation command updates the build
+incrementally. Use a fresh build volume after changing the base image,
+compiler, architecture or host CPU, and separate volumes for image versions
+you want to keep side by side.
+
+### Run Knor from the host
+
+From the directory containing your specification `spec.ehoa`, mount the
+input directory read-only and pass the filename as it appears inside the
+container:
+
+```bash
+docker run --rm -i \
+    -v knor-trixie-build:/opt/knor/build:ro \
+    -v "${PWD}:/in:ro" \
+    ghcr.io/trolando/knor:encoding \
+    --paritize --auto-encode --compress -a /in/spec.ehoa > controller.aag
+```
+
+The host shell writes `controller.aag` in the current directory. Keep the
+image's writable working directory for Knor's temporary files; the input
+directory only needs to be mounted for reading.
+
+Alternatively, read the specification from stdin, without an input mount:
+
+```bash
+docker run --rm -i -v knor-trixie-build:/opt/knor/build:ro \
+    ghcr.io/trolando/knor:encoding \
+    --paritize --auto-encode --compress -a < spec.ehoa > controller.aag
+```
+
+All arguments after the image name go to Knor. For example, get help or only
+check realizability with:
+
+```bash
+docker run --rm -v knor-trixie-build:/opt/knor/build:ro \
+    ghcr.io/trolando/knor:encoding --help
+docker run --rm -i -v knor-trixie-build:/opt/knor/build:ro \
+    ghcr.io/trolando/knor:encoding --paritize --real < spec.ehoa
+```
+
+Docker preserves Knor's exit codes: **10** for realizable, **20** for
+unrealizable. A successful synthesis therefore exits with 10, rather than
+0; scripts using `set -e` must handle these verdict codes explicitly.
+Other exit codes indicate a Docker startup error or a Knor parsing/runtime error.
+
+### Open a shell
+
+Override the entrypoint to inspect the container or run the build scripts:
+
+```bash
+docker run --rm -it --entrypoint /bin/bash \
+    -v knor-trixie-build:/opt/knor/build ghcr.io/trolando/knor:encoding
+```
+
+The shell starts in `/opt/knor`. `./scripts/knor.sh` forwards arguments
+unchanged; `./scripts/knor-synt.sh` is a convenience preset for
+`--paritize --auto-encode --compress -a`. Both also work outside Docker
+after building Knor locally.
+
 ## Using Knor
 
 Use `knor --help` to get a list of parameters.
@@ -86,18 +195,17 @@ See:
 
 ## SYNTCOMP
 
-Since 2025, [SYNTCOMP](https://www.syntcomp.org/) runs the solvers as Docker images on the TGCC cluster.
-The `Dockerfile` builds such an image for the parity-game realizability track: Debian bookworm with `runlim`, and in `/home/solvers` one script per configuration, which takes the eHOA file as its only argument and runs `knor --real --paritize` with one solver:
-`knor_tl` (tangle learning, the default), `knor_npp` (priority promotion) and `knor_tlq` (quasi-polynomial recursive tangle learning).
+The [Docker workflow](.github/workflows/docker.yml) publishes the image to
+`ghcr.io/trolando/knor` on
+pushes to `master` and `encoding`, version tags (`v*`), published releases and manual runs.
+Pull requests build and test without publishing. CI compiles Knor and checks
+synthesized controllers on both architectures with the image's GCC toolchain
+before publishing the image.
+Pushes to `encoding` publish `ghcr.io/trolando/knor:encoding`; `latest` tracks
+the default branch.
 
-```
-docker build --platform linux/amd64 -t knor-syntcomp .
-docker run --rm -v "$PWD/examples:/in:ro" -v "$PWD/test/expected_verdicts.txt:/expected:ro" \
-    knor-syntcomp /usr/local/bin/syntcomp-test /in /expected
-```
-
-`syntcomp-test` runs every configuration through `runlim` as the competition does, and checks the output and the exit code.
-The workflow `.github/workflows/syntcomp.yml` builds and tests the image on every push, and publishes it as `ghcr.io/trolando/knor-syntcomp` for a version tag or a manual run.
+For the synthesis configuration, use `--paritize --auto-encode --compress -a`,
+as shown in [Docker](#docker).
 
 ## License
 

@@ -1,8 +1,23 @@
-# The image needs the sources of knor and its libraries (CMakeLists.txt also
-# defines the aigcheck target), and the SYNTCOMP scripts.
+# Only ship sources, licenses and the SYNTCOMP scripts. CMakeLists.txt also
+# defines test targets, so their C++ sources must be present at configure time.
 *
 !CMakeLists.txt
+!LICENSE
 !src
 !libs
+!test
+test/*
 !test/aigcheck.cpp
-!syntcomp
+!test/statesearch.cpp
+!scripts
+
+# Submodules can contain local build products; compile afresh in the container.
+**/.git
+**/build*
+**/CMakeFiles
+**/CMakeCache.txt
+**/*.o
+**/*.a
+**/*.so
+**/*.dylib
+**/*.exe

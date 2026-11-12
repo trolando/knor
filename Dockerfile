@@ -1,37 +1,26 @@
-# knor for SYNTCOMP's parity-game realizability track, as the competition runs
-# it since 2025 (Docker images on the TGCC cluster, see README.md): Debian
-# bookworm with runlim, and in /home/solvers one script per configuration that
-# takes the eHOA file as its only argument.
+# Knor for SYNTCOMP. Ship sources and build dependencies so scripts/compile.sh
+# can compile on the machine that will run the solver.
 #
-#     docker build --platform linux/amd64 -t knor-syntcomp .
-#     docker run --rm -v "$PWD/examples:/in:ro" -v "$PWD/test/expected_verdicts.txt:/expected:ro" \
-#         knor-syntcomp /usr/local/bin/syntcomp-test /in /expected
+#     docker build -t knor .
+#     docker run --rm --entrypoint /bin/bash -v knor-build:/opt/knor/build \
+#         knor ./scripts/compile.sh
+#     docker run --rm -i -v knor-build:/opt/knor/build:ro \
+#         knor --paritize --auto-encode --compress -a < spec.ehoa
 
-FROM gcc:13.3.0-bookworm AS build
+FROM debian:trixie-slim
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends cmake libboost-filesystem-dev libboost-iostreams-dev \
-        libboost-random-dev libboost-regex-dev libboost-system-dev \
+    && apt-get install -y --no-install-recommends \
+        g++ cmake make libboost-random-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# runlim 2.0.0rc12, the version in the competition's images
-RUN git clone https://github.com/arminbiere/runlim.git /runlim \
-    && git -C /runlim checkout 3076e4406466ee14c3b6decc86c31b25c570cdc6 \
-    && cd /runlim && ./configure.sh && make runlim
+WORKDIR /opt/knor
 
-# The binary must run on the competition's machines, not only on the one that
-# builds it: no -march=native (Oink has an option for it, Lace and Sylvan add
-# it unconditionally).
-COPY . /knor
-RUN sed -i 's/-march=native//' /knor/libs/lace/CMakeLists.txt /knor/libs/sylvan/src/CMakeLists.txt \
-    && cmake -S /knor -B /build -DCMAKE_BUILD_TYPE=Release -DOINK_BUILD_NATIVE=OFF \
-    && cmake --build /build --target knor -j"$(nproc)"
+# Initialize submodules before building the image; compilation needs their
+# complete source trees and does not fetch anything at runtime.
+COPY . .
+RUN chmod +x scripts/compile.sh scripts/knor.sh scripts/knor-synt.sh
 
-FROM debian:bookworm
-
-COPY --from=build /runlim/runlim /usr/bin/runlim
-COPY --from=build /build/knor /usr/local/bin/knor
-COPY syntcomp/solvers/ /home/solvers/
-COPY syntcomp/test.sh /usr/local/bin/syntcomp-test
-
-ENTRYPOINT ["/bin/bash"]
+ENTRYPOINT ["/opt/knor/scripts/knor.sh"]

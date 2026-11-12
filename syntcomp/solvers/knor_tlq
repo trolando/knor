@@ -1,3 +1,0 @@
-#!/bin/sh
-# SYNTCOMP parity-game realizability: knor with quasi-polynomial recursive tangle learning
-exec /usr/local/bin/knor --real --paritize --tlq "$1"
