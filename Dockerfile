@@ -5,7 +5,7 @@
 #     docker run --rm --entrypoint /bin/bash -v knor-build:/opt/knor/build \
 #         knor ./scripts/compile.sh
 #     docker run --rm -i -v knor-build:/opt/knor/build:ro \
-#         knor --paritize --auto-encode --compress -a < spec.ehoa
+#         knor --auto-encode --compress -a < spec.ehoa
 
 FROM debian:trixie-slim
 

@@ -40,6 +40,9 @@ jobs:
       - name: Compile knor
         run: ./scripts/compile.sh
 
+      - name: Check acceptance conditions
+        run: bash test/acceptance.sh build/knor
+
       - name: Build controller checker
         run: cmake --build build --target aigcheck --parallel 2
 
@@ -47,24 +50,27 @@ jobs:
         run: |
           for spec in examples/full_arbiter_2.tlsf.ehoa test/acceptance/genbuchi_alternate.hoa; do
             rc=0
-            ./scripts/knor.sh --paritize --auto-encode --compress -a "$spec" > /tmp/controller.aag || rc=$?
+            ./scripts/knor.sh --auto-encode --compress -a "$spec" > /tmp/controller.aag || rc=$?
             test "$rc" -eq 10
             ./build/aigcheck "$spec" /tmp/controller.aag
           done
           rc=0
-          ./scripts/knor.sh --paritize --auto-encode --compress -a < test/acceptance/genbuchi_alternate.hoa > /tmp/controller.aag || rc=$?
+          ./scripts/knor.sh --auto-encode --compress -a < test/acceptance/genbuchi_alternate.hoa > /tmp/controller.aag || rc=$?
           test "$rc" -eq 10
           ./build/aigcheck test/acceptance/genbuchi_alternate.hoa /tmp/controller.aag
           rc=0
-          ./scripts/knor.sh --paritize --auto-encode --compress -a < test/acceptance/genbuchi_env.hoa > /tmp/unrealizable.out || rc=$?
+          ./scripts/knor.sh --auto-encode --compress -a < test/acceptance/genbuchi_env.hoa > /tmp/unrealizable.out || rc=$?
           test "$rc" -eq 20
           rc=0
-          ./scripts/knor.sh --real test/acceptance/genbuchi_alternate.hoa > /tmp/verdict 2> /tmp/knor.err || rc=$?
+          ./scripts/knor.sh --no-paritize --real test/acceptance/genbuchi_alternate.hoa > /tmp/verdict 2> /tmp/knor.err || rc=$?
           test "$rc" -eq 104
           rc=0
           ./scripts/knor-synt.sh --real test/acceptance/genbuchi_alternate.hoa > /tmp/verdict || rc=$?
           test "$rc" -eq 10
           grep -qx REALIZABLE /tmp/verdict
+          rc=0
+          ./scripts/knor-synt.sh --no-paritize --real test/acceptance/genbuchi_alternate.hoa > /tmp/verdict 2> /tmp/knor.err || rc=$?
+          test "$rc" -eq 104
 
   docker:
     needs: build

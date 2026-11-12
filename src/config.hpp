@@ -23,7 +23,7 @@ struct Config final {
     std::string statsPath;              // --stats (empty: none)
 
     // the parity game and its solution
-    bool paritize = false;
+    bool paritize = true;               // allow acceptance memory (unless --no-paritize)
     bool symbolic = false;              // the symbolic solver (--sym), else Oink's
     std::string solver = "tl";          // Oink's solver
     bool naiveSplitting = false;

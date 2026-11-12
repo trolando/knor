@@ -5,4 +5,4 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$ROOT/scripts/knor.sh" --paritize --auto-encode --compress -a "$@"
+exec "$ROOT/scripts/knor.sh" --auto-encode --compress -a "$@"

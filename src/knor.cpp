@@ -118,7 +118,7 @@ TASK_1(int, main_task, const Config*, _config)
     int ret = completeHoa(data);
     if (ret != 0) return ret;
     ret = paritizeHoa(data, config.paritize);
-    if (ret == 104) std::cerr << "(use --paritize to add the memory)" << std::endl;
+    if (ret == 104) std::cerr << "(omit --no-paritize to allow adding memory)" << std::endl;
     if (ret != 0) return ret;
     if (verbose && data->noStates != originalStates) {
         std::cerr << "after adding memory, the automaton has " << data->noStates << " states." << std::endl;

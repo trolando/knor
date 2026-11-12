@@ -1,4 +1,4 @@
-/* expect: 104 */
+/* expect: 104 --no-paritize */
 HOA: v1
 States: 2
 Start: 0

@@ -37,7 +37,7 @@ Config Config::parse(int argc, char** argv)
             ("naive", "Use the naive splitting procedure (not recommended)")
             ("explicit", "Use the explicit splitting procedure (not recommended)")
             ("real", "Only check realizability (no synthesis)")
-            ("paritize", "Convert any acceptance condition (e.g. generalized Buchi) to parity, adding memory")
+            ("no-paritize", "Reject acceptance conditions that require extra states for conversion to parity")
             ("permissive", "Greedily extend the strategy to a winning multi-strategy (explicit solvers; slow on large games)")
             ("permissive-work", "Work of --permissive: (vertex, priority) pairs its cycle checks visit (default 0: no limit; the extension of --auto-encode without --permissive: 20 million)", cxxopts::value<long>())
             ("multi-fpi", "Use the multi-strategy of fixpoint iteration: every move winning when a vertex is decided (explicit solvers; knor's own, not Oink's solver --fpim)")
@@ -199,7 +199,7 @@ Config Config::parse(int argc, char** argv)
         config.verbose = options.count("verbose") > 0;
         if (options.count("stats")) config.statsPath = options["stats"].as<std::string>();
 
-        config.paritize = options.count("paritize") > 0;
+        config.paritize = options.count("no-paritize") == 0;
         config.symbolic = options.count("sym") > 0;
         for (const auto & id : solvers) {
             if (options.count(id)) config.solver = id;

@@ -7,7 +7,7 @@ Knor, a symbolic synthesis tool for HOA parity automata.
 | Feature | Description |
 |---------|-------------|
 | eHOA parser | Reading eHOA files: the [HOA format](https://adl.github.io/hoaf/) extended with `controllable-AP`, using a fast hand-written parser |
-| Conversion to parity | Deterministic automata with other acceptance conditions are converted to parity automata: conditions that are parity conditions in disguise (Büchi, co-Büchi, Rabin/Streett with one pair, ...) automatically, and all others (generalized Büchi, Rabin, Streett, Muller, ...) with `--paritize`, via a product with the Zielonka tree of the condition |
+| Conversion to parity | Automatically converts deterministic automata to parity: conditions that are parity conditions in disguise (Büchi, co-Büchi, Rabin/Streett with one pair, ...) on the same automaton, and all others (generalized Büchi, Rabin, Streett, Muller, ...) via a product with the Zielonka tree of the condition; `--no-paritize` forbids conversions that require extra states |
 | Conversion to game | Three different methods to convert the parity automaton into a parity game: (1) a naive explicit construction, (2) a BDD-supported explicit construction, (3) a fully symbolic construction |
 | Explicit solving | Solving the symbolic parity game explicitly using [Oink](https://github.com/trolando/oink/) |
 | Symbolic solving | Solving the symbolic parity game symbolically using an internal solver based on [Sylvan](https://github.com/trolando/sylvan/) |
@@ -43,24 +43,25 @@ arguments directly to Knor, so options can be chosen from the host.
 
 ### Pull or build the image
 
-To use the published image:
+Pull the published image and give it the short local name `knor`:
 
 ```bash
 docker pull ghcr.io/trolando/knor:encoding
+docker tag ghcr.io/trolando/knor:encoding knor
 ```
 
 The `encoding` tag follows the encoding branch; `latest` follows the default
 branch. Published version and `sha-...` tags identify particular builds.
+Repeat the pull and tag commands when updating to a newer image.
 
 Alternatively, build the image from this repository, including its submodules:
 
 ```bash
 git submodule update --init --recursive
-docker build --pull -t knor:local .
+docker build --pull -t knor .
 ```
 
-The commands below use the published image. If you built it locally,
-replace `ghcr.io/trolando/knor:encoding` with `knor:local`.
+The commands below use the local name `knor` for either image.
 Building the Docker image installs the dependencies and copies the sources;
 compile Knor separately on the machine that will run it.
 
@@ -72,7 +73,7 @@ volume on first use:
 ```bash
 docker run --rm --entrypoint /bin/bash \
     -v knor-trixie-build:/opt/knor/build \
-    ghcr.io/trolando/knor:encoding ./scripts/compile.sh
+    knor ./scripts/compile.sh
 ```
 
 The compiler uses `-march=native` by default for Knor and its bundled
@@ -96,8 +97,7 @@ container:
 docker run --rm -i \
     -v knor-trixie-build:/opt/knor/build:ro \
     -v "${PWD}:/in:ro" \
-    ghcr.io/trolando/knor:encoding \
-    --paritize --auto-encode --compress -a /in/spec.ehoa > controller.aag
+    knor --auto-encode --compress -a /in/spec.ehoa > controller.aag
 ```
 
 The host shell writes `controller.aag` in the current directory. Keep the
@@ -108,8 +108,7 @@ Alternatively, read the specification from stdin, without an input mount:
 
 ```bash
 docker run --rm -i -v knor-trixie-build:/opt/knor/build:ro \
-    ghcr.io/trolando/knor:encoding \
-    --paritize --auto-encode --compress -a < spec.ehoa > controller.aag
+    knor --auto-encode --compress -a < spec.ehoa > controller.aag
 ```
 
 All arguments after the image name go to Knor. For example, get help or only
@@ -117,9 +116,9 @@ check realizability with:
 
 ```bash
 docker run --rm -v knor-trixie-build:/opt/knor/build:ro \
-    ghcr.io/trolando/knor:encoding --help
+    knor --help
 docker run --rm -i -v knor-trixie-build:/opt/knor/build:ro \
-    ghcr.io/trolando/knor:encoding --paritize --real < spec.ehoa
+    knor --real < spec.ehoa
 ```
 
 Docker preserves Knor's exit codes: **10** for realizable, **20** for
@@ -133,12 +132,12 @@ Override the entrypoint to inspect the container or run the build scripts:
 
 ```bash
 docker run --rm -it --entrypoint /bin/bash \
-    -v knor-trixie-build:/opt/knor/build ghcr.io/trolando/knor:encoding
+    -v knor-trixie-build:/opt/knor/build knor
 ```
 
 The shell starts in `/opt/knor`. `./scripts/knor.sh` forwards arguments
 unchanged; `./scripts/knor-synt.sh` is a convenience preset for
-`--paritize --auto-encode --compress -a`. Both also work outside Docker
+`--auto-encode --compress -a`. Both also work outside Docker
 after building Knor locally.
 
 ## Using Knor
@@ -151,7 +150,8 @@ Knor returns value 10 if the specification is realizable, and value 20 if the sp
 ### Input automata
 - The input must be a complete deterministic automaton with a single initial state.
 - Acceptance conditions that a priority per edge can express on the same automaton are converted to `parity max even` automatically, for example Büchi, co-Büchi, `t`, `f`, Rabin and Streett with one pair, parity conditions in any notation, and edges in zero or several acceptance sets.
-- Use `--paritize` to also convert all other acceptance conditions, such as generalized Büchi or Rabin and Streett with several pairs. This multiplies the automaton with the Zielonka tree automaton of the acceptance condition. Without `--paritize`, such inputs are rejected with exit code 104.
+- All other acceptance conditions, such as generalized Büchi or Rabin and Streett with several pairs, are converted automatically by multiplying the automaton with the Zielonka tree automaton of the acceptance condition.
+- Use `--no-paritize` to forbid conversions that add acceptance memory. Inputs requiring extra states for parity conversion are then rejected with exit code 104. Parity inputs and conversions that need no extra states still work.
 
 Example command line:
 ```bash
@@ -204,7 +204,7 @@ before publishing the image.
 Pushes to `encoding` publish `ghcr.io/trolando/knor:encoding`; `latest` tracks
 the default branch.
 
-For the synthesis configuration, use `--paritize --auto-encode --compress -a`,
+For the synthesis configuration, use `--auto-encode --compress -a`,
 as shown in [Docker](#docker).
 
 ## License
