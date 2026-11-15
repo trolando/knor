@@ -7,10 +7,10 @@
 #include <stdexcept>
 #include <iostream>
 #include <cstdio>
-#include <cstring>
 #include <filesystem>
 #include <sstream>
 #include <unistd.h>
+#include <vector>
 
 // slightly modified version of 'alias compress2rs' from 'abc.rc' file
 const std::vector<std::string> ABCMinimization::compressCommands ({
@@ -158,40 +158,44 @@ int ABCMinimization::getAbcNetworkSize(Abc_Frame_t* pAbc) {
     return Abc_NtkNodeNum(pNtk);
 }
 
-int ABCMinimization::getTmpFile(char* tmp_filename) {
-    // TODO this needs to be fixed (maybe to std::string?) strcpy usage is technically prone to errors
-    std::strcpy(tmp_filename, "knor.XXXXXX");
-    int fd = mkstemp(tmp_filename);
+// A new temporary file in the system's temporary directory (not the working directory, which need
+// not be writable): its descriptor, and its name in filename.
+int ABCMinimization::getTmpFile(std::string& filename) {
+    std::string pattern = (std::filesystem::temp_directory_path() / "knor.XXXXXX").string();
+    std::vector<char> name(pattern.begin(), pattern.end());
+    name.push_back('\0');
+    int fd = mkstemp(name.data());
     if (fd == -1) {
-        throw std::runtime_error("Could not create temporary file: " + std::string(tmp_filename));
+        throw std::runtime_error("Could not create temporary file: " + pattern);
     }
+    filename = name.data();
     return fd;
 }
 
 void ABCMinimization::writeToAbc(Abc_Frame_t* pAbc) const {
-    char tmp_filename[256];
+    std::string tmp_filename;
     int fd = getTmpFile(tmp_filename);
 
     // write AIGER out to be read by ABC
     FILE* file = fdopen(fd, "w");
     if (file == nullptr) {
-        throw std::runtime_error("Could not open temporary file: " + std::string(tmp_filename));
+        throw std::runtime_error("Could not open temporary file: " + tmp_filename);
     }
     int write_result = circuit.writeBinary(file);
     fclose(file);
     if (write_result == 0) {
-        throw std::runtime_error("Could not write AIGER circuit to file: " + std::string(tmp_filename));
+        throw std::runtime_error("Could not write AIGER circuit to file: " + tmp_filename);
     }
 
     std::stringstream read_command;
     read_command << "read_aiger " << tmp_filename;
     executeAbcCommand(pAbc, read_command.str());
 
-    std::remove(tmp_filename);
+    std::remove(tmp_filename.c_str());
 }
 
 void ABCMinimization::readFromAbc(Abc_Frame_t* pAbc) {
-    char tmp_filename[256];
+    std::string tmp_filename;
     int fd = getTmpFile(tmp_filename);
 
     std::stringstream write_command;
@@ -201,10 +205,10 @@ void ABCMinimization::readFromAbc(Abc_Frame_t* pAbc) {
     // read AIGER back, delete comments added by ABC
     FILE* file = fdopen(fd, "r");
     if (file == nullptr) {
-        throw std::runtime_error("Could not open temporary file: " + std::string(tmp_filename));
+        throw std::runtime_error("Could not open temporary file: " + tmp_filename);
     }
     // read_aiger
     circuit.readFile(file);
     fclose(file);
-    std::remove(tmp_filename);
+    std::remove(tmp_filename.c_str());
 }

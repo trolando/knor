@@ -32,7 +32,7 @@ private:
     void executeAbcCommand(Abc_Frame_t* pAbc, const std::string& command) const;
     void executeCompressCommands(Abc_Frame_t* pAbc) const;
     static int getAbcNetworkSize(Abc_Frame_t* pAbc) ;
-    static int getTmpFile(char* tmp_filename) ;
+    static int getTmpFile(std::string& filename);
     void writeToAbc(Abc_Frame_t* pAbc) const;
     void readFromAbc(Abc_Frame_t* pAbc);
 };
