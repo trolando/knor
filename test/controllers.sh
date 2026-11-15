@@ -50,6 +50,9 @@ modes=(
     "--auto-encode --mealy-any --mealy-work 20000000"
     "--auto-encode --compress"
     "--sym --mealy-sat --dc"
+    # Oink's multi-strategy solvers as the solver, without --multi-fpi: one move of their multi-strategy
+    "--fpim"
+    "--fpjm --dc"
     "--bisim --mealy-sat --dc"
     "--permissive --mealy-sat --mealy-any --mealy-work 20000000 --dc"
     # zero, tiny and explicit budgets, and every encoding candidate

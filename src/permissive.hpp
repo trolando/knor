@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <oink/game.hpp>
+#include <oink/oink.hpp>
 #include <oink/solution.hpp>
 
 /**
@@ -28,32 +29,27 @@ public:
     };
 
     /**
-     * The positional winning strategy that Oink computed (the solution of the
-     * game), as a multi-strategy: the successor of each vertex owned and won by
-     * Even (empty for others).
+     * Prepare Oink to solve with fixpoint iteration (fpim), or with
+     * justifications (fpjm), and keep the multi-strategy that it records: for
+     * each vertex, every move that is good for its owner when the vertex is
+     * decided (or justified). Any choice among them is the strategy of the
+     * solver for some order of the edges, hence winning. Oink's preprocessing
+     * (self-loops, winner-controlled winning cycles, games with one parity) and
+     * solving by bottom SCCs would decide some vertices with one move each, so
+     * they are off.
      */
-    static std::vector<std::vector<int>> positional(const pg::Game& game, const pg::Solution& solution);
+    static void multiSolver(pg::Oink& engine, bool justifications);
 
     /**
-     * Solve the game by fixpoint iteration with freezing (FPI), as the
-     * symbolic solver does, and return its multi-strategy: for each vertex
-     * owned and won by Even, every successor that is good for Even when the
-     * vertex is decided (empty for other vertices). Any choice among them is
-     * the strategy of FPI for some order of the edges, hence winning. Sets
-     * winner to the winner (0 or 1) of each vertex.
+     * The strategy of a solution as a multi-strategy: for each vertex owned and
+     * won by Even, its moves (the one of a positional strategy, or all of a
+     * multi-strategy); empty for other vertices.
      */
-    static std::vector<std::vector<int>> fpim(const pg::Game& game, std::vector<int>& winner);
+    static std::vector<std::vector<int>> moves(const pg::Game& game, const pg::Solution& solution);
 
     /**
-     * The same with fixpoint iteration with justifications (FPJ): the moves of
-     * a vertex are those good for its owner when it is justified, and a
-     * justified vertex is only invalidated when its last move is.
-     */
-    static std::vector<std::vector<int>> fpjm(const pg::Game& game, std::vector<int>& winner);
-
-    /**
-     * Greedily extend a winning multi-strategy (as given by positional(),
-     * fpim() or fpjm()): visit the vertices reachable from the initial vertex
+     * Greedily extend a winning multi-strategy (as given by moves()): visit
+     * the vertices reachable from the initial vertex
      * breadth-first, and allow each further successor of a vertex of Even if
      * that keeps the multi-strategy winning, i.e., if the new edge closes no
      * cycle whose maximal priority is odd. With a budget (not 0), no further

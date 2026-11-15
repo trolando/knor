@@ -279,218 +279,23 @@ bool hasOddCycle(const Graph& r, std::vector<int> region, std::vector<int>* cycl
     return false;
 }
 
-// The vertices ordered by priority (as the fixpoint algorithms process them).
-std::vector<int> byPriority(const pg::Game& game)
-{
-    std::vector<int> order(game.vertexcount());
-    for (int v = 0; v < game.vertexcount(); v++) order[v] = v;
-    std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return game.priority(a) < game.priority(b); });
-    return order;
-}
-
 }  // namespace
 
-std::vector<std::vector<int>> PermissiveStrategy::positional(const pg::Game& game, const pg::Solution& solution)
+void PermissiveStrategy::multiSolver(pg::Oink& engine, bool justifications)
+{
+    engine.setSolver(justifications ? "fpjm" : "fpim");
+    engine.setRemoveLoops(false);
+    engine.setRemoveWCWC(false);
+    engine.setSolveSingle(false);
+    engine.setBottomSCC(false);
+}
+
+std::vector<std::vector<int>> PermissiveStrategy::moves(const pg::Game& game, const pg::Solution& solution)
 {
     std::vector<std::vector<int>> allowed(game.vertexcount());
     for (int v = 0; v < game.vertexcount(); v++) {
-        if (game.owner(v) == 0 && solution.winner(v) == 0) allowed[v].push_back(solution.strategy(v));
-    }
-    return allowed;
-}
-
-std::vector<std::vector<int>> PermissiveStrategy::fpim(const pg::Game& game, std::vector<int>& winner)
-{
-    const int n = game.vertexcount();
-    // the vertices by priority, and for each priority its range [start, start+count) in this order
-    const std::vector<int> order = byPriority(game);
-    const int d = n == 0 ? 0 : game.priority(order[n - 1]);
-    std::vector<int> start(d + 1, 0), count(d + 1, 0);
-    for (int k = n - 1; k >= 0; k--) {
-        start[game.priority(order[k])] = k;
-        count[game.priority(order[k])]++;
-    }
-
-    std::vector<char> parity(n), distraction(n, 0);
-    std::vector<int> frozen(n, 0);   // the priority at which a vertex is frozen, 0 if it is not
-    std::vector<std::vector<int>> moves(n);
-    for (int v = 0; v < n; v++) parity[v] = static_cast<char>(game.priority(v) & 1);
-
-    // Recompute the one-step winner of the undecided vertices of one priority,
-    // recording all moves to vertices that are currently good for the owner;
-    // returns the number of new distractions.
-    auto update = [&](int from, int number) {
-        int found = 0;
-        for (int k = from; k < from + number; k++) {
-            const int v = order[k];
-            if (frozen[v] != 0 || distraction[v]) continue;
-            moves[v].clear();
-            const int o = game.owner(v);
-            int onestep = 1 - o;
-            for (const int* e = game.outs(v); *e != -1; e++) {
-                if ((parity[*e] ^ distraction[*e]) == o) {
-                    onestep = o;
-                    moves[v].push_back(*e);
-                }
-            }
-            if (parity[v] != onestep) {
-                distraction[v] = 1;
-                found++;
-            }
-        }
-        return found;
-    };
-
-    // After new distractions of priority p: freeze, thaw or reset the vertices of lower priority.
-    auto freezeThawReset = [&](int number, int p) {
-        const int pl = p & 1;
-        for (int k = 0; k < number; k++) {
-            const int v = order[k];
-            if (frozen[v] >= p) continue;
-            if (frozen[v] != 0) {
-                if ((frozen[v] & 1) == pl) {
-                    frozen[v] = p;
-                } else {
-                    frozen[v] = 0;
-                    distraction[v] = 0;
-                }
-            } else if (distraction[v]) {
-                if (parity[v] == pl) {
-                    frozen[v] = p;
-                } else {
-                    distraction[v] = 0;
-                }
-            } else if (parity[v] != pl) {
-                frozen[v] = p;
-            }
-        }
-    };
-
-    int p = 0;
-    while (p <= d) {
-        if (count[p] == 0 || update(start[p], count[p]) == 0) {
-            p++;
-        } else if (p != 0) {
-            freezeThawReset(start[p], p);
-            p = 0;
-        }
-    }
-
-    winner.resize(n);
-    std::vector<std::vector<int>> allowed(n);
-    for (int v = 0; v < n; v++) {
-        winner[v] = parity[v] ^ distraction[v];
-        if (game.owner(v) == 0 && winner[v] == 0) allowed[v] = std::move(moves[v]);
-    }
-    return allowed;
-}
-
-std::vector<std::vector<int>> PermissiveStrategy::fpjm(const pg::Game& game, std::vector<int>& winner)
-{
-    // work on the vertices ordered by priority: index i is vertex order[i]
-    const int n = game.vertexcount();
-    const std::vector<int> order = byPriority(game);
-    std::vector<int> index(n);
-    for (int i = 0; i < n; i++) index[order[i]] = i;
-    // the edges by source, and per target its incoming edges (as positions in edges)
-    std::vector<int> first(n + 1, 0), edges, inFirst(n + 1, 0), incoming;
-    for (int i = 0; i < n; i++) {
-        first[i] = static_cast<int>(edges.size());
-        for (const int* e = game.outs(order[i]); *e != -1; e++) {
-            edges.push_back(index[*e]);
-            inFirst[index[*e] + 1]++;
-        }
-    }
-    first[n] = static_cast<int>(edges.size());
-    for (int i = 0; i < n; i++) inFirst[i + 1] += inFirst[i];
-    incoming.resize(edges.size());
-    std::vector<int> fill(inFirst.begin(), inFirst.end() - 1);
-    for (int i = 0; i < n; i++) {
-        for (int e = first[i]; e < first[i + 1]; e++) incoming[fill[edges[e]]++] = e;
-    }
-    std::vector<int> source(edges.size());
-    for (int i = 0; i < n; i++) {
-        for (int e = first[i]; e < first[i + 1]; e++) source[e] = i;
-    }
-
-    std::vector<char> parity(n), justified(n, 0), distraction(n, 0), move(edges.size(), 0);
-    std::vector<int> moves(n, 0);   // the number of recorded moves of each vertex
-    for (int i = 0; i < n; i++) parity[i] = static_cast<char>(game.priority(order[i]) & 1);
-    std::vector<int> queue;
-
-    // Scan the vertices block by block (a block: consecutive vertices of the
-    // same parity), computing the one-step winner of the unjustified ones and
-    // recording all their moves to vertices that are currently good for the
-    // owner. At the end of a block with new distractions, unjustify the
-    // vertices that depended on them (a vertex with moves only when its last
-    // move is removed) and continue at the lowest unjustified vertex;
-    // otherwise the block is justified.
-    bool changed = false;
-    int current = n == 0 ? 0 : parity[0];
-    int blockStart = 0;
-    for (int i = 0;;) {
-        if (i == n || parity[i] != current) {
-            if (changed) {
-                while (!queue.empty()) {
-                    const int v = queue.back();
-                    queue.pop_back();
-                    for (int k = inFirst[v]; k < inFirst[v + 1]; k++) {
-                        const int e = incoming[k];
-                        const int from = source[e];
-                        if (!justified[from]) continue;
-                        bool reset = moves[from] == 0;   // won by the opponent of its owner: depends on all successors
-                        if (move[e]) {
-                            move[e] = 0;
-                            reset = --moves[from] == 0;
-                        }
-                        if (reset) {
-                            justified[from] = 0;
-                            distraction[from] = 0;
-                            queue.push_back(from);
-                            i = std::min(i, from);
-                        }
-                    }
-                }
-                changed = false;
-                i = std::min(i, blockStart);
-            } else {
-                for (int v = blockStart; v < i; v++) justified[v] = 1;
-            }
-            if (i == n) break;
-            current = parity[i];
-            blockStart = i;
-        }
-        if (justified[i]) {
-            i++;
-            continue;
-        }
-        const int o = game.owner(order[i]);
-        int onestep = 1 - o;
-        moves[i] = 0;
-        for (int e = first[i]; e < first[i + 1]; e++) {
-            move[e] = (parity[edges[e]] ^ distraction[edges[e]]) == o;
-            if (move[e]) {
-                onestep = o;
-                moves[i]++;
-            }
-        }
-        if (current != onestep) {
-            queue.push_back(i);
-            distraction[i] = 1;
-            justified[i] = 1;
-            changed = true;
-        }
-        i++;
-    }
-
-    winner.resize(n);
-    std::vector<std::vector<int>> allowed(n);
-    for (int i = 0; i < n; i++) {
-        const int v = order[i];
-        winner[v] = parity[i] ^ distraction[i];
-        if (game.owner(v) != 0 || winner[v] != 0) continue;
-        for (int e = first[i]; e < first[i + 1]; e++) {
-            if (move[e]) allowed[v].push_back(order[edges[e]]);
+        if (game.owner(v) == 0 && solution.is_solved(v) && solution.winner(v) == 0) {
+            pg::strategy_targets(game, solution, v, allowed[v]);
         }
     }
     return allowed;

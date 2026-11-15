@@ -243,12 +243,19 @@ TASK_1(int, main_task, const Config*, _config)
         // OK, fire up the engine
         std::stringstream log;
 
-        const std::string& solver = config.solver;
+        // with --multi-fpi or --multi-fpj, synthesis solves with Oink's fpim or fpjm, which record
+        // a multi-strategy; --real needs no strategy and uses the chosen solver
+        const bool multi = (config.fpim || config.fpjm) && !config.realizability;
+        const std::string solver = multi ? (config.fpim ? "fpim" : "fpjm") : config.solver;
 
         pg::Oink engine(*game, verbose ? std::cerr : log);
         engine.setTrace(0); //verbose ? 1 : 0); actually don´t -- maybe add a 2nd verbosity level later
         engine.setRenumber();
-        engine.setSolver(solver);
+        if (multi) {
+            PermissiveStrategy::multiSolver(engine, config.fpjm);
+        } else {
+            engine.setSolver(solver);
+        }
         engine.setWorkers(-1);
 
         // and run the solver
@@ -281,29 +288,18 @@ TASK_1(int, main_task, const Config*, _config)
                 }
                 if (sym->applyMultiStrategy(str)) anyMoves = sym->strategies;
             }
-            const bool fpim = config.fpim;
-            const bool fpjm = config.fpjm;
-            if (sym != nullptr && (fpim || fpjm || config.permissive)) {
-                auto allowed = PermissiveStrategy::positional(*game, solution);
-                if (fpim || fpjm) {
-                    const double t_before = wctime();
-                    const char* name = fpim ? "fixpoint iteration" : "fixpoint iteration with justifications";
-                    std::vector<int> winner;
-                    auto multi = fpim ? PermissiveStrategy::fpim(*game, winner) : PermissiveStrategy::fpjm(*game, winner);
-                    bool agrees = true;
-                    for (int v=0; v<game->vertexcount(); v++) agrees = agrees && winner[v] == solution.winner(v);
-                    if (agrees && PermissiveStrategy::verify(*game, solution, vstart, multi)) {
-                        allowed = std::move(multi);
-                    } else {
-                        // cannot happen; keep the positional strategy rather than risk a wrong controller
-                        std::cerr << "error: " << name << " disagrees with " << solver << ", using its strategy" << std::endl;
+            if (sym != nullptr && (multi || config.permissive)) {
+                auto allowed = PermissiveStrategy::moves(*game, solution);
+                if (multi) {
+                    if (!PermissiveStrategy::verify(*game, solution, vstart, allowed)) {
+                        // cannot happen; no controller rather than a wrong one
+                        std::cerr << "error: the multi-strategy of " << solver << " is not winning" << std::endl;
+                        return -1;
                     }
-                    run_stats.time(fpim ? "fpim" : "fpjm", wctime() - t_before);
                     if (verbose) {
                         long moves = 0;
                         for (const auto& a : allowed) moves += static_cast<long>(a.size());
-                        std::cerr << name << ": " << moves << " moves of the controller" << std::endl;
-                        std::cerr << "\033[1;37mfinished " << name << " in " << std::fixed << (wctime() - t_before) << " sec.\033[m" << std::endl;
+                        std::cerr << solver << ": " << moves << " moves of the controller" << std::endl;
                     }
                 }
                 std::vector<std::vector<int>> extended;  // the permissive extension of allowed, if any
@@ -345,13 +341,11 @@ TASK_1(int, main_task, const Config*, _config)
             } else if (sym != nullptr) {
                 // now get the strategy from Oink...
                 std::map<MTBDD, MTBDD> str;  // cap to priostate
+                const auto moves = PermissiveStrategy::moves(*game, solution);
                 for (int v=0; v<game->vertexcount(); v++) {
-                    // good cap states are owned and won by 0
-                    if (game->owner(v) == 0 && solution.winner(v) == 0) {
-                        auto a = vertex_to_bdd.at(v);
-                        auto b = vertex_to_bdd.at(solution.strategy(v));
-                        str[a] = b;
-                    }
+                    // good cap states are owned and won by 0; of a multi-strategy (Oink's fpim or fpjm
+                    // as the solver), the first move: any choice is winning
+                    if (!moves[v].empty()) str[vertex_to_bdd.at(v)] = vertex_to_bdd.at(moves[v].front());
                 }
 
                 if (!sym->applyStrategy(str)) {
