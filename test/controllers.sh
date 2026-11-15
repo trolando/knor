@@ -8,8 +8,8 @@
 # AP, which aigcheck accepts; so must the binary AIGER file of --auto-encode,
 # whose --stats must be consistent (if python3 is found: schema 2, the
 # configuration, a selected candidate of the size of the circuit, proven where a
-# search stopped as proven). Invalid combinations must exit with 255, and ABC
-# must leave no abc.history behind.
+# search stopped as proven; with --compress no one-hot candidates). Invalid
+# combinations must exit with 255, and ABC must leave no abc.history behind.
 #
 # Usage: test/controllers.sh [path/to/knor [path/to/aigcheck]]
 #        (default: build/knor and build/aigcheck)
@@ -144,6 +144,18 @@ for mode in "--mealy-any" "--sym --mealy-sat --mealy-any" "--sym --permissive" "
     res=$?
     [ "$res" = 255 ] || fail "$f $mode (exit code $res, expected 255)"
 done
+
+if [ -n "$python" ]; then
+    "$knor" -a --auto-encode --compress --stats "$tmp/stats.json" "$f" >/dev/null 2>&1
+    if ! out=$("$python" - "$tmp/stats.json" 2>&1 <<'EOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert not any(c["encoding"].startswith("one-hot") for c in d["candidates"]), "one-hot candidate with --compress"
+EOF
+); then
+        fail "$f --auto-encode --compress --stats: $out"
+    fi
+fi
 
 mkdir "$tmp/cwd"
 (cd "$tmp/cwd" && "$knor" -a --compress "$f" >/dev/null 2>&1)

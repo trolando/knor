@@ -83,7 +83,7 @@ Config Config::parse(int argc, char** argv)
             ("no-extension", "--auto-encode without the permissive extension")
             ("no-unclarified", "No candidate with the freedom of the unclarified strategy (--dc without --mealy-sat)")
             ("no-binary-dc", "No binary candidates with don't cares")
-            ("no-onehot-dc", "No one-hot candidates")
+            ("no-onehot-dc", "No one-hot candidates (with --compress there are none)")
             ("no-isop-candidate", "No ISOP candidate for a signal")
             ("no-all-candidates", "For a signal only its restriction and ISOP, not its upper bound and constrain")
             ("reorder-work", "Sifting work for the variable order of the binary candidates (0: no reordering)",
@@ -265,7 +265,9 @@ Config Config::parse(int argc, char** argv)
         config.rules.guardComplement = options.count("no-guard-complement") == 0;
         config.everyCandidate = options.count("dc-all") > 0;
         config.binaryCandidates = options.count("no-binary-dc") == 0;
-        config.onehotCandidates = options.count("no-onehot-dc") == 0;
+        // with --compress no one-hot candidates: they can be the smallest as they are, but ABC compresses the
+        // binary encodings much further (FINDINGS 63), and they would be chosen by their size before it
+        config.onehotCandidates = options.count("no-onehot-dc") == 0 && options.count("compress") == 0;
         config.isopCandidate = options.count("no-isop-candidate") == 0;
         config.boundCandidates = options.count("no-all-candidates") == 0;
         config.unclarified = options.count("no-unclarified") == 0;
