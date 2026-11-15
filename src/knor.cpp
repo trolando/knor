@@ -552,7 +552,7 @@ TASK_1(int, main_task, const Config*, _config)
     if (config.compress) {
         if (verbose) std::cerr << "size of AIG before compression: " << circuit->getNumAnds() << " gates." << std::endl;
         const double t_before = wctime();
-        ABCMinimization(*circuit, verbose).compress(compress_timeout);
+        ABCMinimization(*circuit, verbose).compress(compress_timeout, config.rrr);
         const double t_after = wctime();
         if (verbose) std::cerr << "size of AIG after compression: " << circuit->getNumAnds() << " gates." << std::endl;
         run_stats.time("compression", t_after - t_before);

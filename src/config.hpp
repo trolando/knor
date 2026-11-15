@@ -64,6 +64,7 @@ struct Config final {
     // after the encoding
     bool drewrite = false;
     bool compress = false;
+    bool rrr = true;                    // with compress: also ABC's &rrr
     bool printKiss = false;
     bool printWitness = false;
     enum class Output { none, ascii, binary } output = Output::none;

@@ -81,30 +81,43 @@ private:
 
 }  // namespace
 
-void ABCMinimization::compress(int timeout)
+void ABCMinimization::compress(int timeout, bool rrr)
 {
     // without outputs no logic is observable; ABC has nothing to minimise and warns at every command
     if (circuit.getNumOutputs() == 0) return;
 
     auto start = std::chrono::steady_clock::now();
+    auto elapsed = [&]() {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    };
 
     AbcSession session;
     Abc_Frame_t* pAbc = Abc_FrameGetGlobalFrame();
 
     writeToAbc(pAbc);
+    const int latches = Abc_NtkLatchNum(Abc_FrameReadNtk(pAbc));
 
-    // compress until convergence
-    int new_num_nodes = getAbcNetworkSize(pAbc);
-    int old_num_nodes = new_num_nodes + 1;
-    while (new_num_nodes > 0 && new_num_nodes < old_num_nodes) {
-        auto start2 = std::chrono::steady_clock::now();
+    // Rounds of the compress commands and, with rrr, resubstitution with redundancy analysis (&rrr;
+    // Miyasaka, Mishchenko, Wawrzynek, IWLS 2025), multi-add (-X 1: deterministic, and much faster than
+    // single-add on the large circuits). &rrr works on the combinational logic and drops the registers (the
+    // latch outputs become inputs, the latch inputs outputs, both last), which &setregnum restores. The
+    // rounds go on while they gain something, with &rrr while they gain at least 2%: its rounds cost
+    // minutes on the largest circuits and the later ones gain little. Stops early when the time is up.
+    int size = getAbcNetworkSize(pAbc);
+    while (size > 0) {
+        const auto before = elapsed();
         executeCompressCommands(pAbc);
-        old_num_nodes = new_num_nodes;
-        new_num_nodes = getAbcNetworkSize(pAbc);
-        // if ((old_num_nodes-new_num_nodes)<old_num_nodes/100) break; // 2.5% improvement or better pls
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start2).count();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-        if ((elapsed+duration) >= timeout) break;
+        if (rrr) {
+            executeAbcCommand(pAbc, "&get -n");
+            executeAbcCommand(pAbc, "&rrr -X 1");
+            executeAbcCommand(pAbc, "&setregnum -N " + std::to_string(latches));
+            executeAbcCommand(pAbc, "&put");
+        }
+        const int next = getAbcNetworkSize(pAbc);
+        const bool gained = rrr ? 50L * (size - next) >= size : next < size;
+        size = next;
+        const auto now = elapsed();
+        if (!gained || now + (now - before) >= timeout) break;
     }
 
     readFromAbc(pAbc);
