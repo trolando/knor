@@ -30,7 +30,7 @@ plain	TwoCountersInRangeA6.tlsf.ehoa	10	7b970a8f8af680c2	-
 auto-encode	abcg_arbiter.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
 auto-encode	amba_decomposed_arbiter_2.tlsf.ehoa	10	80f5bcd9bf7efe9f	s:3+ e:3+ a:2-
 auto-encode	amba_decomposed_encode.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
-auto-encode	amba_decomposed_encode_9.tlsf.ehoa	10	d5034aa405ebbafb	s:9+ e:9+ a:9+
+auto-encode	amba_decomposed_encode_9.tlsf.ehoa	10	cc318a7bb5bd1f80	s:9+ e:9+ a:9+
 auto-encode	amba_decomposed_lock_10.tlsf.ehoa	10	2a817874a23ae0e3	s:3+ e:3+ a:3+
 auto-encode	amba_decomposed_lock_13.tlsf.ehoa	10	ebfcc3fd070053cc	s:3+ e:3+ a:3+
 auto-encode	amba_decomposed_shift.tlsf.ehoa	10	3655c86205768b98	s:2+ e:2+ a:2+
@@ -39,7 +39,7 @@ auto-encode	arbiter_with_buffer.tlsf.ehoa	10	32ae42be26b867fa	s: e:1+ a:
 auto-encode	arbiter_with_cancel.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
 auto-encode	detector.tlsf.ehoa	10	279a605a6fdeeb6c	s:2+ e:1-,2+ a:1-
 auto-encode	detector_unreal.tlsf.ehoa	20	da39a3ee5e6b4b0d	-
-auto-encode	EscalatorBidirectionalInit.tlsf.ehoa	10	4d52afd4c1e8fe33	s:3+ e:3+ a:3+
+auto-encode	EscalatorBidirectionalInit.tlsf.ehoa	10	c314db508c1b02bc	s:3+ e:3+ a:3+
 auto-encode	EscalatorCountingInit.tlsf.ehoa	10	376c06034435c159	s:3+ e:3+ a:3+
 auto-encode	Gamelogic.tlsf.ehoa	10	0ba390ee5b545bf9	s:3+ e:3+ a:3+
 auto-encode	generalized_buffer_unreal1.tlsf.ehoa	20	da39a3ee5e6b4b0d	-

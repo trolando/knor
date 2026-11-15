@@ -135,12 +135,19 @@ std::unique_ptr<AIGCircuit> EncodingSearch::encode(SymGame& controller,
         std::cerr << "without don't cares: " << best->getNumAnds() << " gates and " << best->getNumLatches()
                   << " latches" << std::endl;
     }
-    // not the deterministic monitor-coded games whose relaxed versions exist (those suffice), unless --dc-all
+    // not the deterministic monitor-coded games whose relaxed versions exist (those suffice), unless --dc-all;
+    // and a game only once: the controllers of the strategy and of its extension often give the same games,
+    // whose candidates (and sifting) would be the same
+    auto same = [](const SymGame& a, const SymGame& b) {
+        return a.statebits == b.statebits && a.priobits == b.priobits && a.uap_count == b.uap_count
+               && a.cap_count == b.cap_count && a.trans == b.trans && a.strategies == b.strategies;
+    };
     games = {{&controller, "controller", "controller", true}};
     for (const auto& variant : variants) {
-        if (config.everyCandidate || !variant.covered) {
-            games.push_back({variant.game.get(), variant.name, MealyMinimizer::name(variant.kind), variant.chosen});
-        }
+        if (!config.everyCandidate && variant.covered) continue;
+        bool known = false;
+        for (const Game& g : games) known = known || same(*g.game, *variant.game);
+        if (!known) games.push_back({variant.game.get(), variant.name, MealyMinimizer::name(variant.kind), variant.chosen});
     }
     const std::vector<Setting> all = settings();
     reorderLeft = config.reorderWork;
