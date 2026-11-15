@@ -65,7 +65,7 @@ modes=(
     "--auto-encode --no-cube-codes --no-adjacency-codes --no-rechoose --no-extension --no-winning-bound --no-unit-steps"
     "--auto-encode --no-renumber --no-output-codes --no-monitor-codes --no-latch-ite --no-dead-latches"
     "--auto-encode --no-binary-dc --no-guard-complement --no-isop-candidate"
-    "--auto-encode --no-onehot-dc --no-all-candidates --reorder-work 0 --gates-only --no-marginal-choice"
+    "--auto-encode --no-onehot-dc --no-all-candidates --reorder-work 0 --gates-only --no-marginal-choice --no-support-reduction"
     "--multi-fpi --permissive --mealy-sat --dc --no-layered --no-fewer-first --no-strong-bound"
     "--dc --no-unclarified"
 )

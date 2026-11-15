@@ -30,8 +30,9 @@ long EncodingSearch::size(const std::unique_ptr<AIGCircuit>& circuit) const
 
 // By default only the candidates that ever gave the smallest circuit on the examples (measured
 // with --dc-all --stats): all simplifications of each signal, binary also without the irredundant
-// sum of products. With --dc-all every candidate, for experiments; the ablation options leave out
-// some.
+// sum of products, and binary with it also with the functions of smaller support (which help on
+// some examples and hurt on others). With --dc-all every candidate, for experiments; the ablation
+// options leave out some.
 std::vector<EncodingSearch::Setting> EncodingSearch::settings() const
 {
     const bool all = config.everyCandidate;
@@ -46,7 +47,12 @@ std::vector<EncodingSearch::Setting> EncodingSearch::settings() const
             for (const bool allCandidates : {false, true}) {
                 if (no_all ? allCandidates : !all && !allCandidates) continue;
                 for (const bool statesFirst : {false, true}) {
-                    result.push_back(Setting{onehot, statesFirst, allCandidates, isopCandidate});
+                    for (const bool supportReduction : {false, true}) {
+                        if (supportReduction && (onehot || !config.rules.supportReduction || (!all && !isopCandidate))) {
+                            continue;
+                        }
+                        result.push_back(Setting{onehot, statesFirst, allCandidates, isopCandidate, supportReduction});
+                    }
                 }
             }
         }
@@ -58,7 +64,9 @@ bool EncodingSearch::encodeCandidate(size_t g, const Setting& s, long reorder)
 {
     const auto start = std::chrono::steady_clock::now();
     AIGEncoder other(data, *games[g].game);
-    other.setRules(config.rules);
+    AIGEncoder::Rules rules = config.rules;
+    rules.supportReduction = s.supportReduction;
+    other.setRules(rules);
     if (config.isop) other.setIsop();
     if (s.onehot) other.setOneHot();
     auto candidate = other.setDontCares(s.statesFirst, s.allCandidates, s.isopCandidate).setReorder(reorder).encode();
@@ -72,6 +80,7 @@ bool EncodingSearch::encodeCandidate(size_t g, const Setting& s, long reorder)
     record.statesFirst = s.statesFirst;
     record.allCandidates = s.allCandidates;
     record.isopCandidate = s.isopCandidate;
+    record.supportReduction = s.supportReduction;
     record.reorderWork = reorder;
     record.reorderUsed = other.getReorderWork();
     record.ands = candidate->getNumAnds();
@@ -82,6 +91,7 @@ bool EncodingSearch::encodeCandidate(size_t g, const Setting& s, long reorder)
         std::cerr << "don't cares (" << games[g].name << ", " << (s.onehot ? "one-hot, " : "binary, ")
                   << (s.statesFirst ? "state" : "outputs") << " first"
                   << (s.allCandidates ? ", all candidates" : "") << (s.isopCandidate ? "" : ", no isop")
+                  << (s.supportReduction ? ", support reduced" : "")
                   << (reorder > 0 ? ", reordered" : "") << "): " << candidate->getNumAnds() << " gates and "
                   << candidate->getNumLatches() << " latches" << std::endl;
     }

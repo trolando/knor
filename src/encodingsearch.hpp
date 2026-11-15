@@ -39,7 +39,7 @@ private:
     // how a game is encoded: binary or one-hot, which signals are chosen first, and which
     // simplifications of each signal are considered (see AIGEncoder::setDontCares)
     struct Setting {
-        bool onehot, statesFirst, allCandidates, isopCandidate;
+        bool onehot, statesFirst, allCandidates, isopCandidate, supportReduction;
     };
     struct Binary {
         long size;

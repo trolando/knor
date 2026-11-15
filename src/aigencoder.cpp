@@ -749,7 +749,12 @@ void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap
 {
     MTBDD moves = mtbdd_false, out = mtbdd_false, bit = mtbdd_false, can1 = mtbdd_false, can0 = mtbdd_false;
     MTBDD fixed = mtbdd_false, must1 = mtbdd_false, candidate = mtbdd_false, link = mtbdd_false;
-    for (MTBDD* r : {&moves, &out, &bit, &can1, &can0, &fixed, &must1, &candidate, &link}) mtbdd_refs_pushptr(r);
+    MTBDD upper = mtbdd_false, low = mtbdd_false, high = mtbdd_false, support = mtbdd_false, cube = mtbdd_false;
+    MTBDD lowered = mtbdd_false, raised = mtbdd_false, care = mtbdd_false;
+    for (MTBDD* r : {&moves, &out, &bit, &can1, &can0, &fixed, &must1, &candidate, &link, &upper, &low, &high, &support,
+                     &cube, &lowered, &raised, &care}) {
+        mtbdd_refs_pushptr(r);
+    }
     moves = relation;
     out = mtbdd_set_addall(game.cap_vars, game.ns_vars);
     // Every state with a move must have one for every input: elsewhere the bits are don't cares, so a
@@ -778,6 +783,7 @@ void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap
         can0 = sylvan_and_exists(moves, sylvan_not(bit), out);
         fixed = sylvan_xor(can1, can0);
         must1 = sylvan_and(can1, fixed);
+        upper = sylvan_not(sylvan_and(can0, fixed));    // 1 unless it must be 0
         result = must1;
         auto best = cost(result);
         auto consider = [&]() {
@@ -787,20 +793,46 @@ void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap
                 result = candidate;
             }
         };
-        candidate = sylvan_restrict(must1, fixed);
-        consider();
-        candidate = sylvan_and(can0, fixed);        // must be 0
-        candidate = sylvan_not(candidate);          // the upper bound
-        if (allCandidates) consider();
-        // the irredundant sum of products between the bounds (Minato-Morreale): its BDD is often
-        // more regular than the generalized cofactors that restrict and constrain give
-        if (isopCandidate) {
-            zdd_isop(must1, candidate, &candidate);
+        // the candidates between a lower and an upper bound, which agree on the care set
+        auto between = [&](MTBDD lower, MTBDD higher, MTBDD care) {
+            candidate = sylvan_restrict(lower, care);
             consider();
-        }
-        if (allCandidates) {
-            candidate = sylvan_constrain(must1, fixed);
-            consider();
+            candidate = higher;
+            if (allCandidates) consider();
+            // the irredundant sum of products between the bounds (Minato-Morreale): its BDD is often
+            // more regular than the generalized cofactors that restrict and constrain give
+            if (isopCandidate) {
+                zdd_isop(lower, higher, &candidate);
+                consider();
+            }
+            if (allCandidates) {
+                candidate = sylvan_constrain(lower, care);
+                consider();
+            }
+        };
+        between(must1, upper, fixed);
+        if (rules.supportReduction) {
+            // a smaller support: a variable on which some function in the interval does not depend
+            // is quantified away (from the top of the order down), and the candidates are taken
+            // again in the narrower interval
+            low = must1;
+            high = upper;
+            support = mtbdd_set_addall(sylvan_support(low), sylvan_support(high));
+            for (MTBDD v = support; !mtbdd_set_isempty(v); v = mtbdd_set_next(v)) {
+                cube = sylvan_ithvar(mtbdd_set_first(v));
+                lowered = sylvan_exists(low, cube);
+                raised = sylvan_forall(high, cube);
+                if (sylvan_and(lowered, sylvan_not(raised)) == mtbdd_false) {
+                    low = lowered;
+                    high = raised;
+                }
+            }
+            if (low != must1 || high != upper) {
+                care = sylvan_or(low, sylvan_not(high));
+                candidate = low;
+                consider();
+                between(low, high, care);
+            }
         }
         chosen.push_back(result);
         link = sylvan_equiv(bit, result);
@@ -819,7 +851,7 @@ void AIGEncoder::chooseWithDontCares(MTBDD relation, MTBDD inputVars, MTBDD* cap
         outputs();
         states();
     }
-    mtbdd_refs_popptr(9);
+    mtbdd_refs_popptr(17);
 }
 
 namespace {

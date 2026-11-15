@@ -34,6 +34,7 @@ public:
         bool statesFirst = false;
         bool allCandidates = false;
         bool isopCandidate = false;
+        bool supportReduction = false;
         long reorderWork = 0;   // the sifting work it was given (0: not reordered)
         long reorderUsed = 0;
         long ands = 0;

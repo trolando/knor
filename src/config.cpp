@@ -90,6 +90,7 @@ Config Config::parse(int argc, char** argv)
             ("no-latch-ite", "No next-state functions as ITE on an output")
             ("no-rechoose", "Do not choose the functions again in the order found by sifting")
             ("no-marginal-choice", "Choose each function by its BDD nodes, not by the gates it adds to the circuit")
+            ("no-support-reduction", "Do not also try the binary encodings whose functions may have a smaller support: without the variables that no function between the bounds needs")
             ("no-dead-latches", "Keep the latches of state bits that stay 0")
             ("no-guard-complement", "One-hot: no \"none of the other states\" guards")
             ("no-or-gate", "Two gates for x OR f in the Shannon expansion, not one (any encoding)")
@@ -147,7 +148,8 @@ Config Config::parse(int argc, char** argv)
         const bool dc = options.count("dc") || options.count("auto-encode");
         const bool mealy = options.count("mealy-sat") || options.count("auto-encode");
         for (const char* name : {"no-binary-dc", "no-onehot-dc", "no-isop-candidate", "no-all-candidates", "reorder-work",
-                                 "no-latch-ite", "no-rechoose", "no-marginal-choice", "no-dead-latches", "no-guard-complement", "gates-only",
+                                 "no-latch-ite", "no-rechoose", "no-marginal-choice", "no-support-reduction",
+                                 "no-dead-latches", "no-guard-complement", "gates-only",
                                  "no-unclarified"}) {
             if (options.count(name) && !dc) {
                 std::cerr << "error parsing options: --" << name << " requires --dc or --auto-encode" << std::endl;
@@ -254,6 +256,7 @@ Config Config::parse(int argc, char** argv)
         config.rules.latchSplit = options.count("no-latch-ite") == 0;
         config.rules.rechoose = options.count("no-rechoose") == 0;
         config.rules.marginalChoice = options.count("no-marginal-choice") == 0;
+        config.rules.supportReduction = options.count("no-support-reduction") == 0;
         config.rules.guardComplement = options.count("no-guard-complement") == 0;
         config.everyCandidate = options.count("dc-all") > 0;
         config.binaryCandidates = options.count("no-binary-dc") == 0;
@@ -334,6 +337,7 @@ std::vector<Config::Setting> Config::settings() const
     flag("latch-ite", rules.latchSplit);
     flag("rechoose", rules.rechoose);
     flag("marginal-choice", rules.marginalChoice);
+    flag("support-reduction", rules.supportReduction);
     flag("guard-complement", rules.guardComplement);
     flag("dc", dontCares);
     flag("dc-all", everyCandidate);

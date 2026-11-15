@@ -84,6 +84,9 @@ public:
                                         // in the new variable order, if that is smaller
         bool marginalChoice = true;     // binary with don't cares: choose each function by the gates it adds
                                         // to the functions chosen before (else by its BDD nodes)
+        bool supportReduction = true;   // binary with don't cares: also the candidates in the narrower interval
+                                        // without the variables that no function in it needs (EncodingSearch
+                                        // tries the encodings with and without)
     };
 
     AIGEncoder& setRules(const Rules& rules) {

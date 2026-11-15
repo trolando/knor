@@ -99,7 +99,8 @@ bool RunStats::write(const std::string& path) const
         o << (i ? "," : "") << "\n    {\"game\": " << quote(c.game) << ", \"kind\": " << quote(c.kind)
           << ", \"chosen\": " << boolean(c.chosen) << ", \"encoding\": " << quote(c.encoding)
           << ", \"states_first\": " << boolean(c.statesFirst) << ", \"all_candidates\": " << boolean(c.allCandidates)
-          << ", \"isop_candidate\": " << boolean(c.isopCandidate) << ", \"reordered\": " << boolean(c.reorderWork > 0)
+          << ", \"isop_candidate\": " << boolean(c.isopCandidate)
+          << ", \"support_reduction\": " << boolean(c.supportReduction) << ", \"reordered\": " << boolean(c.reorderWork > 0)
           << ", \"reorder_work\": " << c.reorderWork << ", \"reorder_used\": " << c.reorderUsed
           << ", \"ands\": " << c.ands << ", \"latches\": " << c.latches << ", \"seconds\": " << c.seconds << "}";
     }
