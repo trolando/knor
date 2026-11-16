@@ -86,13 +86,14 @@ private:
 
 }  // namespace
 
-void ABCMinimization::compress(int timeout, bool rrr)
+void ABCMinimization::compress(int seconds, bool rrr)
 {
     // without outputs no logic is observable; ABC has nothing to minimise and warns at every command
     if (circuit.getNumOutputs() == 0) return;
 
+    const long timeout = 1000L * seconds;   // milliseconds
     auto start = std::chrono::steady_clock::now();
-    auto elapsed = [&]() {
+    auto elapsed = [&]() -> long {
         return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
     };
 
@@ -115,10 +116,10 @@ void ABCMinimization::compress(int timeout, bool rrr)
         const auto before = elapsed();
         executeCompressCommands(pAbc);
         if (rrr && elapsed() < timeout) {
-            const long seconds = std::max(1L, (static_cast<long>(timeout) - static_cast<long>(elapsed())) / 1000);
+            const long left = std::max(1L, (timeout - elapsed()) / 1000);
             try {
                 executeAbcCommand(pAbc, "&get -n");
-                executeAbcCommand(pAbc, "&rrr -X 1 -T " + std::to_string(seconds));
+                executeAbcCommand(pAbc, "&rrr -X 1 -T " + std::to_string(left));
                 executeAbcCommand(pAbc, "&setregnum -N " + std::to_string(latches));
                 Gia_Man_t* copy = Abc_FrameReadGia(pAbc);
                 if (copy != nullptr && Gia_ManAndNum(copy) < getAbcNetworkSize(pAbc)) executeAbcCommand(pAbc, "&put");
@@ -136,7 +137,7 @@ void ABCMinimization::compress(int timeout, bool rrr)
     readFromAbc(pAbc);
 }
 
-void ABCMinimization::drewrite(int timeout)
+void ABCMinimization::drewrite(int seconds)
 {
     if (circuit.getNumOutputs() == 0) return;
 
@@ -160,7 +161,7 @@ void ABCMinimization::drewrite(int timeout)
         if ((old_num_nodes-new_num_nodes)<old_num_nodes/100) break; // 1% improvement or better pls
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start2).count();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-        if ((elapsed+duration) >= timeout) break;
+        if ((elapsed+duration) >= 1000L * seconds) break;
     }
 
     readFromAbc(pAbc);

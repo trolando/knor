@@ -166,7 +166,6 @@ TASK_1(int, main_task, const Config*, _config)
     mtbdd_protect(&anyMoves);
     MTBDD extendedMoves = mtbdd_false;   // with --permissive and --mealy-sat: the permissive extension
     mtbdd_protect(&extendedMoves);
-    int compress_timeout = 30*60*1000; // 30 minutes x 60 seconds x 1000 milliseconds
 
     if (explicit_solver) {
         // Remember the start vertex
@@ -542,7 +541,7 @@ TASK_1(int, main_task, const Config*, _config)
     if (config.drewrite) {
         if (verbose) std::cerr << "size of AIG before drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
         const double t_before = wctime();
-        ABCMinimization(*circuit, verbose).drewrite(compress_timeout);
+        ABCMinimization(*circuit, verbose).drewrite(config.compressTime);
         const double t_after = wctime();
         if (verbose) std::cerr << "size of AIG after drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
         run_stats.time("drw+drf", t_after - t_before);
@@ -552,7 +551,7 @@ TASK_1(int, main_task, const Config*, _config)
     if (config.compress) {
         if (verbose) std::cerr << "size of AIG before compression: " << circuit->getNumAnds() << " gates." << std::endl;
         const double t_before = wctime();
-        ABCMinimization(*circuit, verbose).compress(compress_timeout, config.rrr);
+        ABCMinimization(*circuit, verbose).compress(config.compressTime, config.rrr);
         const double t_after = wctime();
         if (verbose) std::cerr << "size of AIG after compression: " << circuit->getNumAnds() << " gates." << std::endl;
         run_stats.time("compression", t_after - t_before);

@@ -56,6 +56,8 @@ Config Config::parse(int argc, char** argv)
             ("dc-all", "With --dc, try every encoding candidate, not only those that pay off (for experiments; slower)")
             ("compress", "Compress the generated AIG using ABC")
             ("no-rrr", "With --compress: without ABC's resubstitution with redundancy analysis (&rrr)")
+            ("compress-time", "Time limit of --compress or --drewrite in seconds; &rrr stops when it is up and keeps what it found",
+             cxxopts::value<int>()->default_value("1800"))
             ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
             ("auto-encode", "Synthesize a small controller: --mealy-sat --dc with --multi-fpi (unless --multi-fpj or --sym), --permissive with a work budget, and for a small controller a short search over all winning moves")
             ("no-solve", "Do not solve, halt after constructing the parity game")
@@ -182,6 +184,14 @@ Config Config::parse(int argc, char** argv)
             std::cerr << "error parsing options: --no-rrr requires --compress" << std::endl;
             exit(255);
         }
+        if (options.count("compress-time") && !options.count("compress") && !options.count("drewrite")) {
+            std::cerr << "error parsing options: --compress-time requires --compress or --drewrite" << std::endl;
+            exit(255);
+        }
+        if (options["compress-time"].as<int>() <= 0) {
+            std::cerr << "error parsing options: --compress-time must be positive" << std::endl;
+            exit(255);
+        }
         if (options.count("no-extension") && options.count("permissive")) {
             std::cerr << "error parsing options: --no-extension and --permissive exclude each other" << std::endl;
             exit(255);
@@ -277,6 +287,7 @@ Config Config::parse(int argc, char** argv)
         config.drewrite = options.count("drewrite") > 0;
         config.compress = options.count("compress") > 0;
         config.rrr = options.count("no-rrr") == 0;
+        config.compressTime = options["compress-time"].as<int>();
         config.printKiss = options.count("print-kiss") > 0;
         config.printWitness = options.count("print-witness") > 0;
         config.output = options.count("write-binary") ? Output::binary
@@ -359,6 +370,7 @@ std::vector<Config::Setting> Config::settings() const
     flag("drewrite", drewrite);
     flag("compress", compress);
     flag("rrr", rrr);
+    number("compress-time", compressTime);
     return result;
 }
 

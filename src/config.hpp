@@ -65,6 +65,7 @@ struct Config final {
     bool drewrite = false;
     bool compress = false;
     bool rrr = true;                    // with compress: also ABC's &rrr
+    int compressTime = 1800;            // seconds of compress or drewrite
     bool printKiss = false;
     bool printWitness = false;
     enum class Output { none, ascii, binary } output = Output::none;

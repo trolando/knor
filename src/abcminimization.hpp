@@ -21,10 +21,11 @@ class ABCMinimization final {
 public:
     explicit ABCMinimization(AIGCircuit& circuit, bool verbose = false)
         : circuit(circuit), verbose(verbose) {}
-    void drewrite(int timeout);
+    // Rounds of drw, balance, drf and dc2 while they gain at least 1%, within the time limit (seconds)
+    void drewrite(int seconds);
     // Rounds of ABC's compress commands (and with rrr, &rrr) while they gain (with rrr, at least 2%), within the
-    // timeout (milliseconds; &rrr gets the time that is left)
-    void compress(int timeout, bool rrr = true);
+    // time limit (seconds; &rrr gets the time that is left)
+    void compress(int seconds, bool rrr = true);
 
 private:
     AIGCircuit& circuit;
