@@ -137,7 +137,7 @@ docker run --rm -it --entrypoint /bin/bash \
 
 The shell starts in `/opt/knor`. `./scripts/knor.sh` forwards arguments
 unchanged; `./scripts/knor-synt.sh` is a convenience preset for
-`--auto-encode --compress -a`. Both also work outside Docker
+`--auto-encode --compress --timeout 1740 -a`. Both also work outside Docker
 after building Knor locally.
 
 ## Using Knor
@@ -205,8 +205,8 @@ before publishing the image.
 Pushes to `encoding` publish `ghcr.io/trolando/knor:encoding`; `latest` tracks
 the default branch.
 
-For the synthesis configuration, use `--auto-encode --compress -a`,
-as shown in [Docker](#docker).
+For the synthesis configuration, use `--auto-encode --compress --timeout 1740 -a`
+(`./scripts/knor-synt.sh`): the controller within 29 minutes.
 
 ## License
 
