@@ -591,6 +591,9 @@ TASK_1(int, main_task, const Config*, _config)
 int
 main(int argc, char* argv[])
 {
+    // knor started by the compression to run ABC (see abcminimization.cpp): no Lace and no Sylvan
+    if (argc > 1 && std::strcmp(argv[1], ABCMinimization::WORKER) == 0) return ABCMinimization::worker(argc, argv);
+
     const Config config = Config::parse(argc, argv);
 
     // Initialize Lace, only 1 worker. The worker runs everything, and its program stack must hold

@@ -128,11 +128,15 @@ int AIGCircuit::writeBinary(FILE* out) {
 }
 
 void AIGCircuit::readFile(FILE* infile) {
-    aiger_reset(a);
-    a = aiger_init();
-    const char *read_result = aiger_read_from_file(a, infile);
+    // into a new circuit first: when the file cannot be read, the circuit stays as it is
+    aiger* read = aiger_init();
+    const char *read_result = aiger_read_from_file(read, infile);
     if (read_result != nullptr) {
-        throw std::runtime_error("Could not read AIGER circuit from file: " + std::string(read_result));
+        const std::string message = read_result;
+        aiger_reset(read);
+        throw std::runtime_error("Could not read AIGER circuit from file: " + message);
     }
-    aiger_delete_comments(a);
+    aiger_delete_comments(read);
+    aiger_reset(a);
+    a = read;
 }

@@ -56,7 +56,7 @@ Config Config::parse(int argc, char** argv)
             ("dc-all", "With --dc, try every encoding candidate, not only those that pay off (for experiments; slower)")
             ("compress", "Compress the generated AIG using ABC")
             ("no-rrr", "With --compress: without ABC's resubstitution with redundancy analysis (&rrr)")
-            ("compress-time", "Time limit of --compress or --drewrite in seconds (within --timeout); &rrr stops when it is up and keeps what it found",
+            ("compress-time", "Time limit of --compress or --drewrite in seconds (within --timeout); the compression stops when it is up and keeps the smallest circuit it found",
              cxxopts::value<int>()->default_value("1800"))
             ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
             ("auto-encode", "Synthesize a small controller: --mealy-sat --dc with --multi-fpi (unless --multi-fpj or --sym), --permissive with a work budget, and for a small controller a short search over all winning moves")
