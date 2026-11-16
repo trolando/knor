@@ -22,8 +22,8 @@ public:
     explicit ABCMinimization(AIGCircuit& circuit, bool verbose = false)
         : circuit(circuit), verbose(verbose) {}
     void drewrite(int timeout);
-    // Rounds of ABC's compress commands (and with rrr, &rrr) while they gain (with rrr, at least 2%); stops
-    // early when the timeout (milliseconds) is up
+    // Rounds of ABC's compress commands (and with rrr, &rrr) while they gain (with rrr, at least 2%), within the
+    // timeout (milliseconds; &rrr gets the time that is left)
     void compress(int timeout, bool rrr = true);
 
 private:

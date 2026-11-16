@@ -3,6 +3,7 @@
  */
 
 #include <abcminimization.hpp>
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <iostream>
@@ -11,6 +12,10 @@
 #include <sstream>
 #include <unistd.h>
 #include <vector>
+
+extern "C" {
+#include "aig/gia/gia.h"
+}
 
 // slightly modified version of 'alias compress2rs' from 'abc.rc' file
 const std::vector<std::string> ABCMinimization::compressCommands ({
@@ -100,18 +105,26 @@ void ABCMinimization::compress(int timeout, bool rrr)
     // Rounds of the compress commands and, with rrr, resubstitution with redundancy analysis (&rrr;
     // Miyasaka, Mishchenko, Wawrzynek, IWLS 2025), multi-add (-X 1: deterministic, and much faster than
     // single-add on the large circuits). &rrr works on the combinational logic and drops the registers (the
-    // latch outputs become inputs, the latch inputs outputs, both last), which &setregnum restores. The
-    // rounds go on while they gain something, with &rrr while they gain at least 2%: its rounds cost
-    // minutes on the largest circuits and the later ones gain little. Stops early when the time is up.
+    // latch outputs become inputs, the latch inputs outputs, both last), which &setregnum restores. It runs on
+    // a copy, within the time that is left (when the time is up it keeps what it found), and the copy replaces
+    // the network only if it is smaller: a round that runs out of time, or an &rrr that fails, costs only its
+    // time. The rounds go on while they gain something, with &rrr while they gain at least 2%: its rounds cost
+    // minutes on the largest circuits and the later ones gain little. Stops when the time is up.
     int size = getAbcNetworkSize(pAbc);
     while (size > 0) {
         const auto before = elapsed();
         executeCompressCommands(pAbc);
-        if (rrr) {
-            executeAbcCommand(pAbc, "&get -n");
-            executeAbcCommand(pAbc, "&rrr -X 1");
-            executeAbcCommand(pAbc, "&setregnum -N " + std::to_string(latches));
-            executeAbcCommand(pAbc, "&put");
+        if (rrr && elapsed() < timeout) {
+            const long seconds = std::max(1L, (static_cast<long>(timeout) - static_cast<long>(elapsed())) / 1000);
+            try {
+                executeAbcCommand(pAbc, "&get -n");
+                executeAbcCommand(pAbc, "&rrr -X 1 -T " + std::to_string(seconds));
+                executeAbcCommand(pAbc, "&setregnum -N " + std::to_string(latches));
+                Gia_Man_t* copy = Abc_FrameReadGia(pAbc);
+                if (copy != nullptr && Gia_ManAndNum(copy) < getAbcNetworkSize(pAbc)) executeAbcCommand(pAbc, "&put");
+            } catch (const std::runtime_error&) {
+                // &rrr does not take every network (e.g. one without inputs): the network stays as it is
+            }
         }
         const int next = getAbcNetworkSize(pAbc);
         const bool gained = rrr ? 50L * (size - next) >= size : next < size;
