@@ -179,6 +179,7 @@ Example command line:
 - Use `--isop` to use ZDD covers for the conversion to AIG. By default, a direct conversion based on ITE (Shannon expansion) is used.
 - Use `--auto-encode` for a small controller: the multi-strategy of fixpoint iteration (`--multi-fpi`), minimisation of the controller as a Mealy machine with a SAT solver (`--mealy-sat`), encoding with don't cares (`--dc`), and for small controllers a short search over all winning moves. It works with an explicit solver; `--multi-fpj` may replace `--multi-fpi`. With `--compress` it considers only the binary encodings: one-hot ones can be smaller as they are, but ABC compresses the binary ones much further.
 - Use `--compress` to compress the AIG after construction using ABC, within 30 minutes; `--compress-time` sets another limit in seconds.
+- Use `--timeout` to limit the time of the run in seconds: when it is up, the permissive extension, the SAT minimisation, the encoding search and the compression stop with what they found. Constructing and solving the game are not limited.
 - **Recommendation**: `--auto-encode` for the smallest result, optionally with `--compress`; `--bisim --onehot` for a fast result.
 
 ### Output of AIG controller

@@ -89,12 +89,11 @@ private:
 void ABCMinimization::compress(int seconds, bool rrr)
 {
     // without outputs no logic is observable; ABC has nothing to minimise and warns at every command
-    if (circuit.getNumOutputs() == 0) return;
+    if (circuit.getNumOutputs() == 0 || seconds <= 0) return;
 
-    const long timeout = 1000L * seconds;   // milliseconds
-    auto start = std::chrono::steady_clock::now();
-    auto elapsed = [&]() -> long {
-        return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    auto left = [&]() -> long {   // milliseconds
+        return std::chrono::duration_cast<std::chrono::milliseconds>(end - std::chrono::steady_clock::now()).count();
     };
 
     AbcSession session;
@@ -110,16 +109,16 @@ void ABCMinimization::compress(int seconds, bool rrr)
     // a copy, within the time that is left (when the time is up it keeps what it found), and the copy replaces
     // the network only if it is smaller: a round that runs out of time, or an &rrr that fails, costs only its
     // time. The rounds go on while they gain something, with &rrr while they gain at least 2%: its rounds cost
-    // minutes on the largest circuits and the later ones gain little. Stops when the time is up.
+    // minutes on the largest circuits and the later ones gain little. Stops when the time is up (also between
+    // the compress commands), and before a round that would take longer than the time that is left.
     int size = getAbcNetworkSize(pAbc);
     while (size > 0) {
-        const auto before = elapsed();
-        executeCompressCommands(pAbc);
-        if (rrr && elapsed() < timeout) {
-            const long left = std::max(1L, (timeout - elapsed()) / 1000);
+        const long before = left();
+        executeCompressCommands(pAbc, end);
+        if (rrr && left() > 0) {
             try {
                 executeAbcCommand(pAbc, "&get -n");
-                executeAbcCommand(pAbc, "&rrr -X 1 -T " + std::to_string(left));
+                executeAbcCommand(pAbc, "&rrr -X 1 -T " + std::to_string(std::max(1L, left() / 1000)));
                 executeAbcCommand(pAbc, "&setregnum -N " + std::to_string(latches));
                 Gia_Man_t* copy = Abc_FrameReadGia(pAbc);
                 if (copy != nullptr && Gia_ManAndNum(copy) < getAbcNetworkSize(pAbc)) executeAbcCommand(pAbc, "&put");
@@ -130,8 +129,8 @@ void ABCMinimization::compress(int seconds, bool rrr)
         const int next = getAbcNetworkSize(pAbc);
         const bool gained = rrr ? 50L * (size - next) >= size : next < size;
         size = next;
-        const auto now = elapsed();
-        if (!gained || now + (now - before) >= timeout) break;
+        const long after = left();
+        if (!gained || before - after >= after) break;
     }
 
     readFromAbc(pAbc);
@@ -139,7 +138,7 @@ void ABCMinimization::compress(int seconds, bool rrr)
 
 void ABCMinimization::drewrite(int seconds)
 {
-    if (circuit.getNumOutputs() == 0) return;
+    if (circuit.getNumOutputs() == 0 || seconds <= 0) return;
 
     auto start = std::chrono::steady_clock::now();
     AbcSession session;
@@ -174,8 +173,9 @@ void ABCMinimization::executeAbcCommand(Abc_Frame_t* pAbc, const std::string& co
     if (verbose) std::cerr << "after " << command << ": " << getAbcNetworkSize(pAbc) << std::endl;
 }
 
-void ABCMinimization::executeCompressCommands(Abc_Frame_t* pAbc) const {
+void ABCMinimization::executeCompressCommands(Abc_Frame_t* pAbc, std::chrono::steady_clock::time_point end) const {
     for (const auto& command : compressCommands) {
+        if (std::chrono::steady_clock::now() >= end) return;
         executeAbcCommand(pAbc, command);
     }
 }

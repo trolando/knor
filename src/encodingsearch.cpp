@@ -154,13 +154,14 @@ std::unique_ptr<AIGCircuit> EncodingSearch::encode(SymGame& controller,
     for (size_t g = 0; g < games.size(); g++) {
         bool onehotFits = true;
         for (const Setting& s : all) {
+            if (config.deadline.passed()) return std::move(best);
             if (s.onehot && !onehotFits) continue;
             if (!encodeCandidate(g, s, 0)) onehotFits = false;
         }
     }
     // the variable order matters a lot, but sifting costs time: the best binary candidates first
     std::sort(binaries.begin(), binaries.end(), [](const Binary& a, const Binary& b) { return a.size < b.size; });
-    for (size_t k = 0; k < binaries.size() && reorderLeft > 0 && !config.isop; k++) {
+    for (size_t k = 0; k < binaries.size() && reorderLeft > 0 && !config.isop && !config.deadline.passed(); k++) {
         encodeCandidate(binaries[k].game, binaries[k].setting,
                         std::min(reorderLeft, std::max(1L, config.reorderWork / 3)));
     }

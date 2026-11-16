@@ -731,9 +731,10 @@ std::vector<Step> losingCycle(const Machine& m, const std::vector<int>& block, c
 class Encoding final {
 public:
     Encoding(const Machine& m, const std::vector<MTBDD>& outputSets, int capCount, uint32_t firstCap,
-             const std::vector<int>& anchors, const std::vector<std::vector<char>>& compatible, int k, bool priorities)
+             const std::vector<int>& anchors, const std::vector<std::vector<char>>& compatible, int k, bool priorities,
+             const Deadline& deadline)
         : m(m), outputSets(outputSets), capCount(capCount), firstCap(firstCap), anchors(anchors), k(k),
-          priorities(priorities),
+          priorities(priorities), deadline(deadline),
           anchored(static_cast<int>(anchors.size())), states(m.states()),
           letters(static_cast<int>(m.options[0].size())), solver(sat_solver_new()),
           xVar(static_cast<size_t>(states) * k, -1), sVar(k), yStart(k, 0)
@@ -779,7 +780,8 @@ public:
     }
 
     // Add the clauses: l_False if they are trivially unsatisfiable, l_Undef
-    // (and stops) once more than limit clauses are added, else l_True.
+    // (and stops) once more than limit clauses are added or the deadline has
+    // passed, else l_True.
     int build(long limit)
     {
         trueVar = next++;
@@ -804,7 +806,7 @@ public:
             ok = ok && !some.empty() && clause(some) && atMostOne(some);
         }
         for (int c = 0; c < k && ok; c++) {
-            if (added > limit) return l_Undef;
+            if (added > limit || deadline.passed()) return l_Undef;
             const std::vector<int>& letterOf = classes(c).letter;
             sVar[c].resize(letterOf.size());
             for (int cls = 0; cls < static_cast<int>(letterOf.size()) && ok; cls++) {
@@ -846,12 +848,13 @@ public:
     }
 
     // l_True, l_False, or l_Undef if the work (with the clauses) reaches
-    // limit first. The solver stops on propagations only, so it runs in chunks
-    // of at most CHUNK propagations, and the work is checked in between.
+    // limit or the deadline passes first. The solver stops on propagations
+    // only, so it runs in chunks of at most CHUNK propagations (about 0.4
+    // seconds), and the work and the deadline are checked in between.
     int solve(long limit)
     {
         sat_solver_setnvars(solver, next);
-        while (work() < limit) {
+        while (work() < limit && !deadline.passed()) {
             const long chunk = std::min(CHUNK, limit - work());
             const ABC_INT64_T props = solver->stats.propagations, inspects = solver->stats.inspects;
             const int r = sat_solver_solve(solver, nullptr, nullptr, 0, chunk, 0, 0);
@@ -1089,6 +1092,7 @@ private:
     const std::vector<int>& anchors;
     const int k;
     const bool priorities;                      // must letter classes agree on priorities?
+    const Deadline& deadline;
     const int anchored;
     const int states;
     const int letters;
@@ -1960,7 +1964,8 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
     result.game = toGame(game, order, codes, statebits, moves, ex.letterSets, table.sets());
     result.states = static_cast<int>(order.size());
     result.variants.clear();
-    if (!options.relax) return true;
+    // the variants are candidates of the encoding search, which takes none once the deadline has passed
+    if (!options.relax || options.deadline.passed()) return true;
 
     auto correct = [&](int initial, const Moves& all) {
         return !reached(ex.machine, ex.outputSets, table.sets(), initial, all).empty()
@@ -2031,7 +2036,7 @@ bool emit(SymGame& game, const Extraction& ex, const Controller& ctl, const Meal
         }
     }
 
-    if (!kinds.monitorCodes) return true;
+    if (!kinds.monitorCodes || options.deadline.passed()) return true;
     Controller split = ctl;
     std::vector<int> splitOrder;
     std::vector<Monitor> chosen;
@@ -2127,8 +2132,8 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
     }
     StateSearch sizes(lowerBound, known, options.fewerFirst, checkCycles && options.unitSteps);
     long remaining = work;
-    for (int k = sizes.next(); k > 0 && remaining > 0; k = sizes.next()) {
-        Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, checkCycles);
+    for (int k = sizes.next(); k > 0 && remaining > 0 && !options.deadline.passed(); k = sizes.next()) {
+        Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, checkCycles, options.deadline);
         if (enc.estimatedSize() > MAX_CLAUSES) {
             if (verbose) std::cerr << name << ": the encoding for " << k << " states is too large" << std::endl;
             searches[index].calls.push_back({k, -2, 0});
@@ -2175,7 +2180,8 @@ bool searchWider(SymGame& game, MTBDD moves, const char* name, int bound, long w
             sizes.undecide(k);
         }
     }
-    searches[index].stop = sizes.proven() ? "proven" : remaining <= 0 ? "work" : "undecided";
+    searches[index].stop = sizes.proven() ? "proven" : remaining <= 0 ? "work"
+                           : options.deadline.passed() ? "time" : "undecided";
     searches[index].proven = sizes.proven();
     if (!haveController) return false;
     const int top = sizes.states();
@@ -2278,8 +2284,8 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     Controller best = fromQuotient(q, ex.outputSets, game);
     StateSearch sizes(lowerBound, static_cast<int>(reachableStates(best).size()), options.fewerFirst);
     long remaining = options.work;
-    for (int k = sizes.next(); k > 0 && remaining > 0; k = sizes.next()) {
-        Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, false);
+    for (int k = sizes.next(); k > 0 && remaining > 0 && !options.deadline.passed(); k = sizes.next()) {
+        Encoding enc(q, ex.outputSets, game.cap_count, firstCap, anchors, compatible, k, false, options.deadline);
         if (enc.estimatedSize() > MAX_CLAUSES) {
             if (verbose) std::cerr << "mealy minimisation: the encoding for " << k << " states is too large" << std::endl;
             search.calls.push_back({k, -2, 0});
@@ -2311,7 +2317,7 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
     }
     search.found = sizes.states();
     search.proven = sizes.proven();
-    search.stop = sizes.proven() ? "proven" : remaining <= 0 ? "work" : "undecided";
+    search.stop = sizes.proven() ? "proven" : remaining <= 0 ? "work" : options.deadline.passed() ? "time" : "undecided";
     if (!emit(game, ex, best, options, false, pool, result)) {
         // cannot happen; keep the original controller rather than risk a wrong one
         std::cerr << "error: the minimised controller makes moves the strategy does not allow" << std::endl;
@@ -2338,6 +2344,12 @@ MealyMinimizer::Result MealyMinimizer::minimize(SymGame& game, const Options& op
             searches.emplace_back();
             searches.back().moves = w.name;
             searches.back().skipped = "the controller has more than " + std::to_string(w.maxStates) + " states";
+            continue;
+        }
+        if (options.deadline.passed()) {
+            searches.emplace_back();
+            searches.back().moves = w.name;
+            searches.back().skipped = "the deadline has passed";
             continue;
         }
         if (!searchWider(game, w.moves, w.name, result.states, w.work, options, smaller, more, searches)) continue;

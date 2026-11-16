@@ -25,8 +25,9 @@ extern "C" {
  * choose it), and with don't cares also the candidates of the controller and
  * its variants, in binary and one-hot with several settings, keeping the
  * smallest; then the best binary candidates again with a variable order chosen
- * by sifting, as long as the reordering work lasts. Every candidate is
- * recorded in the statistics.
+ * by sifting, as long as the reordering work lasts. No further candidates once
+ * the deadline of the run has passed. Every candidate is recorded in the
+ * statistics.
  */
 class EncodingSearch final {
 public:

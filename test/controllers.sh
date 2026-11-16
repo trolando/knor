@@ -2,9 +2,9 @@
 #
 # Regression test for the controller options (--auto-encode, --permissive,
 # --multi-fpi, --multi-fpj, --mealy-sat, --mealy-any, --dc, --compress, --no-rrr,
-# --compress-time, the budgets). For every example and every combination of
-# options, knor --real and knor -a must both exit with the expected verdict, and
-# a realizable example must give an
+# --compress-time, --timeout, the budgets). For every example and every
+# combination of options, knor --real and knor -a must both exit with the
+# expected verdict, and a realizable example must give an
 # AIGER file with one input per uncontrollable and one output per controllable
 # AP, which aigcheck accepts; so must the binary AIGER file of --auto-encode,
 # whose --stats must be consistent (if python3 is found: schema 2, the
@@ -51,8 +51,10 @@ modes=(
     "--auto-encode --mealy-any --mealy-work 20000000"
     "--auto-encode --compress"
     "--auto-encode --compress --no-rrr"
-    # a time limit that runs out within &rrr on the larger examples
+    # a time limit that runs out within &rrr on the larger examples, and a deadline that passes in
+    # the minimiser, the encoding search or the compression
     "--auto-encode --compress --compress-time 1"
+    "--auto-encode --compress --timeout 1"
     "--sym --mealy-sat --dc"
     # Oink's multi-strategy solvers as the solver, without --multi-fpi: one move of their multi-strategy
     "--fpim"
@@ -141,7 +143,7 @@ done
 f="$dir/../examples/full_arbiter.tlsf.ehoa"
 for mode in "--mealy-any" "--sym --mealy-sat --mealy-any" "--sym --permissive" "--sym --multi-fpi" "--dc --onehot" "--dc --sop" "--auto-encode --onehot" \
             "--auto-encode --permissive --no-extension" "--auto-encode --mealy-work -1" "--permissive --permissive-work -1" \
-            "--auto-encode --no-rrr" "--auto-encode --compress-time 10" "--auto-encode --compress --compress-time 0"; do
+            "--auto-encode --no-rrr" "--auto-encode --compress-time 10" "--auto-encode --compress --compress-time 0" "--auto-encode --timeout 0"; do
     # shellcheck disable=SC2086
     "$knor" -a $mode "$f" >/dev/null 2>&1
     res=$?

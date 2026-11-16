@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <aigencoder.hpp>
+#include <deadline.hpp>
 #include <mealy.hpp>
 
 /**
@@ -33,6 +34,8 @@ struct Config final {
     bool bisimGame = false;
     bool bisimSolution = false;
     bool realizability = false;         // only the verdict (--real)
+    int timeout = 0;                    // seconds of the run (0: none)
+    Deadline deadline;                  // its end, from the parsing of the options
 
     // the strategy, of Oink's solution
     bool fpim = false;                  // the multi-strategy of fixpoint iteration
@@ -65,7 +68,7 @@ struct Config final {
     bool drewrite = false;
     bool compress = false;
     bool rrr = true;                    // with compress: also ABC's &rrr
-    int compressTime = 1800;            // seconds of compress or drewrite
+    int compressTime = 1800;            // seconds of compress or drewrite (within the deadline)
     bool printKiss = false;
     bool printWitness = false;
     enum class Output { none, ascii, binary } output = Output::none;

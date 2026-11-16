@@ -303,7 +303,7 @@ std::vector<std::vector<int>> PermissiveStrategy::moves(const pg::Game& game, co
 
 std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, const pg::Solution& solution, int initial,
                                                          std::vector<std::vector<int>> allowed, long budget,
-                                                         Stats& stats)
+                                                         const Deadline& deadline, Stats& stats)
 {
     const int n = game.vertexcount();
     Restricted r(game, allowed);
@@ -321,7 +321,7 @@ std::vector<std::vector<int>> PermissiveStrategy::extend(const pg::Game& game, c
                 const int w = *e;
                 if (solution.winner(w) != 0) continue;
                 if (std::find(allowed[v].begin(), allowed[v].end(), w) != allowed[v].end()) continue;
-                if (budget > 0 && check.work >= budget) {
+                if ((budget > 0 && check.work >= budget) || deadline.passed()) {
                     stats.stopped = true;
                     break;
                 }

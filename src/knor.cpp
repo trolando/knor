@@ -305,7 +305,8 @@ TASK_1(int, main_task, const Config*, _config)
                 if (config.permissive) {
                     const double t_before = wctime();
                     PermissiveStrategy::Stats stats;
-                    extended = PermissiveStrategy::extend(*game, solution, vstart, allowed, config.permissiveWork, stats);
+                    extended = PermissiveStrategy::extend(*game, solution, vstart, allowed, config.permissiveWork,
+                                                          config.deadline, stats);
                     run_stats.extension = RunStats::Extension{true, config.permissiveWork, stats};
                     if (!PermissiveStrategy::verify(*game, solution, vstart, extended)) {
                         // cannot happen; keep the strategy that was extended rather than risk a wrong controller
@@ -541,7 +542,7 @@ TASK_1(int, main_task, const Config*, _config)
     if (config.drewrite) {
         if (verbose) std::cerr << "size of AIG before drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
         const double t_before = wctime();
-        ABCMinimization(*circuit, verbose).drewrite(config.compressTime);
+        ABCMinimization(*circuit, verbose).drewrite(config.deadline.seconds(config.compressTime));
         const double t_after = wctime();
         if (verbose) std::cerr << "size of AIG after drw+drf: " << circuit->getNumAnds() << " gates." << std::endl;
         run_stats.time("drw+drf", t_after - t_before);
@@ -551,7 +552,7 @@ TASK_1(int, main_task, const Config*, _config)
     if (config.compress) {
         if (verbose) std::cerr << "size of AIG before compression: " << circuit->getNumAnds() << " gates." << std::endl;
         const double t_before = wctime();
-        ABCMinimization(*circuit, verbose).compress(config.compressTime, config.rrr);
+        ABCMinimization(*circuit, verbose).compress(config.deadline.seconds(config.compressTime), config.rrr);
         const double t_after = wctime();
         if (verbose) std::cerr << "size of AIG after compression: " << circuit->getNumAnds() << " gates." << std::endl;
         run_stats.time("compression", t_after - t_before);

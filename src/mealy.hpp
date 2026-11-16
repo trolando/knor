@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include <deadline.hpp>
 #include <symgame.hpp>
 
 /**
@@ -43,8 +44,9 @@ public:
         int found = 0;          // states of the controller found (the quotient if no smaller one), 0 if none
         bool proven = false;    // no controller of these moves has fewer states than found (or, if found
                                 // is 0, than the controller of the search before)
-        std::string stop;       // why it stopped: "proven", "work" (the work ran out) or "undecided"
-                                // (every number left to try was undecided or too large)
+        std::string stop;       // why it stopped: "proven", "work" (the work ran out), "time" (the
+                                // deadline passed) or "undecided" (every number left to try was
+                                // undecided or too large)
         struct Call {
             int states;         // the number of controller states tried
             int outcome;        // 1 suffice, 0 do not suffice, -1 undecided, -2 too large (not tried)
@@ -117,6 +119,7 @@ public:
         bool strongBound = true;                // lower bound from all unavoidable states, the initial one optional
         bool winningBound = true;               // over anyMoves, from the states that every winning controller visits
         int anyStates = 0;                      // search anyMoves only for controllers of at most this many states (0: all)
+        Deadline deadline;                      // of the run: the SAT searches stop when it has passed
     };
 
     /**
@@ -135,7 +138,8 @@ public:
      * form a winning multi-strategy). More freedom weakens the lower bound,
      * so this gives the best of both: the fast search of the strategy, and
      * smaller controllers where the wider search finds them. With relax, a
-     * wider controller that is not smaller is a variant too.
+     * wider controller that is not smaller is a variant too. Once the
+     * deadline has passed, it stops searching and makes no more variants.
      */
     static Result minimize(SymGame& game, const Options& options);
 };

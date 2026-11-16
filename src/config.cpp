@@ -56,7 +56,7 @@ Config Config::parse(int argc, char** argv)
             ("dc-all", "With --dc, try every encoding candidate, not only those that pay off (for experiments; slower)")
             ("compress", "Compress the generated AIG using ABC")
             ("no-rrr", "With --compress: without ABC's resubstitution with redundancy analysis (&rrr)")
-            ("compress-time", "Time limit of --compress or --drewrite in seconds; &rrr stops when it is up and keeps what it found",
+            ("compress-time", "Time limit of --compress or --drewrite in seconds (within --timeout); &rrr stops when it is up and keeps what it found",
              cxxopts::value<int>()->default_value("1800"))
             ("drewrite", "Compress the generated AIG using ABCs commands drw and drf")
             ("auto-encode", "Synthesize a small controller: --mealy-sat --dc with --multi-fpi (unless --multi-fpj or --sym), --permissive with a work budget, and for a small controller a short search over all winning moves")
@@ -67,6 +67,8 @@ Config Config::parse(int argc, char** argv)
             ("a,write-ascii", "Write ascii AIGER file")
             ("b,write-binary", "Write binary AIGER file")
             ("v,verbose", "Be verbose")
+            ("timeout", "Time limit of the run in seconds: when it is up, the permissive extension, the SAT searches of the minimiser, the encoding search and the compression stop with what they found (constructing and solving the game are not limited)",
+             cxxopts::value<int>())
             ("stats", "Write statistics of the run (times, minimisation, encoding candidates) as JSON to the file", cxxopts::value<std::string>())
             ;
         // for experiments: each switches off one part of --mealy-sat, --dc or --auto-encode
@@ -188,9 +190,11 @@ Config Config::parse(int argc, char** argv)
             std::cerr << "error parsing options: --compress-time requires --compress or --drewrite" << std::endl;
             exit(255);
         }
-        if (options["compress-time"].as<int>() <= 0) {
-            std::cerr << "error parsing options: --compress-time must be positive" << std::endl;
-            exit(255);
+        for (const char* name : {"compress-time", "timeout"}) {
+            if (options.count(name) && options[name].as<int>() <= 0) {
+                std::cerr << "error parsing options: --" << name << " must be positive" << std::endl;
+                exit(255);
+            }
         }
         if (options.count("no-extension") && options.count("permissive")) {
             std::cerr << "error parsing options: --no-extension and --permissive exclude each other" << std::endl;
@@ -228,6 +232,10 @@ Config Config::parse(int argc, char** argv)
         config.bisimGame = options.count("bisim") > 0 || options.count("bisim-game") > 0;
         config.bisimSolution = options.count("bisim") > 0 || options.count("bisim-sol") > 0;
         config.realizability = options.count("real") > 0;
+        if (options.count("timeout")) {
+            config.timeout = options["timeout"].as<int>();
+            config.deadline = Deadline(config.timeout);
+        }
 
         // --auto-encode is --mealy-sat --dc with --multi-fpi (unless --multi-fpj or --sym is given), with the permissive
         // extension (with a work budget) and the search over all winning moves for small controllers
@@ -262,6 +270,7 @@ Config Config::parse(int argc, char** argv)
                             : auto_encode && options.count("mealy-any") == 0 ? minimiser.work / AUTO_ANY_SHARE
                                                                               : minimiser.work;
         minimiser.anyStates = auto_encode && options.count("mealy-any") == 0 ? AUTO_ANY_STATES : 0;
+        minimiser.deadline = config.deadline;
 
         config.isop = options.count("isop") > 0;
         config.onehot = options.count("onehot") > 0;
@@ -317,6 +326,7 @@ std::vector<Config::Setting> Config::settings() const
     };
     stage = "game";
     text("input", input.empty() ? "stdin" : input);
+    number("timeout", timeout);
     flag("paritize", paritize);
     text("solver", symbolic ? "sym" : solver);
     flag("naive", naiveSplitting);
