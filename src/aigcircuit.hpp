@@ -62,6 +62,10 @@ public:
     int writeBinary(FILE* outfile);
     void readFile(FILE* infile);
 
+    // Removes the latches and the AND gates that no output reads (also not through other latches); the inputs
+    // stay. Returns whether it removed any.
+    bool sweep();
+
 private:
     aiger *a;
     std::map<uint64_t, unsigned int> cache; // cache for ands

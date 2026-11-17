@@ -536,6 +536,17 @@ TASK_1(int, main_task, const Config*, _config)
     run_stats.time("encoding", t_after_enc - t_before_enc);
     if (verbose) std::cerr << "\033[1;37mfinished encoding in " << std::fixed << (t_after_enc - t_before_enc) << " sec.\033[m" << std::endl;
 
+    // Latches and gates that no output reads: removed before ABC, which keeps every latch and the gates of its
+    // next state, and again after it, as its simplifications can leave more
+    const auto sweep = [&]() {
+        const long latches = circuit->getNumLatches(), ands = circuit->getNumAnds();
+        if (circuit->sweep() && verbose) {
+            std::cerr << "removed " << latches - circuit->getNumLatches() << " latches and "
+                      << ands - circuit->getNumAnds() << " gates that no output reads." << std::endl;
+        }
+    };
+    sweep();
+
     /**
      * maybe compress with ABC
      */
@@ -558,6 +569,7 @@ TASK_1(int, main_task, const Config*, _config)
         run_stats.time("compression", t_after - t_before);
         if (verbose) std::cerr << "\033[1;37mfinished compression in " << std::fixed << (t_after - t_before) << " sec.\033[m" << std::endl;
     }
+    if (config.drewrite || config.compress) sweep();
 
     if (verbose) {
         std::cerr << "final size of AIG: " << circuit->getNumAnds() << " gates." << std::endl;

@@ -4,6 +4,7 @@
 
 #include <aigcircuit.hpp>
 #include <stdexcept>
+#include <vector>
 
 AIGCircuit::AIGCircuit() {
     a = aiger_init();
@@ -139,4 +140,48 @@ void AIGCircuit::readFile(FILE* infile) {
     aiger_delete_comments(read);
     aiger_reset(a);
     a = read;
+}
+
+bool AIGCircuit::sweep() {
+    // the variables that the outputs read, also through the latches
+    std::vector<bool> read(a->maxvar + 1, false);
+    std::vector<unsigned> stack;
+    for (unsigned i = 0; i < a->num_outputs; i++) stack.push_back(aiger_lit2var(a->outputs[i].lit));
+    unsigned latches = 0, ands = 0;
+    while (!stack.empty()) {
+        const unsigned var = stack.back();
+        stack.pop_back();
+        if (var == 0 || read[var]) continue;
+        read[var] = true;
+        if (const aiger_and* gate = aiger_is_and(a, aiger_var2lit(var))) {
+            ands++;
+            stack.push_back(aiger_lit2var(gate->rhs0));
+            stack.push_back(aiger_lit2var(gate->rhs1));
+        } else if (const aiger_symbol* latch = aiger_is_latch(a, aiger_var2lit(var))) {
+            latches++;
+            stack.push_back(aiger_lit2var(latch->next));
+        }
+    }
+    if (latches == a->num_latches && ands == a->num_ands) return false;
+
+    aiger* swept = aiger_init();
+    for (unsigned i = 0; i < a->num_inputs; i++) aiger_add_input(swept, a->inputs[i].lit, a->inputs[i].name);
+    for (unsigned i = 0; i < a->num_latches; i++) {
+        const aiger_symbol& latch = a->latches[i];
+        if (!read[aiger_lit2var(latch.lit)]) continue;
+        aiger_add_latch(swept, latch.lit, latch.next, latch.name);
+        if (latch.reset != 0) aiger_add_reset(swept, latch.lit, latch.reset);
+    }
+    for (unsigned i = 0; i < a->num_ands; i++) {
+        const aiger_and& gate = a->ands[i];
+        if (read[aiger_lit2var(gate.lhs)]) aiger_add_and(swept, gate.lhs, gate.rhs0, gate.rhs1);
+    }
+    for (unsigned i = 0; i < a->num_outputs; i++) aiger_add_output(swept, a->outputs[i].lit, a->outputs[i].name);
+    aiger_reencode(swept);
+    aiger_reset(a);
+    a = swept;
+    // the literals were renumbered: new gates start after them, and none of the cached gates is known anymore
+    lit = aiger_var2lit(a->maxvar + 1);
+    cache.clear();
+    return true;
 }
